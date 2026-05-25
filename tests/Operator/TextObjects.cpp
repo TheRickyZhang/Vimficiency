@@ -2,7 +2,7 @@
 //
 // Tests for operator + text object boundary crossing logic (diw, daw, etc.)
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="TextObjectsTest.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="TextObjectsTest.*"
 
 #include <gtest/gtest.h>
 
@@ -117,6 +117,94 @@ TEST_F(TextObjectsTest, BracketRange_OnNestedClosingBracket) {
   ASSERT_TRUE(around.isValid());
   EXPECT_EQ(around.begin, CursorPos(0, 0));
   EXPECT_EQ(around.end, CursorPos(0, 4));
+}
+
+TEST_F(TextObjectsTest, BracketRange_SearchesForwardFromBeforePair) {
+  Lines lines = {"foo (hello) bar"};
+
+  CharRange inner = VimCore::bracketTextObjectRange(
+      CursorPos(0, 0), lines, true, '(', ')');
+
+  ASSERT_TRUE(inner.isValid());
+  EXPECT_EQ(inner.begin, CursorPos(0, 5));
+  EXPECT_EQ(inner.end, CursorPos(0, 10));
+}
+
+// =============================================================================
+// Oracle-backed bracket text-object matrix. Each test runs `di<bracket>` via
+// Neovim and confirms our `bracketTextObjectRange`-applied deletion matches
+// Vim's behavior. Covers the forward-search branch we added for the
+// interpreter (the optimizer no longer depends on this helper).
+// =============================================================================
+
+static void expectDeleteInnerMatchesOracle(
+    NeovimOracle& oracle, const Lines& lines, CursorPos cursor,
+    char open, char close) {
+  std::string token = std::string("di") + open;
+  auto oracleResult = oracle.simulate(lines, cursor.line, cursor.col, token);
+
+  CharRange inner =
+      VimCore::bracketTextObjectRange(cursor, lines, true, open, close);
+  Lines local = lines;
+  if (inner.isValid()) {
+    // Apply deletion: inner range is [openPos.next, closePos) — exclusive end.
+    int beginLine = inner.begin.line, beginCol = inner.begin.col;
+    int endLine = inner.end.line, endCol = inner.end.col;
+    if (beginLine == endLine) {
+      local[beginLine].erase(beginCol, endCol - beginCol);
+    } else {
+      // Multi-line not exercised in the matrix below, but kept conservative.
+      local[beginLine].erase(beginCol);
+      local[beginLine] += local[endLine].substr(endCol);
+      local.erase(local.begin() + beginLine + 1,
+                  local.begin() + endLine + 1);
+    }
+  }
+  EXPECT_EQ(local, oracleResult.lines)
+      << "di" << open << " from (" << cursor.line << "," << cursor.col
+      << ") on " << lines[0];
+}
+
+TEST_F(TextObjectsTest, OracleBracket_CursorOnOpen) {
+  expectDeleteInnerMatchesOracle(
+      *oracle_, Lines{"(abc)"}, CursorPos(0, 0), '(', ')');
+}
+
+TEST_F(TextObjectsTest, OracleBracket_CursorOnClose) {
+  expectDeleteInnerMatchesOracle(
+      *oracle_, Lines{"(abc)"}, CursorPos(0, 4), '(', ')');
+}
+
+TEST_F(TextObjectsTest, OracleBracket_CursorInside) {
+  expectDeleteInnerMatchesOracle(
+      *oracle_, Lines{"(abc)"}, CursorPos(0, 2), '(', ')');
+}
+
+TEST_F(TextObjectsTest, OracleBracket_CursorBeforePairSameLine) {
+  expectDeleteInnerMatchesOracle(
+      *oracle_, Lines{"foo (hello) bar"}, CursorPos(0, 0), '(', ')');
+}
+
+TEST_F(TextObjectsTest, OracleBracket_NoPairAnywhere) {
+  // No enclosing or forward pair — Vim leaves the buffer unchanged.
+  expectDeleteInnerMatchesOracle(
+      *oracle_, Lines{"no pair here"}, CursorPos(0, 0), '(', ')');
+}
+
+TEST_F(TextObjectsTest, OracleBracket_NestedCursorBetween) {
+  // Cursor inside outer pair, between the inner one.
+  expectDeleteInnerMatchesOracle(
+      *oracle_, Lines{"((inner))"}, CursorPos(0, 4), '(', ')');
+}
+
+TEST_F(TextObjectsTest, OracleBracket_BracesCursorBeforePair) {
+  expectDeleteInnerMatchesOracle(
+      *oracle_, Lines{"foo {body} bar"}, CursorPos(0, 0), '{', '}');
+}
+
+TEST_F(TextObjectsTest, OracleBracket_SquaresCursorInside) {
+  expectDeleteInnerMatchesOracle(
+      *oracle_, Lines{"[entry]"}, CursorPos(0, 3), '[', ']');
 }
 
 // =============================================================================

@@ -3,7 +3,7 @@
 // Verifies that RunningEffort::merge(a, b) produces the same effort as
 // sequentially appending all keys of b after a.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="EffortCompositionTest.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="EffortCompositionTest.*"
 
 #include <gtest/gtest.h>
 

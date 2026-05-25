@@ -91,19 +91,22 @@ cmake --build build -j
 **Test binaries** (in `build/tests/`):
 | Binary | Purpose | Example |
 |--------|---------|---------|
-| `vimficiency_tests` | Unit tests | `./build/tests/vimficiency_tests --gtest_brief=1` |
-| `vimficiency_benchmarks` | Performance benchmarks | `./build/tests/vimficiency_benchmarks` |
-| `vimficiency_debug` | Scratch/debug tests | `./build/tests/vimficiency_debug` |
+| `vimfy_unit_tests` | Unit tests | `./build/tests/vimfy_unit_tests --gtest_brief=1` |
+| `vimfy_expect_tests` | Expect fixture tests | `./build/tests/vimfy_expect_tests --gtest_brief=1` |
+| `vimfy_property_tests` | Structured property tests | `scripts/vimfy_tests property` |
+| `vimfy_safety_tests` | Safety tests | `scripts/vimfy_tests safety` |
+| `vimfy_benchmarks` | Performance benchmarks | `./build/tests/vimfy_benchmarks` |
+| `vimfy_debug` | Scratch/debug tests | `./build/tests/vimfy_debug` |
 
 ```bash
 # Run all correctness tests
-./build/tests/vimficiency_tests --gtest_brief=1
+scripts/vimfy_tests
 
 # Run all benchmarks
-./build/tests/vimficiency_benchmarks
+./build/tests/vimfy_benchmarks
 ```
 
-**Other artifacts:** `build/libvimficiency_core.a`, `build/libvimficiency.so`, `build/vimficiency_cli`
+**Other artifacts:** `build/libvimfy_core.a`, `build/libvimficiency.so`, `build/vimficiency_cli`
 
 
 ## FFI Bridge

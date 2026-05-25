@@ -13,8 +13,8 @@
 //   SeedManager::instance().setReplayMode();  // Replay from file
 //
 // Or via environment variable (for CI/scripts):
-//   VIMFICIENCY_SEED_MODE=fixed   ./build/tests/vimficiency_tests
-//   VIMFICIENCY_SEED_MODE=replay  ./build/tests/vimficiency_tests
+//   VIMFY_SEED_MODE=fixed   ./build/tests/vimfy_unit_tests
+//   VIMFY_SEED_MODE=replay  ./build/tests/vimfy_unit_tests
 
 #pragma once
 

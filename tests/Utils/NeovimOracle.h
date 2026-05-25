@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 struct SimulationResult {
   Lines lines;
@@ -47,6 +48,12 @@ public:
                             int startCol, // 0-indexed
                             const std::string &keys);
 
+  // Simulate parsed Normal-mode tokens separately in one Neovim buffer.
+  SimulationResult simulateTokens(const Lines &lines,
+                                  int startRow,
+                                  int startCol,
+                                  const std::vector<std::string>& tokens);
+
   // Restart the Neovim subprocess (resets call counter)
   void restart();
 
@@ -58,4 +65,10 @@ private:
   // Auto-restart after this many simulate() calls to prevent buffer exhaustion
   static constexpr int AUTO_RESTART_INTERVAL = 200;
   int callsSinceRestart_ = 0;
+
+  SimulationResult simulateChunks(const Lines& lines,
+                                  int startRow,
+                                  int startCol,
+                                  const std::vector<std::string>& chunks,
+                                  bool asSeparateUserActions);
 };

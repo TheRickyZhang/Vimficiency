@@ -110,6 +110,53 @@ refactors may change internal storage, search strategy, or debug surfaces
 freely, but must preserve the semantics of that bundled per-edit view if
 Explore is to remain compatible.
 
+### Frontier contract
+
+Every frontier emits exactly one immediately executable Vim action token per
+recommendation. No motion prefix, no typed payload, no trailing `<Esc>`,
+no multi-token macro. Duplicate tokens across emission lanes are programmer
+errors and abort at runtime in both debug and release builds via the
+release-active `CHECK` macro.
+
+- **NavFrontier** — one movement token toward an executable edit region.
+  Per-cell dedup is bounded by `maxResultsPerEndPos`; a global pairwise-distinct
+  `CHECK` runs at the end of `rankNavFrontier`.
+- **CompositionFrontier** — one direct edit-bearing token valid from the
+  current cursor:
+  - Pure-insertion shortcut: `i / a / I / A / o` when the cursor lies
+    inside the strategy's insertion column range.
+  - Bracket/quote text-object structural: `di" / da{ / ci( / ca[ / ...`
+    when the cursor is at the enumerated `(line, col)` of a visible
+    bracket/quote pair.
+  - Bare `J` when the cursor is on the join entry line and one `J` makes
+    progress on the planned diff without exactly reaching the post-edit
+    fencepost (the explorer J lane in TransformFrontier owns that exact case).
+- **TransformFrontier** — one Normal-mode action from a planned Transform
+  start cursor: `dw`, `cl`, `rX`, bare `J` that reaches the fencepost, etc.
+  The lane separation between explorer-emitted J and the progress-only J
+  is structural (fencepost-equality decides), not stateful.
+
+After an emitted token is executed, Explore re-derives phase from the
+observed buffer/cursor/mode (`acceptSnapshot` / `phaseForCursor`). No hidden
+continuation metadata is carried in the recommendation.
+
+Tradeoffs and known scope holes:
+
+- Multi-action change forms such as `dwi` are exposed as delete-first progress
+  (`dw`); Explore re-queries after the observed deletion.
+- The full batch `TransformOptimizer` and `CompositionOptimizer` results still
+  emit multi-token sequences (`dwi...<Esc>`, full join+cleanup plans). Frontier
+  vs batch result shapes intentionally differ — frontier is interactive,
+  batch is the end-to-end optimization output.
+- Visual-delete shortcuts (`v{motion}d`) stay in batch results only; see
+  `dev/architecture/todo.md` item 6 for the threshold to surface them
+  interactively.
+- The programmatic `View::applyEdit` accepts single Transform and Composition
+  action tokens (insertion, text-object, J) from any planned-edit-target phase.
+  Full live sequences with typed payloads go through `acceptSnapshot`. Lookup
+  lives in `EditHandler::applyEdit`; simulation uses the canonical Vim
+  interpreter (`Edit::applyEdit`).
+
 ## Phase machine
 
 `Navigate`

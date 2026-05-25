@@ -49,17 +49,30 @@ The same pattern applies to `SuffixKey` in the suffix cache (see below).
 
 ## Suffix Cache
 
-When a search path reaches the goal, `replayAndCacheSuffix` replays the winning sequence forward from the seed state, caching the remaining suffix at each intermediate buffer state. This enables cross-position sharing: if a different starting position reaches the same intermediate state, the cached suffix completes the path without further exploration.
+When a search path reaches the goal, the suffix cache walks the structured `TransformPathStep` chain recorded on the search state, caching the remaining suffix at each intermediate buffer state. This avoids reparsing/replaying generated command strings inside the optimizer.
+
+### Path-walking cost model
+
+Every `TransformState` carries a `std::shared_ptr<const TransformPathStep>` chain recording the search edges that produced it. Each step stores only cache-key-relevant metadata: `linesHashAfter`, `lineCountAfter`, `posAfter`, `modeAfter`, `lastEditCountAfter`, `lastEditBaseAfter`, and the emitted command string. No full `Lines` snapshot is held.
+
+The chain is a tree, not a linear list: branches that share a parent share the upstream nodes by reference count. As losing branches are discarded by the search, their leaf `shared_ptr`s drop and unreferenced parents free. Only goal-reaching paths pay the full walk cost (one walk per finalized goal, populating intermediate suffix-cache entries).
+
+Cost characteristics:
+
+- **Per-state overhead**: ~one small heap allocation + ~3 strings of bounded length. Allocated at successor-state creation regardless of whether the state ever wins.
+- **Goal-reaching walk**: O(path length) suffix-cache entries per finalized goal. Only fires when a goal is accepted; never during exploration.
+- **Memory churn during search**: bounded by live states; goes back as branches die.
+
+Replacing the chain with replay (parse the generated sequence, simulate via the interpreter) was considered and rejected: replay requires a second interpretation layer for what the optimizer already has structurally, and the state metadata is cheaper than parsing.
 
 **Key**: `SuffixKey = (linesHash, lineCount, pos, mode)` — deliberately excludes `startIndex` to enable sharing.
 
-**Dot-context handling**: A cached suffix starting with `.` is ambiguous if we do not retain context. Thus, if a suffix starts with `.`, it is expanded to the explicit command it repeats (e.g., `..s` → `x.s`). Both variants are stored in `SuffixValue`:
+**Dot-context handling**: A cached suffix is ambiguous if it reaches `.` before any edit that resets dot-repeat context. That first dependent `.` is expanded to the explicit command it repeats (e.g., `h.s` → `hxs` when `.` means `x`). Both variants are stored in `SuffixValue`:
 
-- `ks` / `effort`: Expanded variant (first dot → explicit command). Always correct regardless of `lastEdit` context.
-- `dotKs` / `dotEffort`: Original variant with leading `.`. Lower cost but only valid when `lastEdit` matches.
-- `expandedDotCmd`: The command that replaced `.` (empty if no expansion needed).
+- Expanded variant: first dependent dot replaced by the recorded command. Always correct regardless of caller dot context.
+- Dot override: original compact suffix. Lower cost, only valid when caller dot context matches the recorded command.
 
-At lookup: if `lastEdit == expandedDotCmd`, use the dot variant; otherwise use the expanded variant.
+At lookup: if caller dot context matches, use the dot override; otherwise use the expanded variant.
 
 Subsequent dots (after the first explicit command) are unambiguous.
 
@@ -84,7 +97,11 @@ Then, converting a real position to flat index takes only 3 operations. This imp
 
 The delete→change conversion (`deleteToChange`) converts `dw`/`dW` to `dwi`/`dWi` instead of `cw`/`cW` (Note: uppercase variants implicitly included starting from now). This is because vim treats `cw` like `ce` — they don't include trailing whitespace, while `dw` does (GapEdge vs WordEdge).
 
-We unconditionally use `dwi`without checking whether `cw` would be equivalent, because the exploration order makes the check unnecessary. In `exploreAllDeletions`, WordEdge edits (`de`) are explored **before** GapEdge edits (`dw`).When `dw` and `de` produce the same deletion range (no trailing whitespace), `de` reaches the goal first and stores its result. The `dw` callback then hits the early-out `if (result.results[idx].isValid()) return` and is skipped. So `dw` only reaches the goal when `de` didn't, meaning the trailing whitespace is what made `dw` reach the goal.
+This applies to full optimizer sequences. `TransformFrontier` does not surface
+`dwi` as one recommendation; it suggests `dw`, then Explore handles the residual
+insert phase after the deletion is observed.
+
+We unconditionally use `dwi` without checking whether `cw` would be equivalent, because the exploration order makes the check unnecessary. In `exploreAllDeletions`, WordEdge edits (`de`) are explored **before** GapEdge edits (`dw`). When `dw` and `de` produce the same deletion range (no trailing whitespace), `de` reaches the goal first and stores its result. The `dw` callback then hits the early-out `if (result.results[idx].isValid()) return` and is skipped. So `dw` only reaches the goal when `de` didn't, meaning the trailing whitespace is what made `dw` reach the goal.
 
 This is a case where **exploration order affects correctness** of the delete→change conversion. If GapEdge were explored before WordEdge, we would need a per-call equivalence check.
 

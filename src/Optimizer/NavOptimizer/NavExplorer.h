@@ -4,6 +4,7 @@
 #include <cassert>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "Boundary/NavBoundary.h"
 #include "BufferIndex.h"
@@ -223,6 +224,93 @@ private:
     onCounted(baseMotion, KeyedSequence::byId(baseMotion), cnt, newPos, penalty);
   }
 
+  struct CountedEndpoint {
+    int count = 0;
+    CursorPos localPos{};
+    Pos globalPos{};
+  };
+
+  template<bool Forward, class OnCounted>
+  // Counted `)` / `(` cannot use BufferIndex alone: Neovim's sentence scan
+  // depends on the current scan state, not just the next indexed sentence start.
+  void exploreExactCountedSentenceMotions(const NavState& base,
+                                          OnCounted& onCounted) {
+    CursorPos pos = base.getPos();
+    if (hasHiddenContextOppositeScan<Forward>(pos)) return;
+
+    int off = bufferLineOffset_;
+    Pos globalPos(pos.line + off, pos.col);
+    Pos globalRangeFirst(goalRange_.first.line + off, goalRange_.first.col);
+    Pos globalRangeLast(goalRange_.last.line + off, goalRange_.last.col);
+
+    if constexpr (Forward) {
+      if (!(globalPos < globalRangeFirst)) return;
+    } else {
+      if (!(globalPos > globalRangeLast)) return;
+    }
+
+    std::optional<CountedEndpoint> beforeRange;
+    std::optional<CountedEndpoint> afterRange;
+    std::vector<CountedEndpoint> inRange;
+    auto remember = [&](CountedEndpoint endpoint) {
+      if (endpoint.globalPos < globalRangeFirst) {
+        if (!beforeRange || beforeRange->globalPos < endpoint.globalPos) {
+          beforeRange = endpoint;
+        }
+      } else if (endpoint.globalPos > globalRangeLast) {
+        if (!afterRange || endpoint.globalPos < afterRange->globalPos) {
+          afterRange = endpoint;
+        }
+      } else {
+        inRange.push_back(endpoint);
+      }
+    };
+
+    auto dirBoundary = boundaryForDirection(Forward);
+    CursorPos endpoint = pos;
+    for (int count = 1; count <= params_.maxPrefixCount; count++) {
+      CursorPos next = VimCore::sentenceMotionEndpoint(
+          endpoint, lines_, Forward,
+          dirBoundary.edgeOffset, dirBoundary.hasLinesOutside);
+      if (next == POSITION_OUTSIDE_BOUNDARY) break;
+      if (next.pos() == endpoint.pos()) break;
+      if (!isValidLocalLandingPosition(next)) break;
+
+      endpoint = next;
+      if (!isValidPrefixCount(count)) continue;
+      remember({
+          count,
+          endpoint,
+          Pos(endpoint.line + off, endpoint.col),
+      });
+    }
+
+    bool hasFrontLanding = any_of(inRange.begin(), inRange.end(),
+        [&](const CountedEndpoint& endpoint) {
+          return endpoint.globalPos == globalRangeFirst;
+        });
+    bool hasBackLanding = any_of(inRange.begin(), inRange.end(),
+        [&](const CountedEndpoint& endpoint) {
+          return endpoint.globalPos == globalRangeLast;
+        });
+
+    constexpr KSId motion = Forward ? KSId::RParen : KSId::LParen;
+    auto emit = [&](const CountedEndpoint& endpoint) {
+      exploreCountMotion<CountClass::MovementSentence>(
+          motion, endpoint.count, endpoint.localPos, onCounted);
+    };
+
+    if constexpr (Forward) {
+      if (!hasFrontLanding && beforeRange) emit(*beforeRange);
+      for (const auto& endpoint : inRange) emit(endpoint);
+      if (!hasBackLanding && afterRange) emit(*afterRange);
+    } else {
+      if (!hasBackLanding && afterRange) emit(*afterRange);
+      for (auto it = inRange.rbegin(); it != inRange.rend(); ++it) emit(*it);
+      if (!hasFrontLanding && beforeRange) emit(*beforeRange);
+    }
+  }
+
   template<class OnStatic>
   void exploreHorizontalMotions(const NavState& base, OnStatic& onStatic) {
     CursorPos pos = base.getPos();
@@ -315,7 +403,8 @@ private:
     int endpointCol = 0;
     if constexpr (Forward) {
       int lastLine = maxLineIndex();
-      if (endpointLine == lastLine && !VimCore::isBlankLine(lines_[endpointLine])) {
+      if (endpointLine == lastLine &&
+          !VimCore::isParagraphSeparatorLine(lines_[endpointLine])) {
         endpointCol = horizontalBoundsForLine(endpointLine).lastCol;
       }
     }
@@ -469,8 +558,7 @@ private:
   void exploreGlobalCountMotions(const NavState& base, OnCounted& onCounted) {
     exploreCountedSpec<Forward, LandingType::Paragraph, CountClass::MovementParagraph,
                        KSId::RBrace, KSId::LBrace>(base, onCounted);
-    exploreCountedSpec<Forward, LandingType::Sentence, CountClass::MovementSentence,
-                       KSId::RParen, KSId::LParen>(base, onCounted);
+    exploreExactCountedSentenceMotions<Forward>(base, onCounted);
   }
 
   template<bool Forward, class OnCounted>

@@ -1,5 +1,5 @@
 local disk = require("vimficiency.session.disk")
-local sequence_display = require("vimficiency.sequence_display")
+local result_view = require("vimficiency.session.result_view")
 local util = require("vimficiency.util")
 
 local M = {}
@@ -23,47 +23,7 @@ function M.open(name)
     return
   end
 
-  local user_cost_str = data.user_cost and string.format(" (cost: %.2f)", data.user_cost) or ""
-  local output_lines = {
-    "=== " .. name .. " ===",
-    "",
-    string.format("Position: (%d, %d) -> (%d, %d)",
-      data.start_row, data.start_col,
-      data.end_row, data.end_col),
-    "",
-  }
-  if data.user_seq and data.user_seq ~= "" then
-    vim.list_extend(output_lines,
-      sequence_display.prefixed_lines("User sequence: ", data.user_seq, nil, user_cost_str))
-  else
-    table.insert(output_lines, "User sequence: (none)" .. user_cost_str)
-  end
-  table.insert(output_lines, "")
-  table.insert(output_lines, "Optimal motions:")
-
-  local optimal = data.optimal_results or {}
-  for i, r in ipairs(optimal) do
-    vim.list_extend(output_lines,
-      sequence_display.prefixed_lines(string.format("  %d. ", i), r.seq, nil,
-        string.format(" (cost: %.2f)", r.cost or 0)))
-  end
-
-  if #optimal == 0 then
-    table.insert(output_lines, "  (no results)")
-  end
-
-  table.insert(output_lines, "")
-  table.insert(output_lines, "Buffer context: (start, end marked with < >)")
-  local lines = data.lines or {}
-  for i, line in ipairs(lines) do
-    local prefix = "  "
-    if i - 1 == data.start_row then
-      prefix = "> "
-    elseif i - 1 == data.end_row then
-      prefix = "< "
-    end
-    table.insert(output_lines, prefix .. line)
-  end
+  local output_lines = result_view.format_saved_lines(name, data)
 
   vim.cmd("botright new")
   local buf = vim.api.nvim_get_current_buf()

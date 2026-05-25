@@ -2,7 +2,7 @@
 //
 // Verifies that reported costs match independently computed costs.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="TransformOptimizerCostConsistencyTests.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="TransformOptimizerCostConsistencyTests.*"
 
 #include <gtest/gtest.h>
 
@@ -11,8 +11,9 @@
 #include "Keyboard/Config.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Effort/RunningEffort.h"
-#include "Utils/EditTestGenerators.h"
+#include "TransformOptimizer/EmbeddedRegionTestUtils.h"
 #include "Types/Lines.h"
+#include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 
 using namespace std;

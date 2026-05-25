@@ -605,28 +605,58 @@ Outcome View::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
 }
 
 Outcome View::applyEdit(string_view text) {
-  auto gated = requireTransform("edits");
+  // Relaxed from Transform-only to any planned-edit-target phase so that
+  // composition-frontier tokens (`A`, `ci(`, `J`, etc.) — whose activation
+  // regions go beyond ordinary Transform start columns — are also applicable
+  // programmatically. EditHandler::applyEdit owns the planner-scope
+  // validation across Transform and Composition lanes.
+  auto gated = requirePlannedEditTarget("edits");
   if (!gated)
     return unexpected(std::move(gated.error()));
   const int editIndex = *gated;
 
   const auto plannedEdit = plan_.plannedEditAt(editIndex);
-  auto eff =
-      EditHandler::applyEdit(plannedEdit.transformResult, state_.cursor, text);
+  auto eff = EditHandler::applyEdit(
+      plannedEdit, state_.lines, state_.cursor, text,
+      compositionParams_, config_);
   if (!eff)
     return unexpected(std::move(eff.error()));
 
   State next = state_;
   next.cursor = eff->postCursor;
-  // Capture the edit's byte span BEFORE appending so begin = pre-append size,
-  // end = post-append size. Plan-aligned with composition output.
   const uint32_t spanBegin = static_cast<uint32_t>(next.seq.size());
   next.seq.append(text);
   const uint32_t spanEnd = static_cast<uint32_t>(next.seq.size());
-  next.editSpans.push(EditSequenceSpan{spanBegin, spanEnd});
-  next.hasPartialEditSpan = false;
   next.cost = getEffort(next.seq, config_);
-  return afterEditCompleted(std::move(next), editIndex);
+
+  if (eff->entersInsert) {
+    // Insert-entering composition token (`A`, `ci(`, ...): apply the
+    // structural effect and transition to Insert phase. The typed payload
+    // is supplied later via acceptInsertExit / acceptSnapshot.
+    next.lines = std::move(eff->postLines);
+    next.phase = Insert{editIndex};
+    next.hasPartialEditSpan = true;
+    next.partialEditSpanBegin = spanBegin;
+    return commit(std::move(next));
+  }
+
+  if (eff->reachesPostFencepost) {
+    // Normal-mode token that completes the planned edit (existing Transform
+    // path, plus pure-deletion text objects and J-as-completion).
+    next.editSpans.push(EditSequenceSpan{spanBegin, spanEnd});
+    next.hasPartialEditSpan = false;
+    return afterEditCompleted(std::move(next), editIndex);
+  }
+
+  // Normal-mode token that made partial progress (e.g. J that did not reach
+  // the fencepost). Keep the simulated buffer/cursor and recompute phase.
+  next.lines = std::move(eff->postLines);
+  next.phase = phaseForCursor(editIndex, next.lines, next.cursor);
+  if (!next.hasPartialEditSpan) {
+    next.hasPartialEditSpan = true;
+    next.partialEditSpanBegin = spanBegin;
+  }
+  return commit(std::move(next));
 }
 
 Outcome View::acceptBufferState(const Lines& newLines, CursorPos newCursor,

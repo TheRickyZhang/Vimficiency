@@ -27,6 +27,12 @@ struct TransformBoundary {
   // Default constructor: empty prefix/suffix, no lines above/below
   TransformBoundary() = default;
   static const TransformBoundary& noParent();
+  // Narrow factory: a boundary whose only meaningful fields are
+  // hasLinesAbove/hasLinesBelow. Empty prefix/suffix/brackets/quotes are
+  // correct only for synthesized single-line residual buffers (today: the
+  // join-residual transform in CompositionOptimizer/PlannedEditArtifacts).
+  // Do not extend to other use sites without revisiting those defaults.
+  static TransformBoundary joinResidualBoundary(bool hasLinesAbove, bool hasLinesBelow);
 
   // The default constructor has NO PARENT, so basically any motions are possible
   // To specify restricted motions for lines, call with hasLinesBelow = false, hasLinesAbove = false

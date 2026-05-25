@@ -298,7 +298,7 @@ void TransformExplorer::exploreParagraphEdits(
     if constexpr (Forward) {
       CursorPos end(endpointLine, 0);
       bool endpointIsEof = endpointLine == lastLine
-          && !VimCore::isBlankLine(lines[endpointLine]);
+          && !VimCore::isParagraphSeparatorLine(lines[endpointLine]);
       if (endpointIsEof) {
         end.setCol(static_cast<int>(lines[endpointLine].size()));
       }
@@ -441,12 +441,6 @@ void TransformExplorer::exploreCountedJoinCommands(
   if (cursor.line >= lastLine) return;
 
   int maxLinesBelow = lastLine - cursor.line;
-  if (boundary_.hasLinesBelow() && cursor.line + maxLinesBelow == lastLine) {
-    maxLinesBelow--;
-  }
-  if (boundary_.hasSuffix() && cursor.line + maxLinesBelow == lastLine) {
-    maxLinesBelow--;
-  }
   if (maxLinesBelow < 1) return;
 
   int maxCount = std::min(maxLinesBelow + 1, maxCountRepeat);
@@ -564,9 +558,6 @@ template<class OnJoin>
 void TransformExplorer::exploreJoinCommands(
     const CursorPos& cursor, const Lines& lines, OnJoin&& onJoin) {
   if (cursor.line >= lines.lastLine()) return;
-
-  int nextLine = cursor.line + 1;
-  if (nextLine == lines.lastLine() && boundary_.hasLinesBelow()) return;
 
   onJoin(true, SequenceBinding(KeyedSequence::J, effortFor(KSId::J)));
   onJoin(false, SequenceBinding(KeyedSequence::gJ, effortFor(KSId::gJ)));

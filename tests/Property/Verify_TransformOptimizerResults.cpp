@@ -1,4 +1,7 @@
-#include <algorithm>
+// Property: TransformOptimizer top results for generated edit-region problems
+// must replay in Neovim to the exact goal while preserving protected full-buffer
+// prefix/suffix context around embedded regions.
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -11,9 +14,10 @@
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
-#include "Utils/EditTestGenerators.h"
 #include "Utils/NeovimOracle.h"
-#include "Utils/OptimizerResultChecks.h"
+#include "Property/OptimizerResultChecks.h"
+#include "Property/PropertyTestUtils.h"
+#include "TransformOptimizer/EmbeddedRegionTestUtils.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 
@@ -24,7 +28,7 @@ namespace {
 class TransformOptimizerGeneratedPropertyTest {
  public:
   void SingleLineEmbeddedTopResultsReplay(uint32_t seed) {
-    runCases(seed, 30, [&] {
+    runSeedDriverCases(seed, 30, [&] {
       auto test = generateRandomSingleLineEmbedded();
       TransformResult res = pureDeletionResult(test.editRegion, test.makeBoundary());
       Lines expected{test.expectedAfterDeletion()};
@@ -45,7 +49,7 @@ class TransformOptimizerGeneratedPropertyTest {
   }
 
   void MultiLineFullBufferTopResultsReplay(uint32_t seed) {
-    runCases(seed, 30, [&] {
+    runSeedDriverCases(seed, 30, [&] {
       int numLines = RandomGen::range(2, 3);
       Lines source = randomLines(numLines, 4, 8);
       TransformBoundary boundary(source, {0, 0}, source.endPos());
@@ -65,7 +69,7 @@ class TransformOptimizerGeneratedPropertyTest {
   }
 
   void SameLengthReplacementTopResultsReplay(uint32_t seed) {
-    runCases(seed, 30, [&] {
+    runSeedDriverCases(seed, 30, [&] {
       int wordLen = RandomGen::range(5, 9);
       string original = randomWord(wordLen);
       string replacement = randomWord(wordLen);
@@ -85,7 +89,7 @@ class TransformOptimizerGeneratedPropertyTest {
   }
 
   void MultiLineEmbeddedTopResultsReplay(uint32_t seed) {
-    runCases(seed, 5, [&] {
+    runSeedDriverCases(seed, 5, [&] {
       auto test = generateRandomMultiLineEmbedded();
       TransformResult res = pureDeletionResult(test.editRegion, test.makeBoundary());
       Lines expected{test.expectedAfterDeletion()};
@@ -106,7 +110,7 @@ class TransformOptimizerGeneratedPropertyTest {
   }
 
   void SingleLineChangeTopResultsReplay(uint32_t seed) {
-    runCases(seed, 30, [&] {
+    runSeedDriverCases(seed, 30, [&] {
       Lines source = {randomLine(RandomGen::range(5, 8))};
       Lines goal = {randomLine(RandomGen::range(3, 7))};
       if (source == goal) return;
@@ -128,7 +132,7 @@ class TransformOptimizerGeneratedPropertyTest {
   }
 
   void MultiLineFullBufferChangeTopResultsReplay(uint32_t seed) {
-    runCases(seed, 3, [&] {
+    runSeedDriverCases(seed, 3, [&] {
       int numLines = RandomGen::range(2, 3);
       Lines source = randomLines(numLines, 4, 8);
       Lines goal = randomLines(numLines, 4, 8);
@@ -152,7 +156,7 @@ class TransformOptimizerGeneratedPropertyTest {
   }
 
   void MultiLineEmbeddedChangeTopResultsReplay(uint32_t seed) {
-    runCases(seed, 5, [&] {
+    runSeedDriverCases(seed, 5, [&] {
       auto test = generateRandomMultiLineEmbedded();
 
       int numGoalLines = static_cast<int>(test.editRegion.size());
@@ -194,15 +198,6 @@ class TransformOptimizerGeneratedPropertyTest {
   TransformOptimizer opt_{config_};
   NeovimOracle oracle_{};
 
-  template <typename Fn>
-  void runCases(uint32_t seed, int count, Fn&& fn) {
-    RandomGen::seed(seed);
-    for (int caseIndex = 0; caseIndex < count; caseIndex++) {
-      SCOPED_TRACE(::testing::Message() << "seed=" << seed << " case=" << caseIndex);
-      fn();
-    }
-  }
-
   TransformResult pureDeletionResult(
       const Lines& initialLines, TransformBoundary boundary) {
     return opt_.optimizePureDeletion(initialLines, boundary, params_);
@@ -226,31 +221,24 @@ class TransformOptimizerGeneratedPropertyTest {
 }  // namespace
 
 FUZZ_TEST_F(TransformOptimizerGeneratedPropertyTest, SingleLineEmbeddedTopResultsReplay)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000))
-    .WithSeeds({42});
+    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));
 
 FUZZ_TEST_F(TransformOptimizerGeneratedPropertyTest, MultiLineFullBufferTopResultsReplay)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000))
-    .WithSeeds({43});
+    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));
 
 FUZZ_TEST_F(TransformOptimizerGeneratedPropertyTest, SameLengthReplacementTopResultsReplay)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000))
-    .WithSeeds({44});
+    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));
 
 FUZZ_TEST_F(TransformOptimizerGeneratedPropertyTest, MultiLineEmbeddedTopResultsReplay)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000))
-    .WithSeeds({45});
+    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));
 
 FUZZ_TEST_F(TransformOptimizerGeneratedPropertyTest, SingleLineChangeTopResultsReplay)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000))
-    .WithSeeds({50});
+    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));
 
 FUZZ_TEST_F(
     TransformOptimizerGeneratedPropertyTest,
     MultiLineFullBufferChangeTopResultsReplay)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000))
-    .WithSeeds({51});
+    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));
 
 FUZZ_TEST_F(TransformOptimizerGeneratedPropertyTest, MultiLineEmbeddedChangeTopResultsReplay)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000))
-    .WithSeeds({52});
+    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));

@@ -6,7 +6,8 @@
 // X-macro contract.
 
 #define TRANSFORM_FIELDS(F)                                                             \
-    F(int, maxResultsPerStartPos, withMaxResultsPerStartPos, 1, parseInt)
+    F(int, maxResultsPerStartPos, withMaxResultsPerStartPos, 1, parseInt)               \
+    F(bool, allowLinewisePureDeletion, withLinewisePureDeletion, true, parseBool)
 
 struct TransformOptimizerParams : OptimizerParamsBase {
   TRANSFORM_FIELDS(VF_PARAMS_DECLARE_OWN_FIELD)

@@ -41,6 +41,13 @@ TEST_F(MiscMotionsTest, K_MovesUp) {
   expectPos(simulateMovements({3, 0}, "kk", a2_block_lines), 1, 0);
 }
 
+TEST_F(MiscMotionsTest, ParagraphMotionsTreatWhitespaceOnlyLinesAsContent) {
+  Lines lines = {"alpha", " ", "beta", "gamma"};
+
+  expectPos(simulateMovements({3, 4}, "{", lines), 0, 0);
+  expectPos(simulateMovements({0, 0}, "}", lines), 3, 4);
+}
+
 TEST_F(MiscMotionsTest, K_StopsAtFirstLine) {
   expectPos(simulateMovements({0, 0}, "k", a2_block_lines), 0, 0);
   expectPos(simulateMovements({2, 0}, "kkkkk", a2_block_lines), 0, 0);
@@ -65,6 +72,21 @@ TEST_F(MiscMotionsTest, JK_HandlesEmptyLines) {
   expectPos(simulateMovements({1, 0}, "k", lines), 0, 0);
 }
 
+TEST_F(MiscMotionsTest, HorizontalNoOpPreservesTargetColumn) {
+  Lines lines = {"abc def", "", "abc def"};
+  expectPos(simulateMovements({0, 4}, "jhk", lines), 0, 4);
+}
+
+TEST_F(MiscMotionsTest, GE_StopsOnEmptyLineBeforePreviousWordEnd) {
+  Lines lines = {"abc def.", "", "  ghi jkl"};
+  expectPos(simulateMovements({2, 2}, "b", lines), 1, 0);
+  expectPos(simulateMovements({2, 2}, "2b", lines), 0, 7);
+  expectPos(simulateMovements({2, 2}, "ge", lines), 1, 0);
+  expectPos(simulateMovements({2, 2}, "2ge", lines), 0, 7);
+  expectPos(simulateMovements({2, 2}, "gE", lines), 1, 0);
+  expectPos(simulateMovements({2, 2}, "2gE", lines), 0, 7);
+}
+
 // =============================================================================
 // 2. FILE MOTIONS (gg, G)
 // =============================================================================
@@ -87,6 +109,16 @@ TEST_F(MiscMotionsTest, G_GoesToLastLine) {
   CursorPos p = simulateMovements({0, 5}, "G", a2_block_lines);
   EXPECT_EQ(p.line, lastLine);
   EXPECT_EQ(p.col, 5);
+}
+
+TEST_F(MiscMotionsTest, CountedDollarPastEofFromEarlierLinePreservesEndOfLineTarget) {
+  Lines lines = {"abc def ghi", "short", "tiny"};
+  expectPos(simulateMovements({0, 2}, "5$k", lines), 1, 4);
+}
+
+TEST_F(MiscMotionsTest, CountedDollarPastEofFromLastLineIsNoOp) {
+  Lines lines = {"abc def ghi", "aaa bbb ccc"};
+  expectPos(simulateMovements({1, 0}, "2$jw", lines), 1, 4);
 }
 
 TEST_F(MiscMotionsTest, GG_G_RoundTrip) {
@@ -127,6 +159,24 @@ TEST_F(MiscMotionsTest, CharFind_RepeatStateSurvivesInterveningMotion) {
 TEST_F(MiscMotionsTest, CharFind_CountedRepeat) {
   Lines lines = {"abcabcabcabc"};
   expectPos(simulateMovements({0, 0}, "fa2;", lines), 0, 9, "2; reaches second repeated match");
+}
+
+TEST_F(MiscMotionsTest, CharFind_CountedTillRepeatConsumesAdjacentTarget) {
+  Lines forward = {"a c c c c"};
+  expectPos(simulateMovements({0, 0}, "tc;", forward), 0, 3);
+  expectPos(simulateMovements({0, 0}, "tc2;", forward), 0, 3);
+  expectPos(simulateMovements({0, 0}, "tc3;", forward), 0, 5);
+
+  Lines backward = {"c c c c a"};
+  expectPos(simulateMovements({0, 8}, "Tc;", backward), 0, 5);
+  expectPos(simulateMovements({0, 8}, "Tc2;", backward), 0, 5);
+  expectPos(simulateMovements({0, 8}, "Tc3;", backward), 0, 3);
+}
+
+TEST_F(MiscMotionsTest, CharFind_CountedTillRepeatAfterInterveningMotion) {
+  Lines lines = {
+      "  ffffbbbb ee aabdfefa bbaaa ccbfbaac aaaaaa d cccaaaa. fbfebad aaaeeee eeeee dddd."};
+  expectPos(simulateMovements({0, 50}, "lff2;TaEw4;", lines), 0, 52);
 }
 
 TEST_F(MiscMotionsTest, CharFind_SemicolonCanBeTarget) {

@@ -3,7 +3,7 @@
 // Property: same input always produces same output.
 // Verifies that optimizers are deterministic (no unordered_map iteration issues, etc.)
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="NavOptimizerDeterminismTests.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="NavOptimizerDeterminismTests.*"
 
 #include <gtest/gtest.h>
 
@@ -46,8 +46,8 @@ TEST_F(NavOptimizerDeterminismTests, SameInputProducesSameOutput) {
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
     Lines lines = randomLines(RandomGen::range(2, 3), 10, 25);
-    CursorPos start = randomPosition(lines);
-    CursorPos end = randomPosition(lines);
+    CursorPos start = randomPos(lines);
+    CursorPos end = randomPos(lines);
 
     NavOptimizer opt1(config);
     NavOptimizer opt2(config);

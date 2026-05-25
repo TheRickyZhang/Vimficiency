@@ -168,7 +168,16 @@ void deleteLineRangeAndUpdatePos(Lines& lines, const LineRange& range, CursorPos
 
 void deleteOperatorLineRangeAndUpdatePos(Lines& lines, const LineRange& range,
                                          CursorPos& pos, bool hasLinesBelow) {
+  LineRange r = range;
+  r.normalize();
+  int originalLine = pos.line;
   deleteLineRangeAndUpdatePos(lines, range, pos, hasLinesBelow);
+  if (r.endLine > originalLine) {
+    return;
+  }
+  if (!hasLinesBelow && r.beginLine >= static_cast<int>(lines.size())) {
+    return;
+  }
   if (pos.line >= 0 && pos.line < static_cast<int>(lines.size())) {
     pos.setCol(firstNonBlankColInLine(lines[pos.line]));
   }

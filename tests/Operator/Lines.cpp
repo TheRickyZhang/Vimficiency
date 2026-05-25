@@ -2,7 +2,7 @@
 //
 // Tests for operator + line motion boundary crossing logic (dd, D, d0).
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="LinesTest.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="LinesTest.*"
 
 #include <gtest/gtest.h>
 
@@ -199,6 +199,28 @@ TEST_F(LinesTest, ResolveExclusiveDeleteRange_BacksUpMidLineCrossing) {
   EXPECT_EQ(resolved.charRange.end, CursorPos(0, 6));
 }
 
+TEST_F(LinesTest, ResolveExclusiveDeleteRange_BlankPrefixBecomesLinewise) {
+  Lines lines = {"bcecd.", " efdc", "c b", " c,ec"};
+
+  auto resolved = VimCore::resolveExclusiveDeleteRange(
+      CharRange(CursorPos(1, 1), CursorPos(3, 0)), lines, true);
+
+  EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Linewise);
+  EXPECT_EQ(resolved.lineRange.beginLine, 1);
+  EXPECT_EQ(resolved.lineRange.endLine, 3);
+}
+
+TEST_F(LinesTest, ResolveExclusiveDeleteRange_BlankSuffixBecomesLinewise) {
+  Lines lines = {"bbbb..", "cce", "a  . ", ",faca"};
+
+  auto resolved = VimCore::resolveExclusiveDeleteRange(
+      CharRange(CursorPos(1, 0), CursorPos(2, 4)), lines, true);
+
+  EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Linewise);
+  EXPECT_EQ(resolved.lineRange.beginLine, 1);
+  EXPECT_EQ(resolved.lineRange.endLine, 3);
+}
+
 TEST_F(LinesTest, ResolveBackwardExclusiveWordDelete_BlankPrefixBecomesLinewise) {
   Lines lines = {" ,.e", " caf"};
 
@@ -208,6 +230,39 @@ TEST_F(LinesTest, ResolveBackwardExclusiveWordDelete_BlankPrefixBecomesLinewise)
   EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Linewise);
   EXPECT_EQ(resolved.lineRange.beginLine, 0);
   EXPECT_EQ(resolved.lineRange.endLine, 1);
+}
+
+TEST_F(LinesTest, ResolveBackwardExclusiveWordDelete_BlankCursorLineBecomesLinewise) {
+  Lines lines = {"fdfedcb", "eafe", "  ", " edbe"};
+
+  auto resolved = VimCore::resolveBackwardExclusiveWordDeleteRange(
+      CursorPos(1, 0), CursorPos(2, 1), lines);
+
+  EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Linewise);
+  EXPECT_EQ(resolved.lineRange.beginLine, 1);
+  EXPECT_EQ(resolved.lineRange.endLine, 3);
+}
+
+TEST_F(LinesTest, ResolveBackwardExclusiveWordDelete_BlankCursorLineColZeroPreservesBlankLine) {
+  Lines lines = {"fe.,", " adcf", "  ", "cc"};
+
+  auto resolved = VimCore::resolveBackwardExclusiveWordDeleteRange(
+      CursorPos(1, 1), CursorPos(2, 0), lines);
+
+  EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Linewise);
+  EXPECT_EQ(resolved.lineRange.beginLine, 1);
+  EXPECT_EQ(resolved.lineRange.endLine, 2);
+}
+
+TEST_F(LinesTest, ResolveBackwardExclusiveWordDelete_BlankCursorLineKeepsContentPrefix) {
+  Lines lines = {"debd,bf ", " bbc.", "   ", " dc.eeab"};
+
+  auto resolved = VimCore::resolveBackwardExclusiveWordDeleteRange(
+      CursorPos(1, 4), CursorPos(2, 2), lines);
+
+  EXPECT_EQ(resolved.kind, VimCore::ResolvedDeleteRangeKind::Characterwise);
+  EXPECT_EQ(resolved.charRange.begin, CursorPos(1, 4));
+  EXPECT_EQ(resolved.charRange.end, CursorPos(2, 2));
 }
 
 TEST_F(LinesTest, ResolveBackwardExclusiveWordDelete_ContentPrefixStaysCharacterwise) {
@@ -249,6 +304,15 @@ TEST_F(LinesTest, SentenceOperatorEndpoint_TrailingWhitespaceAtEofIsIncluded) {
       CursorPos(0, 1), lines, true);
 
   EXPECT_EQ(endpoint, CursorPos(0, 8));
+}
+
+TEST_F(LinesTest, SentenceOperatorEndpoint_BlankLineIncludesUnterminatedSentence) {
+  Lines lines = {"dfacbfab", "  ", "eaed"};
+
+  CursorPos endpoint = VimCore::sentenceOperatorEndpoint(
+      CursorPos(1, 1), lines, true);
+
+  EXPECT_EQ(endpoint, CursorPos(3, 0));
 }
 
 TEST_F(LinesTest, DeleteRange_WholeBufferLeavesSingleEmptyLine) {
@@ -387,10 +451,7 @@ TEST_F(LinesTest, RandomStress_LineDeleteRange) {
 
     Lines lines = randomLines(numLines, 5, 20);
 
-    // Random cursor position
-    int cursorLine = RandomGen::range(0, numLines - 1);
-    int curLineLen = lines[cursorLine].size();
-    int cursorCol = curLineLen > 0 ? RandomGen::range(0, max(0, curLineLen - 1)) : 0;
+    CursorPos cursor = randomPos(lines);
 
     char leftChar, rightChar;
     if (RandomGen::chance(1, 2)) {
@@ -404,11 +465,10 @@ TEST_F(LinesTest, RandomStress_LineDeleteRange) {
     }
 
     TransformBoundary boundary = makeBoundary(lines, leftChar, rightChar);
-    CursorPos cursor(cursorLine, cursorCol);
     LineRange range = VimCore::lineDeleteRange(cursor, lines, boundary);
 
     // Execute dd in Neovim and verify boundary not crossed
-    auto result = oracle_->simulate(lines, cursorLine, cursorCol, "dd");
+    auto result = oracle_->simulate(lines, cursor.line, cursor.col, "dd");
 
     // If our prediction says safe, verify Neovim result makes sense
     if (range.isValid()) {

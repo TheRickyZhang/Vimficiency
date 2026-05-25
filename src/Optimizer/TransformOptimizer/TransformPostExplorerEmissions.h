@@ -11,7 +11,6 @@
 #include <optional>
 #include <string_view>
 
-#include "Boundary/TransformBoundary.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/Result.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
@@ -44,7 +43,6 @@ std::optional<VisualDeleteResult> tryVisualDelete(
     const Lines& effectiveLines,
     int leftColOffset,
     int rightColOffset,
-    const TransformBoundary& transformBoundary,
     const TransformOptimizerParams& params,
     const Config& config);
 

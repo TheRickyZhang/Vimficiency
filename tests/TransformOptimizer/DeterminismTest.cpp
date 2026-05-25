@@ -3,7 +3,7 @@
 // Property: same input always produces same output.
 // Verifies that optimizers are deterministic (no unordered_map iteration issues, etc.)
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="TransformOptimizerDeterminismTests.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="TransformOptimizerDeterminismTests.*"
 
 #include <gtest/gtest.h>
 
@@ -11,8 +11,9 @@
 #include "Types/NavContext.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
-#include "Utils/EditTestGenerators.h"
+#include "TransformOptimizer/EmbeddedRegionTestUtils.h"
 #include "Types/Lines.h"
+#include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 
 using namespace std;

@@ -10,20 +10,19 @@ when the methodologies prove different things about the same feature.
 
 | Methodology | How it proves something | Runner | Default gate | Command |
 |-------------|-------------------------|--------|--------------|---------|
-| Unit/assert | Hand-written deterministic check of a fixed case | `vimficiency_tests` | Yes | `./build/tests/vimficiency_tests --gtest_filter="-*Golden*Test.*:*GeneratedProperty*"` |
-| Property | Generated inputs check a universally-quantified invariant | `vimficiency_fuzz_tests` (seed-only mode) | Yes, seed-only | `env FUZZTEST_FUZZ_FOR=0 FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk ./build/tests/vimficiency_fuzz_tests --gtest_filter="*GeneratedProperty*"` |
-| Expect/golden | Curated output compared to a stored fixture after normalization | `vimficiency_tests` | Yes | `./build/tests/vimficiency_tests --gtest_filter="*Golden*Test.*"` |
-| Fuzz | Coverage-guided exploration of an invariant on fallible inputs | `vimficiency_fuzz_tests` built with `FUZZTEST_FUZZING_MODE=ON` | No | `./build-fuzz/tests/vimficiency_fuzz_tests --fuzz=<TestName> --fuzz_for=30s` |
-| Lua integration | Real-Neovim plugin/FFI scenarios | `tests/lua/run.sh` | Yes | `bash tests/lua/run.sh` |
-| Benchmark | Timing and search-counter trends on fixed fixtures | `vimficiency_benchmarks` | No | `./build/tests/vimficiency_benchmarks` |
-| Debug/manual | Scratch repros, noisy traces, human-approval exploration | `vimficiency_debug` or disabled tests | No | `./build/tests/vimficiency_debug` |
+| Unit/assert | Hand-written deterministic check of a fixed case | `vimfy_unit_tests` | Yes | `scripts/vimfy_tests unit` |
+| Expect | Curated output compared to a stored fixture after normalization | `vimfy_expect_tests` | Yes | `scripts/vimfy_tests expect` |
+| Property | Semantic invariant over generated structured project inputs | `vimfy_property_tests` | CI: fixed seed | `scripts/vimfy_tests property` |
+| Safety | Safe failure or bounded behavior over adversarial inputs | `vimfy_safety_tests` | CI: fixed seed | `scripts/vimfy_tests safety` |
+| Lua integration | Real-Neovim plugin/FFI scenarios | `scripts/vimfy_tests lua` | Yes | `scripts/vimfy_tests lua` |
+| Benchmark | Timing and search-counter trends on fixed fixtures | `vimfy_benchmarks` | No | `./build/tests/vimfy_benchmarks` |
+| Debug/manual | Scratch repros, noisy traces, human-approval exploration | `vimfy_debug` or disabled tests | No | `./build/tests/vimfy_debug` |
 
-Unit/assert and expect/golden share the `vimficiency_tests` binary. The
-unit/assert filter is the negative complement of golden + property — adequate
-today, and the right shape if more methodologies ever migrate into this binary.
-Property and fuzz share the `vimficiency_fuzz_tests` source files but differ in
-build configuration and runtime budget (see [Why Properties And Fuzzing Share
-A Runner](#why-properties-and-fuzzing-share-a-runner)).
+`scripts/vimfy_tests` is the fast local correctness gate: unit, expect,
+exploratory property, exploratory safety, and Lua integration. CI calls the same
+script with `seed` so generated tests are deterministic there. Property and
+safety tests both use Google FuzzTest declarations and domains, but the
+category boundary is the input contract and invariant, not the framework.
 
 ### What each methodology covers
 
@@ -39,75 +38,136 @@ unit/assert pins regressions; property checks the universal invariant).
   `tests/CompositionOptimizer/`, `tests/Optimizer/`); parser error cases, cost
   math, range and position helpers, config defaults, data-structure invariants
   (`tests/Misc/`); explore-flow tests (`tests/Explore/`). Bare oracle
-  conformance (ours == oracle on hand-picked inputs) lives under `Properties/`
+  conformance (ours == oracle on hand-picked inputs) lives under `Property/`
   instead.
-- **Property** — oracle conformance over generated motion/operator inputs,
-  optimizer replay over generated edit/nav problems, structural invariants of
-  parsed types, effort-model identities (`tests/Properties/`).
-- **Expect/golden** — user-facing report rendering and stable serialization
-  (`tests/Golden/`).
-- **Fuzz** — fallible parser, payload, snapshot, and FFI-boundary inputs that
-  must accept-or-reject cleanly (`tests/Fuzz/`).
+- **Property** — semantic invariants over structured generated project inputs:
+  oracle conformance over generated motion/operator inputs, optimizer replay
+  over generated edit/nav problems, structural invariants of parsed types,
+  effort-model identities (`tests/Property/`).
+- **Expect** — user-facing report rendering and stable serialization
+  (`tests/Expect/`).
+- **Safety** — adversarial, malformed, external-boundary, and resource-stress
+  inputs whose primary contract is safe failure or bounded behavior
+  (`tests/Safety/`).
 - **Lua integration** — plugin lifecycle, session storage, view flows, FFI
   smoke, key-capture probes (`tests/lua/`).
 - **Benchmark** — optimizer time/space/search-counter trends on fixed fixture
   seeds (`tests/Benchmarks/`).
 - **Debug/manual** — scratch investigation; not gated.
 
-Google FuzzTest is the canonical framework for both generated property tests and
-fuzzing. That gives us one mature registration/domain/shrinking/corpus tool.
+Google FuzzTest is the framework for both property and safety generated tests.
+It provides domains, seeds, shrinking, corpus handling, and optional
+coverage-guided campaigns. Fuzzing is an execution/search mode; it is not the
+directory taxonomy.
 
-### Determinism Policy
+### Randomness Policy
 
-Property tests are deterministic in CI. CI runs the FuzzTest binary with:
+Local property and safety runs default to FuzzTest exploration. That means
+FuzzTest samples additional values from `.WithDomains(...)` and, unless
+`FUZZTEST_PRNG_SEED` is already set, chooses a fresh runner seed for each run.
+That runner seed controls FuzzTest's generated input stream; it is the knob for
+"randomized locally, reproducible when needed."
+
+`.WithSeeds(...)` is different: those values are explicit corpus inputs that
+always run. Omit them by default; add them only for intentional smoke coverage
+or pinned regressions. Some expensive bridge properties still accept a
+`uint32_t` domain value and pass it to `RandomGen::seed(...)`; in local
+exploration FuzzTest generates those `uint32_t` values from the domain, while
+`.WithSeeds(...)` only adds checked-in corpus streams.
+
+CI runs the same exploration process with a fixed runner seed. The runners set:
 
 ```bash
-env FUZZTEST_FUZZ_FOR=0 \
-  FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk \
-  ./build/tests/vimficiency_fuzz_tests --gtest_brief=1
+FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk
 ```
 
-`FUZZTEST_FUZZ_FOR=0` means "run explicit `.WithSeeds(...)` inputs only." For
-the migrated generated-property suites, those seeds replay the same deterministic
-case corpus the old custom helper covered. With the current FuzzTest engine,
-the runner still reports about one second per `FUZZ_TEST`; that is runner
-overhead, not a license to treat CI as a fuzz campaign.
+Leaving `FUZZTEST_FUZZ_FOR` unset keeps FuzzTest's normal unit-test exploration
+loop, currently about one second per `FUZZ_TEST`. The fixed runner seed makes
+that exploration deterministic in CI.
+
+FuzzTest also prints `FUZZTEST_PRNG_SEED` to stderr whenever its runtime starts.
+The wrapper filters that line in fixed `seed` mode on success, because the seed
+is already pinned above and repeated lines are noise. If a fixed-seed run fails,
+the wrapper prints the seed once with the failure output. Exploratory and
+campaign runs leave FuzzTest's seed output intact so random failures, crashes,
+timeouts, or interrupted runs remain reproducible.
 
 CTest-discovered FuzzTest cases are registered with the same environment.
 
-For normal confidence checks, use the same seed-only command as CI. When you
-are intentionally hunting for new failures, omit `FUZZTEST_FUZZ_FOR=0` and let
-FuzzTest's default unit-test exploration run. It prints `FUZZTEST_PRNG_SEED` for
-replay:
+`scripts/vimfy_tests`, `scripts/vimfy_tests property`, and
+`scripts/vimfy_tests safety` all default to exploration so local runs keep
+searching for new cases. Treat those exploration runs as bug-hunting checks: a
+failure should be reproduced with the printed
+`FUZZTEST_PRNG_SEED`, reduced if needed in `tests/Debug`, and then pinned as a
+unit regression or, when a FuzzTest corpus input is the clearest fit, a
+checked-in `.WithSeeds(...)` value. Pass `seed` explicitly when you want the CI
+behavior:
 
 ```bash
-./build/tests/vimficiency_fuzz_tests --gtest_filter="DiffStateGeneratedPropertyTest.*"
+scripts/vimfy_tests all seed
+scripts/vimfy_tests property seed
+scripts/vimfy_tests property "DiffStateGeneratedPropertyTest.*" explore
 
 env FUZZTEST_PRNG_SEED=<printed-seed> \
-  ./build/tests/vimficiency_fuzz_tests --gtest_filter="DiffStateGeneratedPropertyTest.*"
+  scripts/vimfy_tests property "DiffStateGeneratedPropertyTest.*" explore
 ```
 
 When exploratory property testing finds a real bug, add the reduced/concrete
-case as a manual regression test or a checked-in FuzzTest seed before relying on
-random exploration to find it again.
+case as a manual regression test or a checked-in `.WithSeeds(...)` corpus input
+before relying on random exploration to find it again.
 
-### Why Properties And Fuzzing Share A Runner
+Recommended local cadence:
 
-Property tests and fuzz campaigns use the same `FUZZ_TEST` declarations and
-domains. The difference is the mode:
-- Unit-test mode: gtest-compatible, short local exploration, seed-only in CI.
-- Fuzzing mode: coverage-guided campaign, one selected fuzz test, sanitizer and
-  coverage flags, manual runtime budget.
+```bash
+# Fast local gate, with generated tests exploring fresh values.
+scripts/vimfy_tests
+
+# CI-equivalent fixed runner seed.
+scripts/vimfy_tests all seed
+scripts/vimfy_tests property seed
+
+# Randomized local exploration. Run this when you want new counterexamples.
+scripts/vimfy_tests property
+
+# Reproduce one exploratory failure.
+env FUZZTEST_PRNG_SEED=<printed-seed> \
+  scripts/vimfy_tests property "InterpreterMatchesOracle.MovementSequences"
+```
+
+Remaining `uint32_t` domain-driver properties usually run 8-40 generated
+cases per FuzzTest input. That is intentional: oracle and optimizer properties
+are expensive, and FuzzTest exploration already supplies additional input
+streams.
+Prefer broadening a generator or running a targeted campaign over globally
+raising inner loop counts.
+
+### How Property, Safety, And Fuzzing Relate
+
+Property and safety tests use the same `FUZZ_TEST` declarations and domains.
+The difference is the input domain and invariant:
+- Property: structured project inputs, semantic correctness invariant.
+- Safety: adversarial or malformed inputs, safe-failure or bounded-behavior
+  invariant.
+
+Fuzzing is a mode for searching either kind of property:
+- Seed mode: gtest-compatible local exploration with a fixed runner seed, used
+  in CI.
+- Explore mode: gtest-compatible local exploration with a fresh runner seed.
+- Campaign mode: coverage-guided, one selected test, sanitizer and coverage
+  flags, manual runtime budget.
 
 ## Test Runners
 
 | Binary/script | Purpose | Location | Run command |
 |---------------|---------|----------|-------------|
-| `vimficiency_tests` | Deterministic C++ correctness: unit, oracle, replay, golden | `build/tests/vimficiency_tests` | `./build/tests/vimficiency_tests --gtest_brief=1` |
-| `vimficiency_fuzz_tests` | FuzzTest generated-property seed corpus and fuzz campaigns | `build/tests/vimficiency_fuzz_tests` | `env FUZZTEST_FUZZ_FOR=0 FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk ./build/tests/vimficiency_fuzz_tests --gtest_brief=1` (seed-only) / `./build-fuzz/tests/vimficiency_fuzz_tests --fuzz=<TestName> --fuzz_for=30s` (campaign) |
-| `tests/lua/run.sh` | Lua/Neovim integration | repo root | `bash tests/lua/run.sh` |
-| `vimficiency_benchmarks` | Google Benchmark suites | `build/tests/vimficiency_benchmarks` | `./build/tests/vimficiency_benchmarks` |
-| `vimficiency_debug` | Scratch/debug tests | `build/tests/vimficiency_debug` | `./build/tests/vimficiency_debug` |
+| `vimfy_tests` | Fast local correctness gate | `scripts/vimfy_tests` | `scripts/vimfy_tests` |
+| `vimfy_unit_tests` | Deterministic C++ correctness: unit, oracle, replay | `build/tests/vimfy_unit_tests` | `scripts/vimfy_tests unit` |
+| `vimfy_expect_tests` | Curated user-facing report fixtures | `build/tests/vimfy_expect_tests` | `scripts/vimfy_tests expect` |
+| `vimfy_property_tests` | Structured semantic properties | `build/tests/vimfy_property_tests` | `scripts/vimfy_tests property` |
+| `vimfy_safety_tests` | Adversarial-input safety properties | `build/tests/vimfy_safety_tests` | `scripts/vimfy_tests safety` |
+| `scripts/vimfy_tests lua` | Lua/Neovim integration | repo root | `scripts/vimfy_tests lua` |
+| `vimfy_benchmarks` | Google Benchmark suites | `build/tests/vimfy_benchmarks` | `./build/tests/vimfy_benchmarks` |
+| `vimfy_debug` | Scratch/debug tests | `build/tests/vimfy_debug` | `./build/tests/vimfy_debug` |
 
 `VIMF_ENABLE_FUZZTEST` is on by default. Disable it only when you need a narrow
 build that avoids fetching/building the FuzzTest stack:
@@ -123,51 +183,67 @@ cmake -B build -DVIMF_ENABLE_FUZZTEST=OFF
 cmake --build build -j
 
 # Run deterministic C++ correctness tests
-./build/tests/vimficiency_tests --gtest_brief=1
+scripts/vimfy_tests unit
 
 # Run Lua integration tests
-bash tests/lua/run.sh
+scripts/vimfy_tests lua
 
 # Run all default correctness checks through the helper script
-bash scripts/test.sh
+scripts/vimfy_tests
 
 # Run all benchmarks
-./build/tests/vimficiency_benchmarks
+./build/tests/vimfy_benchmarks
 
 # Run debug scratch tests
-./build/tests/vimficiency_debug
+./build/tests/vimfy_debug
 ```
 
 It is reasonable to run one test type during local iteration:
 
 ```bash
-# Golden/expect fixtures
-./build/tests/vimficiency_tests --gtest_filter="*Golden*Test.*"
+# Expect fixtures
+scripts/vimfy_tests expect
 
 # Oracle/conformance tests, where suite names have been migrated
-./build/tests/vimficiency_tests --gtest_filter="*OracleConformanceTest.*"
+scripts/vimfy_tests unit "*OracleConformanceTest.*"
 
-# FuzzTest generated properties, deterministic seed-only mode
-env FUZZTEST_FUZZ_FOR=0 \
-  FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk \
-  ./build/tests/vimficiency_fuzz_tests --gtest_filter="*GeneratedProperty*"
+# Generated properties with CI-equivalent fixed runner seed
+scripts/vimfy_tests property "*GeneratedProperty*" seed
 
-# One generated-property suite with local exploration enabled
-./build/tests/vimficiency_fuzz_tests \
-  --gtest_filter="TransformOptimizerGeneratedPropertyTest.*"
+# All generated properties with CI-equivalent fixed runner seed
+scripts/vimfy_tests property seed
+
+# One generated-property suite with local exploration, also the direct default
+scripts/vimfy_tests property "TransformOptimizerGeneratedPropertyTest.*" explore
 ```
 
 The suite is only partially migrated to type-first names. For older files, check:
 
 ```bash
-./build/tests/vimficiency_tests --gtest_list_tests
-./build/tests/vimficiency_fuzz_tests --gtest_list_tests
+./build/tests/vimfy_unit_tests --gtest_list_tests
+./build/tests/vimfy_property_tests --gtest_list_tests
+./build/tests/vimfy_safety_tests --gtest_list_tests
+```
+
+### Editor Helper
+
+Neovim-local test running support lives in
+`dev/editor/vimfy-test-helper.lua`. It maps the current file to the narrow
+CMake target, then runs through `scripts/vimfy_tests` so seed and runner policy
+stay centralized. It recognizes the common `TEST*`, `TYPED_TEST*`, and
+`FUZZ_TEST*` macros.
+
+Load it from personal config and bind it there:
+
+```lua
+local vimfy_tests = dofile("/path/to/vimficiency/dev/editor/vimfy-test-helper.lua")
+vim.keymap.set("n", "<leader>tt", vimfy_tests.run_gtest_here)
 ```
 
 ## Fuzz Campaigns
 
-Fuzz campaigns use the same `vimficiency_fuzz_tests` source files, but the build
-must be configured in FuzzTest fuzzing mode with Clang:
+Fuzz campaigns use the same property or safety source files, but the build must
+be configured in FuzzTest fuzzing mode with Clang:
 
 ```bash
 cmake -S . -B build-fuzz \
@@ -177,11 +253,12 @@ cmake -S . -B build-fuzz \
   -DVIMF_ENABLE_FUZZTEST=ON \
   -DFUZZTEST_FUZZING_MODE=ON
 
-cmake --build build-fuzz -j --target vimficiency_fuzz_tests
+cmake --build build-fuzz -j --target vimfy_safety_tests
 
-./build-fuzz/tests/vimficiency_fuzz_tests \
-  --fuzz=ParserBoundaryFuzzTest.MovementParserRejectsOrReturnsViewsInsideInput \
-  --fuzz_for=30s
+VIMFY_BUILD_DIR=build-fuzz \
+  scripts/vimfy_tests safety \
+  ParserBoundarySafetyTest.MovementParserRejectsInvalidInputOrReturnsBorrowedTokens \
+  campaign
 ```
 
 Keep fuzz targets narrow and deterministic. Good targets are fallible parser,
@@ -195,45 +272,41 @@ Prefer direct FuzzTest domains for new non-oracle properties:
 
 ```cpp
 void MergeEqualsSequentialAppend(const vector<int>& a, const vector<int>& b) {
-  PhysicalKeys left = toPhysicalKeys(a);
-  PhysicalKeys right = toPhysicalKeys(b);
+  PhysicalKeys left = PropertyDomains::toPhysicalKeys(a);
+  PhysicalKeys right = PropertyDomains::toPhysicalKeys(b);
   EXPECT_EQ(merge(left, right), append(left, right));
 }
 
 FUZZ_TEST(EffortGeneratedPropertyTest, MergeEqualsSequentialAppend)
     .WithDomains(
-        fuzztest::VectorOf(fuzztest::InRange<int>(0, KEY_COUNT - 1)).WithMaxSize(16),
-        fuzztest::VectorOf(fuzztest::InRange<int>(0, KEY_COUNT - 1)).WithMaxSize(16))
-    .WithSeeds([]() -> std::vector<std::tuple<std::vector<int>, std::vector<int>>> {
-      return {{{}, {}}, {{0}, {1, 2}}};
-    });
+        PropertyDomains::KeyIdsDomain(0, 16),
+        PropertyDomains::KeyIdsDomain(0, 16));
 ```
 
-Use a seed-driver parameter only when converting an existing generated loop or
-when the property relies on expensive state such as `NeovimOracle`. In that
-case the function should seed `RandomGen`, loop a fixed case count, and emit
-`SCOPED_TRACE` with the seed and case index:
+Use a `uint32_t` domain-driver parameter only when converting an existing
+generated loop or when the property relies on expensive state such as
+`NeovimOracle`. In that case the function should seed `RandomGen`, loop a fixed
+case count, and emit `SCOPED_TRACE` with the generated value and case index:
 
 ```cpp
 class TransformOptimizerGeneratedPropertyTest {
  public:
   void SingleLineChangeTopResultsReplay(uint32_t seed) {
-    RandomGen::seed(seed);
-    for (int caseIndex = 0; caseIndex < 30; caseIndex++) {
-      SCOPED_TRACE(::testing::Message() << "seed=" << seed << " case=" << caseIndex);
+    runSeedDriverCases(seed, 30, [&] {
       // Generate a valid edit problem, optimize it, replay top results.
-    }
+    });
   }
 };
 
 FUZZ_TEST_F(TransformOptimizerGeneratedPropertyTest, SingleLineChangeTopResultsReplay)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000))
-    .WithSeeds({50});
+    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));
 ```
 
-The seed-driver pattern is a compatibility bridge, not the preferred shape for
-new pure data-structure properties. Direct domains give FuzzTest better mutation
-and shrinking behavior.
+This pattern is a compatibility bridge, not the preferred shape for new pure
+data-structure properties. Direct domains give FuzzTest better mutation and
+shrinking behavior. In either style, omit `.WithSeeds(...)` by default. Add it
+only for intentional checked-in corpus inputs, such as reduced regressions or
+rare smoke cases that the generator might not hit quickly.
 
 ## Directory Structure
 
@@ -247,29 +320,38 @@ tests/
 ├── Optimizer/             # unit/assert: cross-optimizer parameter tests
 ├── Explore/               # unit/assert: explore-flow tests
 ├── Misc/                  # unit/assert: parser errors, cost math, config, helpers
-├── Properties/            # property: FuzzTest generated-input invariants
-├── Fuzz/                  # fuzz: FuzzTest coverage-guided parser/payload/boundary suites
-├── Golden/                # expect/golden: curated user-facing report fixtures
+├── Property/              # property: structured semantic generated-input invariants
+├── Safety/                # safety: adversarial-input safe-failure and bounded-behavior checks
+├── Expect/                # expect: curated user-facing report fixtures
 ├── Benchmarks/            # benchmark: Google Benchmark binary sources
 ├── Debug/                 # debug: scratch/debug binary sources
 ├── lua/                   # lua integration: Lua/Neovim plugin tests
 └── Utils/                 # shared test infrastructure
 ```
 
+We keep tests centralized under `tests/` because build wiring, shared
+NeovimOracle infrastructure, and methodology-specific runners matter more here
+than colocating tests next to implementation files.
+
+Naming uses singular methodology directories: `Property/`, `Safety/`,
+`Expect/`. Files in those directories use `SubjectRole.cpp`, such as
+`NavOptimizerProperty.cpp` or `ParserBoundarySafety.cpp`, so editor tabs and
+build output do not collide with production basenames.
+
 ### Placement Rule
 
 **A test file's location is determined by its methodology.**
 
-- Methodology-named top-level directories (`Properties/`, `Golden/`, `Fuzz/`,
+- Methodology-named top-level directories (`Property/`, `Safety/`, `Expect/`,
   `Benchmarks/`, `Debug/`, `lua/`) hold *only* that methodology's tests. No
   exceptions.
 - Feature-named top-level directories (`Commands/`, `Operator/`, the optimizer
   dirs, `Explore/`, `Misc/`) hold *only* unit/assert tests. Unit/assert is the
   implicit default — it doesn't get its own labeled directory because feature
   co-location matters more than re-labeling the default.
-- A property test for a word motion goes in `tests/Properties/`, never in
+- A property test for a word motion goes in `tests/Property/`, never in
   `tests/Commands/`. A unit test for a word motion goes in `tests/Commands/`,
-  never in `tests/Properties/`.
+  never in `tests/Property/`.
 
 `Utils/` is shared infrastructure and not subject to the rule.
 
@@ -283,11 +365,12 @@ placement rule.
   - Optimizer regressions, replay assertions, cost/heuristic checks → matching optimizer dir.
   - Parser errors, cost math, config, data-structure invariants, helpers → `Misc/`.
   - Explore-flow tests → `Explore/`.
-- **Property** — `tests/Properties/`. Generated-input invariants against the
-  oracle, structural invariants, identity properties.
-- **Fuzz** — `tests/Fuzz/`. Fallible parser/payload/snapshot/FFI inputs that
-  must accept-or-reject cleanly.
-- **Expect/golden** — `tests/Golden/`. User-facing report examples.
+- **Property** — `tests/Property/`. Structured generated-input invariants
+  against the oracle, optimizer replay, structural invariants, identity
+  properties.
+- **Safety** — `tests/Safety/`. Adversarial, malformed, external-boundary, and
+  resource-stress inputs that must fail safely or remain bounded.
+- **Expect** — `tests/Expect/`. User-facing report examples.
 - **Lua integration** — `tests/lua/`.
 - **Benchmark** — `tests/Benchmarks/`.
 - **Debug/manual** — `tests/Debug/`, not the correctness suite.
@@ -340,33 +423,32 @@ There are two seed systems:
 
 | System | Used by | Replay mechanism |
 |--------|---------|------------------|
-| FuzzTest | `FUZZ_TEST` generated properties and fuzz campaigns | `.WithSeeds(...)`, `FUZZTEST_PRNG_SEED`, reproducer files |
-| `SeedManager` | Benchmarks and any remaining non-FuzzTest random fixtures | `VIMFICIENCY_SEED_MODE`, `tests/.last_seeds.txt` |
+| FuzzTest | `FUZZ_TEST` generated properties and fuzz campaigns | `.WithSeeds(...)` corpus inputs, `FUZZTEST_PRNG_SEED`, reproducer files |
+| `SeedManager` | Benchmarks and any remaining non-FuzzTest random fixtures | `VIMFY_SEED_MODE`, `tests/.last_seeds.txt` |
 
 For FuzzTest, the normal workflow is:
 
 ```bash
-# Deterministic explicit seeds only
-env FUZZTEST_FUZZ_FOR=0 \
-  FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk \
-  ./build/tests/vimficiency_fuzz_tests
+# Deterministic replay of the normal exploration loop
+env FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk \
+  ./build/tests/vimfy_property_tests
 
 # Replay a local exploratory run
-env FUZZTEST_PRNG_SEED=<printed-seed> ./build/tests/vimficiency_fuzz_tests
+env FUZZTEST_PRNG_SEED=<printed-seed> ./build/tests/vimfy_property_tests
 ```
 
 For benchmarks:
 
 ```bash
 # Fixed seeds; this is also the benchmark default
-./build/tests/vimficiency_benchmarks
-VIMFICIENCY_SEED_MODE=fixed ./build/tests/vimficiency_benchmarks
+./build/tests/vimfy_benchmarks
+VIMFY_SEED_MODE=fixed ./build/tests/vimfy_benchmarks
 
 # Replay seeds from tests/.last_seeds.txt
-VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_benchmarks
+VIMFY_SEED_MODE=replay ./build/tests/vimfy_benchmarks
 
 # Rotate fixture seeds locally
-VIMFICIENCY_SEED_MODE=random ./build/tests/vimficiency_benchmarks
+VIMFY_SEED_MODE=random ./build/tests/vimfy_benchmarks
 ```
 
 ## Lua Tests
@@ -375,11 +457,10 @@ The Lua layer has its own harness at `tests/lua/runner.lua`.
 
 ```bash
 # Run the whole Lua suite
-bash tests/lua/run.sh
+scripts/vimfy_tests lua
 
 # Run one Lua file
-VF_TEST_FILE=tests/lua/session/store_invariants.lua \
-  nvim --headless -u NONE -U NONE -l tests/lua/runner.lua
+scripts/vimfy_tests lua tests/lua/session/store_invariants.lua
 ```
 
 The main batch reuses one headless Neovim process and calls `reset_state()`
@@ -397,7 +478,7 @@ Benchmarks prebuild fixed fixture sets and let Google Benchmark control the
 measured iteration loop. For deeper local analysis:
 
 ```bash
-./build/tests/vimficiency_benchmarks \
+./build/tests/vimfy_benchmarks \
   --benchmark_repetitions=9 \
   --benchmark_enable_random_interleaving=true \
   --benchmark_out=bench.json \
@@ -416,9 +497,9 @@ question faster.
 For search stats/codegen checks:
 
 ```bash
-cmake --build build -j --target vimficiency_debug
-nm -C build/tests/vimficiency_debug | rg 'searchStatsHotLoop'
-llvm-objdump -d -C build/tests/vimficiency_debug | rg -A40 'searchStatsHotLoop<false>|searchStatsHotLoop<true>'
+cmake --build build -j --target vimfy_debug
+nm -C build/tests/vimfy_debug | rg 'searchStatsHotLoop'
+llvm-objdump -d -C build/tests/vimfy_debug | rg -A40 'searchStatsHotLoop<false>|searchStatsHotLoop<true>'
 ```
 
 ## Fixture Naming

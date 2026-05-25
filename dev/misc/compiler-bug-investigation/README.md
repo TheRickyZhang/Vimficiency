@@ -39,7 +39,7 @@ static NavOptimizerParams paramsB() { ... }
 
 - Compiler: GCC 15.2.1 (via `/usr/bin/c++`)
 - Standard: C++23 (`-std=c++23`)
-- Build: CMake, linking benchmark executable against `vimficiency_core.a` static library
+- Build: CMake, linking benchmark executable against `vimfy_core.a` static library
 - OS: Linux (Arch)
 
 ## Attempted Reproductions

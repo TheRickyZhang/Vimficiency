@@ -2,19 +2,17 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdlib>
 #include <utility>
 #include <vector>
 
-#include "Boundary/NavBoundary.h"
 #include "Effort/RunningEffort.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Keyboard/PhysicalKeys.h"
-#include "Keyboard/ToKeys/MovementToKeys.h"
-#include "Optimizer/NavOptimizer/NavOptimizer.h"
-#include "Optimizer/NavOptimizer/NavOptimizerParams.h"
 #include "Types/CharRange.h"
 #include "Types/Sequence.h"
 #include "VimCore/VimEditUtils.h"
+#include "VimCore/VimMotionUtils.h"
 
 namespace TransformPostExplorer {
 
@@ -88,7 +86,6 @@ std::optional<VisualDeleteResult> tryVisualDelete(
     const Lines& effectiveLines,
     int leftColOffset,
     int rightColOffset,
-    const TransformBoundary& transformBoundary,
     const TransformOptimizerParams& params,
     const Config& config) {
   const bool spansContent =
@@ -105,42 +102,42 @@ std::optional<VisualDeleteResult> tryVisualDelete(
   if (sameCell) return std::nullopt;
   if (lastPos < beginPos) return std::nullopt;
 
-  // Visual replay needs literal Vim endpoints. Keep line-level context for
-  // absolute motions, but do not let prefix/suffix column clipping make
-  // motions like `$` appear to land before the protected suffix.
-  NavBoundary navBoundary(
-      effectiveLines,
-      CursorPos(0, 0),
-      effectiveLines.endPos(),
-      transformBoundary.hasLinesAbove(),
-      transformBoundary.hasLinesBelow());
-
-  // Visual-delete is a narrow post-explorer emission, not a general nav
-  // surface. It inherits transform count-prefix limits only; nav-only
-  // motion-class controls are intentionally not configurable here.
-  NavOptimizer navOpt(config);
-  auto navResult = navOpt.optimize(
-      effectiveLines,
-      beginPos,
-      lastPos,
-      NavOptimizerParams{}
-          .withMinCountRepeat(params.minPrefixCount)
-          .withMaxCountRepeat(params.maxPrefixCount),
-      "",
-      navBoundary
-  );
-
-  const auto& navResults = navResult.getResults();
-  if (navResults.empty() || navResults[0].getSequence().empty()) return std::nullopt;
-
   Sequence visualSeq("v");
-  visualSeq.append(navResults[0].getSequence().view());
+  KeyedSequence motion;
+
+  // Visual mode changes endpoints for some motions (`)`/`}`/`$` cases), so
+  // this shortcut uses only primitive cursor steps whose visual replay matches.
+  auto appendMotion = [&](const KeyedSequence& ks, int count) {
+    if (count <= 0) return;
+    if (params.countPrefixesEnabled() &&
+        count >= params.minPrefixCount && count <= params.maxPrefixCount) {
+      motion.appendCounted(count, ks);
+    } else {
+      motion.append(ks, count);
+    }
+  };
+
+  int lineDelta = lastPos.line - beginPos.line;
+  appendMotion(lineDelta >= 0 ? KeyedSequence::j : KeyedSequence::k,
+               std::abs(lineDelta));
+
+  int cursorCol = beginPos.col;
+  if (lineDelta != 0) {
+    cursorCol = VimCore::clampCol(effectiveLines, beginPos.col, lastPos.line);
+  }
+  int colDelta = lastPos.col - cursorCol;
+  appendMotion(colDelta >= 0 ? KeyedSequence::l : KeyedSequence::h,
+               std::abs(colDelta));
+
+  if (motion.seq.empty()) return std::nullopt;
+
+  visualSeq.append(motion.seq.view());
   visualSeq.append("d");
 
   static const PhysicalKeys vKey = {Key::Key_V};
   static const PhysicalKeys dKey = {Key::Key_D};
   RunningEffort effort(vKey, config);
-  effort.append(globalSequenceToKeys().tokenize(navResults[0].getSequence().view()), config);
+  effort.append(motion.keys, config);
   double totalEffort = effort.append(dKey, config);
 
   Lines replayLines = effectiveLines;

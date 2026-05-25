@@ -1,7 +1,7 @@
-# Golden Fixtures
+# Expect Fixtures
 
-Golden tests cover curated user-facing examples. They compare a normalized
-report against an expected text fixture, so they are useful for presentation and
+Expect tests cover curated user-facing examples. They compare a normalized
+report against a stored expect fixture, so they are useful for presentation and
 documentation regressions rather than deep optimizer correctness.
 
 TODO(ricky): Inspect these initial examples carefully before treating them as

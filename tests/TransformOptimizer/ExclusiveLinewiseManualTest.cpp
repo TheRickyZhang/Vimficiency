@@ -35,6 +35,7 @@ TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardSentence_Linewi
   verifySequenceWithOracle(oracle.get(), {"End.", "Start"}, {0, 0}, "d)");
   verifySequenceWithOracle(oracle.get(), {"Hello.", "World"}, {0, 0}, "d)");
   verifySequenceWithOracle(oracle.get(), {".", "b"}, {0, 0}, "d)");
+  verifySequenceWithOracle(oracle.get(), {"dfacbfab", "  ", "eaed"}, {1, 1}, "d)");
 }
 
 TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardSentence_BackedUp) {
@@ -52,11 +53,21 @@ TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_BackwardSentence_Linew
 TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_BackwardSentence_BackedUp) {
   // d( from col 0 where endpoint is NOT at col 0 → back up cursor end
   verifySequenceWithOracle(oracle.get(), {"End. xyz", "abc"}, {1, 0}, "d(");
+  verifySequenceWithOracle(oracle.get(), {"bbbb..", "cce", "a  . ", ",faca"}, {2, 4}, "d(");
 }
 
 TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardParagraph_Linewise) {
   // d} from col 0: linewise
   verifySequenceWithOracle(oracle.get(), {"abc", "", "def"}, {0, 0}, "d}");
+}
+
+TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardParagraphChangeAutoindents) {
+  verifyUserSequenceWithOracle(oracle.get(), {"   ", "", "d,d"}, {0, 0}, "c}ebfca<Esc>");
+  verifyUserSequenceWithOracle(oracle.get(), {"  abc", "", "def"}, {0, 0}, "c}x<Esc>");
+}
+
+TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardSentenceChangeAutoindents) {
+  verifyUserSequenceWithOracle(oracle.get(), {"  End.", "Start"}, {0, 0}, "c)x<Esc>");
 }
 
 TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardParagraph_BackedUp) {
@@ -78,6 +89,7 @@ TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_BackwardParagraph_Back
 TEST_F(TransformOptimizer_ManualTest, DeleteSpecial_BackwardWordBlankPrefixLinewise) {
   verifySequenceWithOracle(oracle.get(), {" def", "ghi"}, {1, 0}, "db");
   verifySequenceWithOracle(oracle.get(), {" ,.e", " caf"}, {1, 0}, "dB");
+  verifySequenceWithOracle(oracle.get(), {"fdfedcb", "eafe", "  ", " edbe"}, {2, 1}, "dB");
   verifySequenceWithOracle(
       oracle.get(), {"ccdafbcc", " ,.e", "c.d caf"}, {2, 3}, "dB.");
 }

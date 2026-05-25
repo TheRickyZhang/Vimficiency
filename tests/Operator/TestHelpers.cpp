@@ -286,13 +286,13 @@ RandomBufferTest generateTextObjectBuffer(int numLines) {
   RandomBufferTest test;
   test.lines = randomLines(numLines, 10, 20);
 
-  int editLine = RandomGen::range(0, numLines - 1);
-  int lineLen2 = static_cast<int>(test.lines[editLine].size());
+  int editLine = randomLineIndex(test.lines);
+  int lineLen2 = test.lines.getSize(editLine);
 
   int minEditLen = 4;
   if (lineLen2 < minEditLen + 2) {
     test.lines[editLine] += string(minEditLen + 2 - lineLen2, 'x');
-    lineLen2 = static_cast<int>(test.lines[editLine].size());
+    lineLen2 = test.lines.getSize(editLine);
   }
 
   int editStart = RandomGen::range(1, max(1, lineLen2 - minEditLen - 1));

@@ -2,7 +2,7 @@
 //
 // Performance benchmarks for NavOptimizer using Google Benchmark.
 //
-// Run: ./build/tests/vimficiency_benchmarks --benchmark_filter="NavOptimizer.*"
+// Run: ./build/tests/vimfy_benchmarks --benchmark_filter="NavOptimizer.*"
 
 #include <algorithm>
 #include <array>

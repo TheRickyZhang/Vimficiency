@@ -21,6 +21,10 @@ bool isBlankLine(std::string_view s) {
   return true; // empty or whitespace-only
 }
 
+bool isParagraphSeparatorLine(std::string_view s) {
+  return s.empty();
+}
+
 int firstNonBlankColInLine(std::string_view s) {
   for (int i = 0; i < (int)s.size(); ++i) {
     char c = s[i];
@@ -136,6 +140,9 @@ CursorPos motionWordCore(CursorPos pos,
     // ge/gE (backward NextEdge): Line/word boundaries are stopping points
     if constexpr (!Forward && Edge == EdgeType::NextEdge) {
       bool crossedLine = (pos.line != prevPos.line);
+      if (currClass.newLine()) {
+        return pos;
+      }
       if ((crossedLine || !sameSpan(prevClass, currClass, big)) &&
           !currClass.blank()) {
         return pos;
@@ -158,6 +165,12 @@ CursorPos motionWordCore(CursorPos pos,
       }
 
       c = CharMask(lines.get(pos));
+      if constexpr (!Forward && Edge == EdgeType::WordEdge) {
+        if (c.newLine()) return pos;
+      }
+      if constexpr (!Forward && Edge == EdgeType::NextEdge) {
+        if (c.newLine()) return pos;
+      }
     } while (c.blank());
 
     if constexpr (Edge == EdgeType::NextEdge) return pos;
@@ -261,31 +274,31 @@ CursorPos motionWordCore(CursorPos pos,
 // =============================================================================
 
 // Returns the first line index of the paragraph containing lineIdx.
-// If lineIdx is on blank lines, the "paragraph" is the contiguous blank-line run.
+// If lineIdx is on separator lines, the "paragraph" is that empty-line run.
 int paragraphStartLine(const Lines& lines, int lineIdx) {
   int n = (int)lines.size();
   if (n == 0)
     return 0;
   lineIdx = std::clamp(lineIdx, 0, n - 1);
 
-  bool blank = isBlankLine(lines[lineIdx]);
+  bool blank = isParagraphSeparatorLine(lines[lineIdx]);
   int i = lineIdx;
-  while (i > 0 && isBlankLine(lines[i - 1]) == blank)
+  while (i > 0 && isParagraphSeparatorLine(lines[i - 1]) == blank)
     --i;
   return i;
 }
 
 // Returns the last line index of the paragraph containing lineIdx.
-// If lineIdx is on blank lines, the "paragraph" is the contiguous blank-line run.
+// If lineIdx is on separator lines, the "paragraph" is that empty-line run.
 int paragraphEndLine(const Lines& lines, int lineIdx) {
   int n = (int)lines.size();
   if (n == 0)
     return 0;
   lineIdx = std::clamp(lineIdx, 0, n - 1);
 
-  bool blank = isBlankLine(lines[lineIdx]);
+  bool blank = isParagraphSeparatorLine(lines[lineIdx]);
   int i = lineIdx;
-  while (i + 1 < n && isBlankLine(lines[i + 1]) == blank)
+  while (i + 1 < n && isParagraphSeparatorLine(lines[i + 1]) == blank)
     ++i;
   return i;
 }

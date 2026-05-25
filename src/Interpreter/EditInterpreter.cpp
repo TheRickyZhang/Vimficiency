@@ -98,7 +98,8 @@ static void applyResolvedDeleteRange(Lines& lines,
                                      CursorPos& pos,
                                      const VimCore::ResolvedDeleteRange& resolved,
                                      Mode mode,
-                                     bool hasLinesBelow) {
+                                     bool hasLinesBelow,
+                                     bool linewiseFirstNonBlank = false) {
   switch (resolved.kind) {
     case VimCore::ResolvedDeleteRangeKind::Characterwise:
       if (!resolved.charRange.isEmpty()) {
@@ -118,8 +119,30 @@ static void applyResolvedDeleteRange(Lines& lines,
     case VimCore::ResolvedDeleteRangeKind::Linewise:
       VimCore::deleteOperatorLineRangeAndUpdatePos(
           lines, resolved.lineRange, pos, hasLinesBelow);
+      if (linewiseFirstNonBlank && !hasLinesBelow &&
+          pos.line >= 0 && pos.line < static_cast<int>(lines.size())) {
+        pos.setCol(VimCore::firstNonBlankColInLine(lines[pos.line]));
+      }
       return;
   }
+}
+
+static bool tryApplyExclusiveLinewiseChange(Lines& lines,
+                                            CursorPos& pos,
+                                            Mode& mode,
+                                            CharRange range) {
+  range.normalize();
+  // `c}`/`c)` with col-0 exclusive-linewise geometry behaves like `cc`
+  // over the affected lines, preserving autoindent before typed payload.
+  if (range.end.col != 0 || range.end.line <= range.begin.line) return false;
+  if (!VimCore::hasOnlyBlankPrefix(lines[range.begin.line], range.begin.col)) {
+    return false;
+  }
+
+  VimCore::linewiseChangeWithAutoindent(
+      lines, pos, mode,
+      range.begin.line, range.end.line - 1, lines[range.begin.line]);
+  return true;
 }
 
 // -----------------------------------------------------------------------------
@@ -199,6 +222,29 @@ bool updatesDotRepeat(Mode mode, string_view e) {
   }
 
   return e != "ge" && e != "gE";
+}
+
+bool isValidNormalEditOnEmptyLine(string_view e) {
+  switch (hash(e)) {
+    case hash("i"): case hash("a"): case hash("I"): case hash("A"):
+    case hash("o"): case hash("O"): case hash("dd"): case hash("cc"): case hash("S"):
+    case hash("J"): case hash("gJ"):
+    case hash("w"): case hash("W"): case hash("b"): case hash("B"):
+    case hash("e"): case hash("E"): case hash("ge"): case hash("gE"):
+    case hash("dw"): case hash("dW"): case hash("db"): case hash("dB"):
+    case hash("de"): case hash("dE"): case hash("dge"): case hash("dgE"):
+    case hash("d}"): case hash("d{"): case hash("d)"): case hash("d("):
+    case hash("dj"): case hash("dk"):
+    case hash("cw"): case hash("cW"): case hash("cb"): case hash("cB"):
+    case hash("ce"): case hash("cE"): case hash("cge"): case hash("cgE"):
+    case hash("c}"): case hash("c{"): case hash("c)"): case hash("c("):
+    case hash("0"): case hash("^"): case hash("$"):
+    case hash("j"): case hash("k"): case hash("h"): case hash("l"):
+    case hash("}"): case hash("{"): case hash(")"): case hash("("):
+      return true;
+    default:
+      return false;
+  }
 }
 
 string formatDotRepeatCommand(const ParsedEdit& edit) {
@@ -433,32 +479,10 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
   // Empty line: only switch to insert mode, vertical motion, navigation, and word motions
   // (empty line is considered a "word" for dw/dW purposes)
   if (line.empty() && mode == Mode::Normal) {
-    switch (h) {
-      case hash("i"): case hash("a"): case hash("I"): case hash("A"):
-      // Line operations (valid)
-      case hash("o"): case hash("O"): case hash("dd"): case hash("cc"): case hash("S"):
-      case hash("J"): case hash("gJ"):
-
-      // Word motions
-      case hash("w"): case hash("W"): case hash("b"): case hash("B"):
-      case hash("e"): case hash("E"): case hash("ge"): case hash("gE"):
-      case hash("dw"): case hash("dW"): case hash("db"): case hash("dB"):
-      case hash("de"): case hash("dE"): case hash("dge"): case hash("dgE"):
-      case hash("d}"): case hash("d{"): case hash("d)"): case hash("d("):
-      case hash("dj"): case hash("dk"):
-      case hash("cw"): case hash("cW"): case hash("cb"): case hash("cB"):
-      case hash("ce"): case hash("cE"): case hash("cge"): case hash("cgE"):
-      case hash("c}"): case hash("c{"): case hash("c)"): case hash("c("):
-      case hash("0"): case hash("^"): case hash("$"):
-      // Navigation (for TransformOptimizer line traversal)
-      case hash("j"): case hash("k"): case hash("h"): case hash("l"):
-      // Paragraph/sentence motions
-      case hash("}"): case hash("{"): case hash(")"): case hash("("):
-        break;  // Fall through to main switch
-      default:
-        std::string msg = "Edit " + std::string(e) + " invalid on empty line";
-        const char* res = msg.c_str();
-        assert(false && res);
+    if (!isValidNormalEditOnEmptyLine(e)) {
+      std::string msg = "Edit " + std::string(e) + " invalid on empty line";
+      const char* res = msg.c_str();
+      assert(false && res);
     }
   }
 
@@ -513,7 +537,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           if (isupper(c)) c = tolower(c);
           else if (islower(c)) c = toupper(c);
         }
-        pos.setCol(pos.col + count - 1);
+        pos.setCol(clampedToLastChar(line, pos.col + count));
         return;
 
       case hash("J"): {
@@ -957,7 +981,7 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           for (int i = 0; i < count; i++) VimCore::motionParagraphNext(goalPos, lines);
           // Paragraph-specific: } at EOF (last non-blank line) is inclusive.
           bool atEof = goalPos.line == lines.lastLine()
-                    && !VimCore::isBlankLine(lines[goalPos.line]);
+                    && !VimCore::isParagraphSeparatorLine(lines[goalPos.line]);
           if (goalPos > pos || (atEof && goalPos >= pos)) {
             CharRange range(pos, goalPos);
             if (atEof) {
@@ -965,11 +989,16 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
               int eofLineLen = static_cast<int>(lines[goalPos.line].size());
               range.end = CursorPos(goalPos.line, std::min(goalPos.col + 1, eofLineLen));
             }
-            // Forward: exclusive end = goalPos (motion destination).
-            auto resolved = VimCore::resolveExclusiveDeleteRange(range, lines, e[0] == 'd');
-            applyResolvedDeleteRange(
-                lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal,
-                hasLinesBelow);
+            if (e[0] != 'c' ||
+                !tryApplyExclusiveLinewiseChange(lines, pos, mode, range)) {
+              auto resolved = VimCore::resolveExclusiveDeleteRange(range, lines, e[0] == 'd');
+              bool linewiseFirstNonBlank =
+                  pos.col > 0 && !VimCore::isBlankLine(lines[pos.line]) &&
+                  VimCore::hasOnlyBlankPrefix(lines[pos.line], pos.col);
+              applyResolvedDeleteRange(
+                  lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal,
+                  hasLinesBelow, linewiseFirstNonBlank);
+            }
           }
           if (e[0] == 'c') mode = Mode::Insert;
         }
@@ -983,10 +1012,16 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           // Backward: exclusive end = cursor pos (the higher end of the range).
           if (initialPos < pos) {
             CharRange range(initialPos, pos);
-            auto resolved = VimCore::resolveExclusiveDeleteRange(range, lines, e[0] == 'd');
-            applyResolvedDeleteRange(
-                lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal,
-                hasLinesBelow);
+            if (e[0] != 'c' ||
+                !tryApplyExclusiveLinewiseChange(lines, pos, mode, range)) {
+              auto resolved = VimCore::resolveExclusiveDeleteRange(range, lines, e[0] == 'd');
+              bool linewiseFirstNonBlank =
+                  initialPos.col > 0 && !VimCore::isBlankLine(lines[initialPos.line]) &&
+                  VimCore::hasOnlyBlankPrefix(lines[initialPos.line], initialPos.col);
+              applyResolvedDeleteRange(
+                  lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal,
+                  hasLinesBelow, linewiseFirstNonBlank);
+            }
           }
           if (e[0] == 'c') mode = Mode::Insert;
         }
@@ -1012,11 +1047,18 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           }
           // Forward: exclusive end = goalPos (motion destination).
           if (goalPos != POSITION_OUTSIDE_BOUNDARY && goalPos > pos) {
-            auto resolved = VimCore::resolveExclusiveDeleteRange(
-                CharRange(pos, goalPos), lines, e[0] == 'd');
-            applyResolvedDeleteRange(
-                lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal,
-                hasLinesBelow);
+            CharRange range(pos, goalPos);
+            if (e[0] != 'c' ||
+                !tryApplyExclusiveLinewiseChange(lines, pos, mode, range)) {
+              auto resolved = VimCore::resolveExclusiveDeleteRange(
+                  range, lines, e[0] == 'd');
+              bool linewiseFirstNonBlank =
+                  pos.col > 0 && !VimCore::isBlankLine(lines[pos.line]) &&
+                  VimCore::hasOnlyBlankPrefix(lines[pos.line], pos.col);
+              applyResolvedDeleteRange(
+                  lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal,
+                  hasLinesBelow, linewiseFirstNonBlank);
+            }
           }
           if (e[0] == 'c') mode = Mode::Insert;
         }
@@ -1039,11 +1081,18 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           }
           // Backward: exclusive end = cursor pos (the higher end of the range).
           if (initialPos != POSITION_OUTSIDE_BOUNDARY && initialPos < pos) {
-            auto resolved = VimCore::resolveExclusiveDeleteRange(
-                CharRange(initialPos, pos), lines, e[0] == 'd');
-            applyResolvedDeleteRange(
-                lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal,
-                hasLinesBelow);
+            CharRange range(initialPos, pos);
+            if (e[0] != 'c' ||
+                !tryApplyExclusiveLinewiseChange(lines, pos, mode, range)) {
+              auto resolved = VimCore::resolveExclusiveDeleteRange(
+                  range, lines, e[0] == 'd');
+              bool linewiseFirstNonBlank =
+                  initialPos.col > 0 && !VimCore::isBlankLine(lines[initialPos.line]) &&
+                  VimCore::hasOnlyBlankPrefix(lines[initialPos.line], initialPos.col);
+              applyResolvedDeleteRange(
+                  lines, pos, resolved, e[0] == 'c' ? Mode::Insert : Mode::Normal,
+                  hasLinesBelow, linewiseFirstNonBlank);
+            }
           }
           if (e[0] == 'c') mode = Mode::Insert;
         }

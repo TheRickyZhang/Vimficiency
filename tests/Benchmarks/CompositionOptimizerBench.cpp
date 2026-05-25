@@ -3,7 +3,7 @@
 // Performance benchmarks for CompositionOptimizer using Google Benchmark.
 // Each category varies one parameter against consistent defaults.
 //
-// Run: ./build/tests/vimficiency_benchmarks --benchmark_filter="CompositionOptimizer.*"
+// Run: ./build/tests/vimfy_benchmarks --benchmark_filter="CompositionOptimizer.*"
 
 #include <algorithm>
 #include <string>
@@ -233,7 +233,7 @@ static void BM_CompCharDist(benchmark::State& state, CharDistType charType) {
       int len = RandomGen::range(DEFAULT_AVG_LEN / 2, DEFAULT_AVG_LEN * 3 / 2);
       switch (charType) {
         case CharDistType::Alpha:
-          initial.push_back(randomAlphaLine(len));
+          initial.push_back(randomWord(len));
           break;
         case CharDistType::MixedSymbol:
           initial.push_back(randomLine(len));  // 24% symbols

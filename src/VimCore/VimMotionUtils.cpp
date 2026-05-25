@@ -105,7 +105,7 @@ void motionParagraphNext(CursorPos &pos, const Lines &lines) {
 
   // Special case: if at last line and it's not blank, go to last char
   // (This matches vim's behavior at EOF)
-  if (resultLine == n - 1 && !isBlankLine(lines[resultLine])) {
+  if (resultLine == n - 1 && !isParagraphSeparatorLine(lines[resultLine])) {
     int lastCol = std::max(0, (int)lines[resultLine].size() - 1);
     pos.setCol(lastCol);
   } else {
@@ -127,12 +127,16 @@ int clampCol(const Lines &lines, int col, int lineIdx) {
 }
 
 void moveCol(CursorPos &pos, const Lines &lines, int dx) {
-  pos.setCol(clampCol(lines, pos.col + dx, pos.line));
+  int nextCol = clampCol(lines, pos.col + dx, pos.line);
+  if (nextCol == pos.col) return;
+  pos.setCol(nextCol);
 }
 
 void moveLine(CursorPos &pos, const Lines &lines, int dy) {
   int n = static_cast<int>(lines.size());
-  pos.line = std::clamp(pos.line + dy, 0, n - 1);
+  int nextLine = std::clamp(pos.line + dy, 0, n - 1);
+  if (nextLine == pos.line) return;
+  pos.line = nextLine;
   // Vertical movement: clamp col to line length but preserve targetCol
   pos.clampColPreservingTarget(clampCol(lines, pos.targetCol, pos.line));
 }
@@ -151,7 +155,7 @@ void moveToParagraphStart(CursorPos &pos, const Lines &lines) {
   pos.line = paragraphStartLine(lines, pos.line);
 
   // For non-blank paragraph, go to first non-blank column on that line.
-  if (!isBlankLine(lines[pos.line]))
+  if (!isParagraphSeparatorLine(lines[pos.line]))
     pos.setCol(firstNonBlankColInLine(lines[pos.line]));
   else
     pos.setCol(0);
@@ -469,8 +473,9 @@ int findCharInLine(char target, string_view line, int startCol,
   int i = startCol + step;
 
   // Repeating t/T skips the adjacent target the prior till stopped beside.
-  if (repeat && till) {
+  if (repeat && till && i >= 0 && i < n && line[i] == target) {
     i += step;
+    if (count > 1) count--;
   }
 
   int seen = 0;

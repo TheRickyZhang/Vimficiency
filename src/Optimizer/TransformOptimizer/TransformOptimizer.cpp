@@ -339,7 +339,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
         mode,         s,           stats,         pq,
         costMap,      pendingByStart, startActive, bank,
         transformBoundary, config,      effortWeight, distanceWeight,
-        leftColOffset, rightColOffset};
+        leftColOffset, rightColOffset, params.allowLinewisePureDeletion};
 
     auto onDeletion = [&](const auto& range, const SequenceBinding& cmd) { dispatch.deleteRange(range, cmd); };
     auto onLinewise = [&](LineRange r, const SequenceBinding& cmd) { dispatch.deleteLinewise(r, cmd); };
@@ -406,7 +406,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
   if constexpr (PureDeletion) {
     auto visual = TransformPostExplorer::tryVisualDelete(
         effectiveLines, leftColOffset, rightColOffset,
-        transformBoundary, params, config);
+        params, config);
     if (visual) {
       auto& bucket = resultsByStart[0];
       if (bucket.empty()) {

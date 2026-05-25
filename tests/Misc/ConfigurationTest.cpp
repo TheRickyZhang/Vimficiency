@@ -2,7 +2,7 @@
 //
 // Tests for configuration effects on optimizer behavior.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="ConfigurationTest.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="ConfigurationTest.*"
 
 #include <gtest/gtest.h>
 

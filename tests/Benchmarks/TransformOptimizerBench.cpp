@@ -2,7 +2,7 @@
 //
 // Performance benchmarks for TransformOptimizer using Google Benchmark.
 //
-// Run: ./build/tests/vimficiency_benchmarks --benchmark_filter="TransformOptimizer.*"
+// Run: ./build/tests/vimfy_benchmarks --benchmark_filter="TransformOptimizer.*"
 
 #include <algorithm>
 #include <array>

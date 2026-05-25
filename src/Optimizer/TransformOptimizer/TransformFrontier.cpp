@@ -1,7 +1,7 @@
 #include "TransformFrontier.h"
 
 #include <algorithm>
-#include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -16,11 +16,10 @@
 #include "Optimizer/TransformOptimizer/ChangeGoalHandler.h"
 #include "Optimizer/TransformOptimizer/TransformExplorer.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
-#include "Optimizer/TransformOptimizer/TransformPostExplorerEmissions.h"
-#include "Optimizer/TransformOptimizer/TransformSequenceDecomposition.h"
 #include "Optimizer/TransformOptimizer/TransformState.h"
 #include "Types/BracketFlags.h"
 #include "Types/QuoteFlags.h"
+#include "Utils/Debug.h"
 #include "VimCore/VimCore.h"
 
 using namespace std;
@@ -35,44 +34,73 @@ bool cursorInInsertionRange(
   return cursor.line == targetLine && cursor.col >= beginCol && cursor.col < endCol;
 }
 
-// Emission context — shared by every push site in rankTransformFrontier.
-//
-// After the depth-1 refactor (Phase A.1) the emission sources are
-// structurally distinct: each enumerator (TransformExplorer-driven
-// deletions, pure-insertion mode-entry commands, joinPlan, bracket/quote
-// text-objects) produces its own command-shape lane and they don't
-// overlap. So no runtime dedup is needed; if a duplicate sequence ever
-// reaches `emit`, that's a bug in one of the enumerators — caught by the
-// debug assert below.
+size_t skipPositiveCount(string_view seq) {
+  size_t i = 0;
+  if (i < seq.size() && seq[i] >= '1' && seq[i] <= '9') {
+    i++;
+    while (i < seq.size() && seq[i] >= '0' && seq[i] <= '9') i++;
+  }
+  return i;
+}
+
+bool isSingleChangeAction(string_view seq) {
+  size_t i = skipPositiveCount(seq);
+  if (i >= seq.size()) return false;
+
+  char c = seq[i];
+  return c == 'c' || c == 's' || c == 'C';
+}
+
+string sourceCommandSeq(const SequenceBinding& cmd) {
+  string seq;
+  if (cmd.count > 0) seq += to_string(cmd.count);
+  seq += string(cmd.base.seq.view());
+  return seq;
+}
+
+double residualDistanceAfter(const Lines& before,
+                             const Lines& afterStep,
+                             const DiffState& diff) {
+  Lines target = Myers::applyDiffState(diff, before);
+  auto residual = DiffText::calculateContiguousResidualDiff(afterStep, target);
+  if (!residual) return 0.0;
+  return textDistanceEstimate(residual->deletedLines()) +
+         textDistanceEstimate(residual->insertedLines());
+}
+
+double diffDistance(const DiffState& diff) {
+  return textDistanceEstimate(diff.deletedLines()) +
+         textDistanceEstimate(diff.insertedLines());
+}
+
+// Shared collector for first-action transform recommendations. Each emission
+// lane must own a disjoint token family; duplicates mean the frontier boundary
+// is too broad.
 struct EditEmitter {
   vector<Suggestion>& items;
-#ifndef NDEBUG
-  unordered_set<string> seenSequence_debug;
-#endif
+  unordered_set<string> emittedTokens;
   const RunningEffort& acceptedEffort;
   double acceptedCost;
   double effortWeight;
   double distanceWeight;
   const Config& config;
 
-  double costDiffFor(string_view fullSequence) const {
-    RunningEffort candidate(globalSequenceToKeys().tokenize(fullSequence), config);
+  double costDiffFor(string_view tokenSequence) const {
+    RunningEffort candidate(globalSequenceToKeys().tokenize(tokenSequence), config);
     RunningEffort merged = RunningEffort::merge(acceptedEffort, candidate);
     return merged.getEffort(config) - acceptedCost;
   }
 
-  void emit(string_view fullSequence, CursorPos landingPos, double distance = 0.0) {
-#ifndef NDEBUG
-    assert(seenSequence_debug.insert(string(fullSequence)).second &&
-           "duplicate sequence reached EditEmitter::emit — enumerator bug");
-#endif
+  void emit(string_view tokenSequence, CursorPos landingPos, double distance = 0.0) {
     Suggestion suggestion{
-        .token = extractStructuralToken(fullSequence),
+        .token = Token{tokenSequence},
         .landingPos = landingPos,
     };
     updateSuggestionMetrics(
-        suggestion, costDiffFor(fullSequence), distance,
+        suggestion, costDiffFor(tokenSequence), distance,
         effortWeight, distanceWeight);
+    CHECK(emittedTokens.insert(string(suggestion.token)).second,
+          "duplicate TransformFrontier token; fix enumerator overlap");
     items.push_back(std::move(suggestion));
   }
 };
@@ -83,13 +111,93 @@ void appendInsertionStrategy(
     int targetLine,
     int beginCol,
     int endCol,
-    string fullSequence,
+    string tokenSequence,
     CursorPos landingPos,
     double distance) {
   if (targetLine < 0) return;
   if (beginCol < 0 || endCol <= beginCol) return;
   if (!cursorInInsertionRange(cursor, targetLine, beginCol, endCol)) return;
-  emitter.emit(fullSequence, landingPos, distance);
+  emitter.emit(tokenSequence, landingPos, distance);
+}
+
+void emitJoinFirstAction(
+    const TransformFrontierQuery& query,
+    EditEmitter& emitter) {
+  if (query.cursor.line < 0 ||
+      query.cursor.line + 1 >= static_cast<int>(query.lines.size())) {
+    return;
+  }
+
+  Lines deleted = query.diff.deletedLines();
+  int localLine = query.cursor.line - query.diff.beginPos.line;
+  if (localLine < 0 || localLine + 1 >= static_cast<int>(deleted.size())) {
+    return;
+  }
+
+  TransformEditorState state(query.lines, query.cursor);
+  TransformEditorState afterJoin = TransformSimulator::afterJoin(state, true);
+  if (afterJoin.getLines() == query.lines) return;
+
+  // Structural lane separation: the explorer's J/gJ/NJ/NgJ enumeration owns
+  // every case where the bare command exactly reaches the post-edit
+  // fencepost. This helper owns only "progress without reaching the
+  // fencepost". The two lanes are disjoint by the fencepost equality below.
+  if (afterJoin.getLines() == Myers::applyDiffState(query.diff, query.lines)) {
+    return;
+  }
+
+  const double remainingDistance =
+      residualDistanceAfter(query.lines, afterJoin.getLines(), query.diff);
+  if (remainingDistance >= diffDistance(query.diff)) return;
+
+  emitter.emit("J", afterJoin.getPos(), remainingDistance);
+}
+
+void emitReplaceCharAction(
+    const TransformFrontierQuery& query,
+    const TransformOptimizerParams& params,
+    EditEmitter& emitter) {
+  const DiffState& diff = query.diff;
+  if (!diff.isReplacement()) return;
+  Lines deletedLines = diff.deletedLines();
+  Lines insertedLines = diff.insertedLines();
+  if (deletedLines.size() != 1 || insertedLines.size() != 1) return;
+
+  const Line& deleted = deletedLines[0];
+  const Line& inserted = insertedLines[0];
+  if (deleted.size() != inserted.size() || deleted == inserted) return;
+  if (query.cursor.line != diff.beginPos.line) return;
+
+  int offset = query.cursor.col - diff.beginPos.col;
+  if (offset < 0 || offset >= static_cast<int>(deleted.size())) return;
+  if (deleted[offset] == inserted[offset]) return;
+
+  int run = 1;
+  while (offset + run < static_cast<int>(deleted.size()) &&
+         deleted[offset + run] != inserted[offset + run] &&
+         inserted[offset + run] == inserted[offset]) {
+    run++;
+  }
+
+  int replaceCount = 1;
+  if (params.countPrefixesEnabled() &&
+      run >= params.minPrefixCount && run <= params.maxPrefixCount) {
+    replaceCount = run;
+  }
+
+  string token;
+  if (replaceCount > 1) token += to_string(replaceCount);
+  token += 'r';
+  token += inserted[offset];
+
+  Lines after = query.lines;
+  Line& line = after[query.cursor.line];
+  for (int i = 0; i < replaceCount; i++) {
+    line[query.cursor.col + i] = inserted[offset + i];
+  }
+
+  CursorPos landing(query.cursor.line, query.cursor.col + replaceCount - 1);
+  emitter.emit(token, landing, residualDistanceAfter(query.lines, after, diff));
 }
 
 // Depth-1 structural enumeration via TransformExplorer — replaces the
@@ -143,44 +251,43 @@ void enumerateDepth1DeletionStructurals(
     return CursorPos(local.line + diff.beginPos.line, local.col);
   };
 
-  // Build the displayed sequence string for an emitted command. For
-  // replacement diffs, deletion commands convert to change-mode form via
-  // ChangeGoalHandler::deleteToChangeChar / deleteToChangeLine — same
-  // mapping the optimizer's change-goal handler uses (covers `D`→`C`,
-  // `x`→`s`, `X`→`hs`, `dw`→`dwi`, `dd`→`cc`/`0C`, etc.).
-  auto charwiseSeq = [&](const SequenceBinding& cmd) -> string {
+  // For replacements, emit only change forms that are a single Normal-mode
+  // action. Multi-action forms like `dwi` continue as delete-first alternatives
+  // so Explore can re-enter Transform/Insert after the observed state changes.
+  auto charwiseSeq = [&](const SequenceBinding& cmd) -> optional<string> {
     if (!isReplacement) {
-      string seq;
-      if (cmd.count > 0) seq += to_string(cmd.count);
-      seq += string(cmd.base.seq.view());
-      return seq;
+      return sourceCommandSeq(cmd);
     }
     KeyedSequence c = ChangeGoalHandler::deleteToChangeChar(cmd);
-    return string(c.seq.view());
+    string seq(c.seq.view());
+    if (!isSingleChangeAction(seq)) return nullopt;
+    return seq;
   };
 
-  auto linewiseSeq = [&](const SequenceBinding& cmd, std::string_view lineContent) -> string {
+  auto linewiseSeq = [&](const SequenceBinding& cmd,
+                         std::string_view lineContent) -> optional<string> {
     if (!isReplacement) {
-      string seq;
-      if (cmd.count > 0) seq += to_string(cmd.count);
-      seq += string(cmd.base.seq.view());
-      return seq;
+      return sourceCommandSeq(cmd);
     }
     KeyedSequence c = ChangeGoalHandler::deleteToChangeLine(cmd, lineContent);
-    return string(c.seq.view());
+    string seq(c.seq.view());
+    if (!isSingleChangeAction(seq)) return nullopt;
+    return seq;
   };
 
   auto applyAndEmitCharwise = [&](TransformEditorState&& newState, const SequenceBinding& cmd) {
     if (newState.getLines() != expectedPost) return;
-    emitter.emit(charwiseSeq(cmd), bufferLanding(newState.getPos()),
-                 replacementInsertDistance);
+    optional<string> seq = charwiseSeq(cmd);
+    if (!seq) return;
+    emitter.emit(*seq, bufferLanding(newState.getPos()), replacementInsertDistance);
   };
 
   auto applyAndEmitLinewise = [&](TransformEditorState&& newState, const SequenceBinding& cmd,
                                     std::string_view lineContent) {
     if (newState.getLines() != expectedPost) return;
-    emitter.emit(linewiseSeq(cmd, lineContent), bufferLanding(newState.getPos()),
-                 replacementInsertDistance);
+    optional<string> seq = linewiseSeq(cmd, lineContent);
+    if (!seq) return;
+    emitter.emit(*seq, bufferLanding(newState.getPos()), replacementInsertDistance);
   };
 
   // Polymorphic over CharRange / CharLineRange / LineCharRange — TransformExplorer
@@ -209,18 +316,16 @@ void enumerateDepth1DeletionStructurals(
         cmd, firstLineContent);
   };
 
-  // Pure deletion of `\n` is the only depth-1 case where a bare J/gJ/NJ/NgJ
-  // matches the post-edit fencepost. Replacement-with-join (e.g. `\n` → ` `)
-  // is covered by the separate joinPlan emission downstream, which builds
-  // the correct `J`/`Ji<typed>` shape — skipping here avoids both
-  // duplication and incomplete change-mode reconstruction.
-  const bool emitJoinStructurals = diff.isPureDeletion();
+  // Explorer's J lane owns every J/gJ/NJ/NgJ that exactly reaches the
+  // post-edit fencepost. The fencepost gate inside applyAndEmitCharwise
+  // (newState.getLines() == expectedPost) makes this disjoint from
+  // emitJoinFirstAction, which owns "progress without reaching fencepost".
+  // No pure-deletion gate — a replacement of `\n` with ` ` is also reachable
+  // by a bare J.
   auto onJoin = [&](bool addSpace, const SequenceBinding& cmd) {
-    if (!emitJoinStructurals) return;
     applyAndEmitCharwise(TransformSimulator::afterJoin(state, addSpace), cmd);
   };
   auto onCountedJoin = [&](bool addSpace, const SequenceBinding& cmd) {
-    if (!emitJoinStructurals) return;
     applyAndEmitCharwise(TransformSimulator::afterMultiJoin(state, cmd.count, addSpace), cmd);
   };
 
@@ -232,30 +337,11 @@ void enumerateDepth1DeletionStructurals(
       params.minPrefixCount,
       onAnyDeletion, onLinewise, onJoin, onLinewise, onCountedJoin);
 
-  // Post-explorer emissions — same helpers used by finalize-time paths.
-  if (diff.isPureDeletion()) {
-    auto visual = TransformPostExplorer::tryVisualDelete(
-        effective, boundary.leftColOffset(), boundary.rightColOffset(),
-        boundary, params, config);
-    if (visual) {
-      emitter.emit(visual->result.getSequence().view(),
-                   bufferLanding(visual->goalPos));
-    }
-  }
-  if (diff.isReplacement() && diff.deletedLines().size() == 1 &&
-      diff.insertedLines().size() == 1 &&
-      diff.deletedLines()[0].size() == diff.insertedLines()[0].size()) {
-    // tryReplacement assumes the cursor is at col 0 of the single line; emit
-    // only when the depth-1 cursor is at the start of the diff line.
-    if (localCursor.line == 0 && localCursor.col == boundary.leftColOffset()) {
-      auto replacement = TransformPostExplorer::tryReplacement(
-          diff.deletedLines()[0], diff.insertedLines()[0],
-          config, std::numeric_limits<double>::infinity());
-      if (replacement) {
-        emitter.emit(replacement->getSequence().view(), bufferLanding(localCursor));
-      }
-    }
-  }
+  // Visual deletion is a multi-token structural macro. Frontier does not
+  // surface it; the full TransformOptimizer batch still emits `v{motion}d`
+  // shortcuts. See `dev/architecture/todo.md` item 6 for the re-introduction
+  // threshold.
+  emitReplaceCharAction(query, params, emitter);
 }
 
 }
@@ -265,12 +351,8 @@ vector<Suggestion> rankTransformFrontier(
     const Config& config) {
   if (query.maxCount <= 0) return {};
 
-  CompositionOptimizerParams compositionParams =
-      OptimizerParamOverrides::resolved<CompositionOptimizerParams>(query.overrides);
   TransformOptimizerParams transformParams =
       OptimizerParamOverrides::resolved<TransformOptimizerParams>(query.overrides);
-  optional<JoinPlan> joinPlan = computeJoinPlanForDiff(
-      query.diff, query.lines, compositionParams, config);
   BracketQuoteContext bqContext = computeTextObjectContextForDiff(query.diff, query.lines);
 
   vector<Suggestion> items;
@@ -279,9 +361,7 @@ vector<Suggestion> rankTransformFrontier(
   const double acceptedCost = acceptedEffort.getEffort(config);
   EditEmitter emitter{
       items,
-#ifndef NDEBUG
       {},
-#endif
       acceptedEffort, acceptedCost,
       transformParams.effortWeight, transformParams.distanceWeight,
       config};
@@ -346,9 +426,7 @@ vector<Suggestion> rankTransformFrontier(
     }
   }
 
-  if (joinPlan && query.cursor.line == joinPlan->entryLine) {
-    emitter.emit(joinPlan->sequence.view(), joinPlan->goalPos);
-  }
+  emitJoinFirstAction(query, emitter);
 
   // Bracket/quote text-objects only fire as a fallback when no deletion
   // structurals were found — preserves the prior behaviour that the

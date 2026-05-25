@@ -7,29 +7,30 @@
 #include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/TransformOptimizer/TransformPostExplorerEmissions.h"
+#include "Utils/Debug.h"
 
 using namespace std;
 
 namespace {
 
-int firstDotBeforeDotContextReset(const vector<ParsedEdit>& edits, int start) {
-  for (int i = start; i < static_cast<int>(edits.size()); i++) {
-    if (edits[i].edit == ".") return i;
-    if (Edit::updatesDotRepeat(Mode::Normal, edits[i].edit)) return -1;
+int firstDotBeforeDotContextReset(
+    const vector<ChangeGoalHandler::SuffixCommandInfo>& commands,
+    int start) {
+  for (int i = start; i < static_cast<int>(commands.size()); i++) {
+    if (commands[i].isDotRepeat) return i;
+    if (commands[i].updatesDotRepeat) return -1;
   }
   return -1;
 }
 
-string expandDotRepeatCommand(const ParsedEdit& dot, const string& lastEditCmd) {
-  assert(dot.edit == ".");
-  auto parsedLast = Edit::parseEdits(lastEditCmd);
-  assert(parsedLast && !parsedLast->empty());
-
-  ParsedEdit repeated = (*parsedLast)[0];
-  if (dot.hasCount()) {
-    repeated = ParsedEdit{repeated.edit, dot.effectiveCount()};
+vector<const TransformPathStep*> collectPath(
+    shared_ptr<const TransformPathStep> tail) {
+  vector<const TransformPathStep*> path;
+  for (auto node = std::move(tail); node; node = node->prev) {
+    path.push_back(node.get());
   }
-  return Edit::formatDotRepeatCommand(repeated);
+  reverse(path.begin(), path.end());
+  return path;
 }
 
 KeyedSequence buildExpandedDotPrefix(const SuffixProgram& program,
@@ -43,6 +44,27 @@ KeyedSequence buildExpandedDotPrefix(const SuffixProgram& program,
   prefix += KeyedSequence(
       expandedDotCmd, globalSequenceToKeys().tokenize(expandedDotCmd));
   return prefix;
+}
+
+struct LinewiseChangeShape {
+  int lineCount;
+  int cursorLine;
+};
+
+LinewiseChangeShape linewiseChangeShapeForCommand(
+    const TransformState& base,
+    LineRange range,
+    string_view baseCmd) {
+  int rangeLineCount = range.endLine - range.beginLine;
+  // `c}` at EOF is characterwise: preserved lines above the cursor remain
+  // above the insert line, so only those line breaks can need `<BS>`.
+  if (baseCmd == "d}" &&
+      range.endLine == static_cast<int>(base.getLines().size())) {
+    return {range.beginLine + 1, range.beginLine};
+  }
+  return {
+      static_cast<int>(base.getLines().size()) - rangeLineCount + 1,
+      range.beginLine};
 }
 
 }  // namespace
@@ -119,6 +141,11 @@ KeyedSequence ChangeGoalHandler::withOptionalCount(int count, const KeyedSequenc
     return base;
   }
   return KeyedSequence(count, base);
+}
+
+string ChangeGoalHandler::formatCountedCommand(int count, string_view baseCmd) {
+  if (count <= 0) return string(baseCmd);
+  return to_string(count) + string(baseCmd);
 }
 
 KeyedSequence ChangeGoalHandler::deleteToChangeChar(const SequenceBinding& sourceCmd) {
@@ -262,22 +289,6 @@ KeyedSequence ChangeGoalHandler::buildChangePrefix(
 
 // Suffix cache methods
 
-vector<KeyedSequence> ChangeGoalHandler::buildKeyedSequencesFromParsedEdits(
-    const vector<ParsedEdit>& edits) const {
-  int n = static_cast<int>(edits.size());
-  vector<KeyedSequence> res(n);
-  for (int i = 0; i < n; i++) {
-    string editStr;
-    if (edits[i].hasCount()) {
-      editStr = to_string(edits[i].effectiveCount()) + string(edits[i].edit);
-    } else {
-      editStr = string(edits[i].edit);
-    }
-    res[i] = KeyedSequence(editStr, globalSequenceToKeys().tokenize(editStr));
-  }
-  return res;
-}
-
 vector<RunningEffort> ChangeGoalHandler::buildRawSuffixEfforts(
     const SuffixProgram& program,
     const RunningEffort& terminalSuffixEffort,
@@ -299,22 +310,22 @@ vector<RunningEffort> ChangeGoalHandler::buildRawSuffixEfforts(
 
 SuffixValue ChangeGoalHandler::buildSuffixValueForNextIndex(
     const shared_ptr<const SuffixProgram>& suffixProgram,
-    const vector<ParsedEdit>& dotAwareEdits,
+    const vector<SuffixCommandInfo>& commandInfos,
     const vector<RunningEffort>& rawSuffixEfforts,
     int nextIndex,
-    const string& lastEditCmd) const {
+    int lastEditCount,
+    string_view lastEditBase) const {
   int programSize = suffixProgram->size();
   assert(nextIndex >= 0 && nextIndex <= programSize);
 
-  int dotIndex = firstDotBeforeDotContextReset(dotAwareEdits, nextIndex);
-  if (dotIndex < 0 || lastEditCmd.empty()) {
+  int dotIndex = firstDotBeforeDotContextReset(commandInfos, nextIndex);
+  if (dotIndex < 0 || lastEditBase.empty()) {
     return SuffixValue(suffixProgram, nextIndex, rawSuffixEfforts[nextIndex]);
   }
 
-  string expandedDotCmd =
-      expandDotRepeatCommand(dotAwareEdits[dotIndex], lastEditCmd);
+  string expectedDotCmd = formatCountedCommand(lastEditCount, lastEditBase);
   KeyedSequence expandedPrefix = buildExpandedDotPrefix(
-      *suffixProgram, nextIndex, dotIndex, expandedDotCmd);
+      *suffixProgram, nextIndex, dotIndex, expectedDotCmd);
   RunningEffort expandedPrefixEffort(expandedPrefix.keys, config);
 
   RunningEffort expandedEffort =
@@ -322,50 +333,72 @@ SuffixValue ChangeGoalHandler::buildSuffixValueForNextIndex(
 
   return SuffixValue(
       suffixProgram, dotIndex + 1, std::move(expandedPrefix), expandedEffort,
-      lastEditCmd, nextIndex, rawSuffixEfforts[nextIndex]);
+      expectedDotCmd, nextIndex, rawSuffixEfforts[nextIndex]);
 }
 
-void ChangeGoalHandler::replayAndCacheSuffix(
-    int startIndex, const string& searchPrefixSeq,
+void ChangeGoalHandler::cacheSuffixesForPath(
+    const TransformState& base,
     const KeyedSequence& completionSuffix,
     double completionPenalty,
     const KeyedSequence& typedSuffix,
     const RunningEffort& typedSuffixEffort) {
+  // Suffix cache is populated only from completed Normal-mode goal paths.
+  // The path-step chain's initial state is the search start (no preceding
+  // command), which is always Normal.
+  CHECK(base.getMode() == Mode::Normal,
+        "cacheSuffixesForPath called from a non-Normal base state");
   cachePopulations++;
 
-  auto parsedPrefixEdits = Edit::parseEdits(searchPrefixSeq);
-  assert(parsedPrefixEdits);
-  vector<ParsedEdit> prefixEdits = *parsedPrefixEdits;
-  int prefixEditCount = static_cast<int>(prefixEdits.size());
-  vector<KeyedSequence> replayEditCmds = buildKeyedSequencesFromParsedEdits(prefixEdits);
-  replayEditCmds.push_back(completionSuffix);
-  int programEditCount = static_cast<int>(replayEditCmds.size());
-  auto suffixProgram = make_shared<SuffixProgram>(std::move(replayEditCmds), typedSuffix);
+  vector<const TransformPathStep*> path = collectPath(base.getPathTail());
+  vector<KeyedSequence> commands;
+  vector<SuffixCommandInfo> commandInfos;
+  commands.reserve(path.size() + 1);
+  commandInfos.reserve(path.size() + 1);
+  for (const TransformPathStep* step : path) {
+    commands.emplace_back(
+        step->command, globalSequenceToKeys().tokenize(step->command));
+    commandInfos.push_back(SuffixCommandInfo{
+        step->isDotRepeat, step->updatesDotRepeat});
+  }
+  commands.push_back(completionSuffix);
+  commandInfos.push_back(SuffixCommandInfo{
+      false, true});
+
+  int prefixCommandCount = static_cast<int>(path.size());
+  int programCommandCount = static_cast<int>(commands.size());
+  auto suffixProgram = make_shared<SuffixProgram>(std::move(commands), typedSuffix);
 
   vector<RunningEffort> rawSuffixEfforts =
       buildRawSuffixEfforts(*suffixProgram, typedSuffixEffort,
-                            prefixEditCount, completionPenalty);
+                            prefixCommandCount, completionPenalty);
 
-  Lines replayLines = effectiveLines;
-  CursorPos replayPos = seedPositionForStart(startIndex, initialLines, leftColOffset);
-  Mode replayMode = Mode::Normal;
-
-  string lastEditCmd;
-  for (int nextIndex = 0; nextIndex < programEditCount; nextIndex++) {
-    size_t replayHash = hashLines(replayLines);
-    SuffixKey sk(replayHash, static_cast<int>(replayLines.size()), replayPos,
-                 replayMode);
-    if (suffixCache.find(sk) == suffixCache.end()) {
-      suffixCache[sk] = buildSuffixValueForNextIndex(
-          suffixProgram, prefixEdits, rawSuffixEfforts, nextIndex, lastEditCmd);
+  size_t initialHash = hashLines(effectiveLines);
+  int initialLineCount = static_cast<int>(effectiveLines.size());
+  CursorPos initialPos =
+      seedPositionForStart(base.getStartIndex(), initialLines, leftColOffset);
+  for (int nextIndex = 0; nextIndex < programCommandCount; nextIndex++) {
+    size_t linesHash = initialHash;
+    int lineCount = initialLineCount;
+    CursorPos replayPos = initialPos;
+    Mode replayMode = base.getMode();
+    int lastEditCount = 0;
+    string_view lastEditBase;
+    if (nextIndex > 0) {
+      const TransformPathStep* previous = path[static_cast<size_t>(nextIndex - 1)];
+      linesHash = previous->linesHashAfter;
+      lineCount = previous->lineCountAfter;
+      replayPos = previous->posAfter;
+      replayMode = previous->modeAfter;
+      lastEditCount = previous->lastEditCountAfter;
+      lastEditBase = previous->lastEditBaseAfter;
     }
 
-    if (nextIndex >= prefixEditCount) break;
-
-    Edit::applyEdit(replayLines, replayPos, replayMode, prefixEdits[nextIndex], &lastEditCmd,
-                    transformBoundary.hasLinesBelow(),
-                    leftColOffset, rightColOffset,
-                    transformBoundary.hasLinesAbove());
+    SuffixKey sk(linesHash, lineCount, replayPos, replayMode);
+    if (suffixCache.find(sk) == suffixCache.end()) {
+      suffixCache[sk] = buildSuffixValueForNextIndex(
+          suffixProgram, commandInfos, rawSuffixEfforts, nextIndex,
+          lastEditCount, lastEditBase);
+    }
   }
 }
 
@@ -395,9 +428,9 @@ GoalStates ChangeGoalHandler::emitEditGoal(
 
   debug("emitEditGoal: fullNormalSeq='" + normalSeq.seq.str() + "'");
 
-  replayAndCacheSuffix(base.getStartIndex(), base.getSeq(),
-                       goalCompletionCmd, completionPenalty,
-                       typedVariants.normalTyped.sequence, typedVariants.normalTyped.effort);
+  cacheSuffixesForPath(base, goalCompletionCmd, completionPenalty,
+                       typedVariants.normalTyped.sequence,
+                       typedVariants.normalTyped.effort);
 
   TransformStateFactory states(config, effortWeight);
   TransformState normalState = states.afterCommandWithLastEdit(
@@ -427,7 +460,7 @@ GoalStates ChangeGoalHandler::emitLinewiseChangeGoal(
     const TransformEditorState& afterDel, const TransformState& base,
     const SequenceBinding& sourceCmd, int line,
     int ccLineCount, const KeyedSequence& changeCmd,
-    bool applyAutoindent) {
+    bool applyAutoindent, bool collapseLines) {
   bool isDot = isDotRepeat(base, sourceCmd);
   int autoindentLen = 0;
   if constexpr (VimOptions::autoindent()) {
@@ -438,9 +471,11 @@ GoalStates ChangeGoalHandler::emitLinewiseChangeGoal(
 
   KeyedSequence changePrefix = changeCmd;
   bool useAfterIndent = false;
-  bool bsInCollapse = (ccLineCount > 1 && line > 0);
+  bool bsInCollapse = collapseLines && ccLineCount > 1 && line > 0;
   if constexpr (VimOptions::autoindent()) {
-    if (applyAutoindent && !bsInCollapse) {
+    if (!collapseLines) {
+      useAfterIndent = false;
+    } else if (applyAutoindent && !bsInCollapse) {
       changePrefix += computeIndentAdjustment(autoindentLen, goalFirstIndentLen);
       changePrefix += buildCollapseSequence(ccLineCount, line);
       useAfterIndent = goalFirstIndentLen > 0;
@@ -452,7 +487,9 @@ GoalStates ChangeGoalHandler::emitLinewiseChangeGoal(
       changePrefix += buildCollapseSequence(ccLineCount, line);
     }
   } else {
-    changePrefix += buildCollapseSequence(ccLineCount, line);
+    if (collapseLines) {
+      changePrefix += buildCollapseSequence(ccLineCount, line);
+    }
   }
 
   const auto& suffixTyped = useAfterIndent ? typedAfterIndent : typed;
@@ -470,19 +507,30 @@ GoalStates ChangeGoalHandler::onLinewiseGoal(
   if constexpr (VimOptions::autoindent()) {
     applyAutoindent = (changeCmd.seq.view() != "0C");
   }
-  return emitLinewiseChangeGoal(afterDel, base, sourceCmd, line,
-                                static_cast<int>(base.getLines().size()),
-                                changeCmd, applyAutoindent);
+  bool paragraphChangeAtEof =
+      sourceCmd.base.seq.view() == "d}" &&
+      range.endLine == static_cast<int>(base.getLines().size());
+  LinewiseChangeShape shape =
+      linewiseChangeShapeForCommand(base, range, sourceCmd.base.seq.view());
+  bool collapseLines = paragraphChangeAtEof ? line > 0 : true;
+  return emitLinewiseChangeGoal(afterDel, base, sourceCmd, shape.cursorLine,
+                                shape.lineCount, changeCmd, applyAutoindent,
+                                collapseLines);
 }
 
 GoalStates ChangeGoalHandler::onCountedLinewiseGoal(
     const TransformEditorState& afterDel, const TransformState& base,
     LineRange range, const SequenceBinding& sourceCmd) {
   int line = range.beginLine;
-  int lineCount = range.endLine - range.beginLine;
-  int ccLineCount = static_cast<int>(base.getLines().size()) - lineCount + 1;
   KeyedSequence changeCmd = deleteToChangeLine(sourceCmd, base.getLines()[line]);
-  return emitLinewiseChangeGoal(afterDel, base, sourceCmd, line, ccLineCount, changeCmd, true);
+  bool paragraphChangeAtEof =
+      sourceCmd.base.seq.view() == "d}" &&
+      range.endLine == static_cast<int>(base.getLines().size());
+  LinewiseChangeShape shape =
+      linewiseChangeShapeForCommand(base, range, sourceCmd.base.seq.view());
+  return emitLinewiseChangeGoal(
+      afterDel, base, sourceCmd, shape.cursorLine, shape.lineCount, changeCmd, true,
+      paragraphChangeAtEof ? line > 0 : true);
 }
 
 GoalStates ChangeGoalHandler::onJoinGoal(

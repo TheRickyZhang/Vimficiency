@@ -1,59 +1,41 @@
 
 
 == Current priority stack:
-Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
-
-Review implementation of BufferIndex in optimizeToRange() (is it exploring correctly on lines / columns? Correct passed in from composition?)
 
 == TODO Stack
-- Mostly work on getting MVP for now
-- Different modes of invoking sessions
-- Improving the lua/C++ interaction semantics
 
+- apply the same single-token design fix to compositionFrontier, which can emit combined movement + edit motions like $a{typed}<Esc>
+
+- Add different types of tests: expect, property-based, fuzzing
+- Improve our diff separation logic using tree DP diff idea by Tristan Hume
+- Fix the visual nav branch in TransformOptimizer; moving in visual mode can be DIFFERENT than in normal mode
+- Add some more randomized exploration in optimizers so it can explore more branches (probably want a deterministics ration). Actually, probably modifying our approach to use Anytime Repairing A* is better - find the best approach we can in a specific time frame, given that a decently admissible heuristic is not possible.
+- Mostly work on getting MVP for now
+
+
+
+
+- Later:
+- Given that we have a visual-nav case in our transform optimizer, should the transform params contain a nav param for this case? If we proceed like this we suddenly need an embedded composition model
+- Any need for concurrency in implementing subprocesses?
+- Logic for consolidating insert mode text into a shorter reference / symbol.
+- Think about good .agents skills to add along the way, and test to see if they work well.
+- Make structs like CursorPos, CharRange, immutable?
+- Expanding search so that we include 1 before / after so that a/i possibly searches as well;
+- Would need to update both the optmizier AND the explorer identically
+- Probably would want to fully figure out how insert-mode deletions with <C-w>, <C-u> would work.
+- Review implementation of BufferIndex in optimizeToRange() (is it exploring correctly on lines / columns? Correct passed in from composition?)
+- 9dedexC explored when C would suffice?
+- Improving the lua/C++ interaction semantics
 - Are param handling consistent?
 - Right now our parsing handles find state like: faw;, where the second ; works from the current position even after a w in between.
 - Really ensure that the suffix cache handling with . is correct AND performant.
+Local-only RunningEffort context in NavOptimize
+- Improve onLinewiseGoal semantics - currently very lengthy
 
-- Add different types of tests: expect, property-based, fuzzing
-- Add some more randomized exploration in optimizers so it can explore more branches (probably want a deterministics ration). Actually, probably modifying our approach to use Anytime Repairing A* is better - find the best approach we can in a specific time frame, given that a decently admissible heuristic is not possible.
 
 Review Exploration C++ code
 toNavSuggestion - huh wtf are these conversions?
-
-And as always once done triaging and fixing, make sure to actually verify that the feature still works for the user
-Make structs like CursorPos, CharRange, immutable?
-Test that our code is organized well: Expanding search so that we include 1 before / after so that a/i possibly searches as well;
-- Would need to update both the optmizier AND the explorer identically
-- Probably would want to fully figure out how insert-mode deletions with <C-w>, <C-u> would work.
-
-Think about good .agents skills to add along the way, and test to see if they work well.
-READ through ALL the explore code
-
-Logic for consolidating insert mode text into a shorter reference / symbol.
-
-- Later:
-- Consider if the sort by: effort vs distance vs heuristic is efficient enough and a semantic improvement to be handled in lua (would need to process all results from explorer)
-- Can optimize the single-position navOptimizer case by meet in the middle, remove dup checks
-- Given that we have a visual-nav case in our transform optimizer, should the transform params contain a nav param for this case? If we proceed like this we suddenly need an embedded composition model - only strongly decide if the current design poses problems, or we are confident in our direction of improved transform searching
-
-implement debounced async for how to properly continuously perform optimize() calls to check among previous things automatically. Also need details for concurrency in implementing subprocesses?
-
-
-
-Verify universal half-open semantics
-9dedexC explored when C would suffice?
-Overall, not enough other early branches explored; heuristic model locks in one branch pretty early
-
-Overall, just verify for any missed ideas in CompositionOptimizer exploration
-
-Local-only RunningEffort context in NavOptimize
-
-Verify usage of maxMultipleP
-
-Improve clarity of handling characterwise vs linewise deletions currently distinguished by exclusive endpoint (line, line.size()) vs (line+1, 0)
-Improve onLinewiseGoal semantics - currently very lengthy
-
-
 == Later:
 Optimize our VimCore word motions to use stored flags to drive decisions, just like in our initial DP diff processing
 
@@ -89,4 +71,5 @@ Done:
 - f/t, ;/, motions                                 **
 - <C-d, u, f, b> page motions                      **
 - Real-time, automatic session spawning            *****
+- Insert Mode handling (just a lot more stuff)     ********* (very very difficult)
 

@@ -372,15 +372,93 @@ TEST_F(ExploreViewTest, AcceptInsertExitRecordsUnparseableRawKeys) {
 }
 
 TEST_F(ExploreViewTest, ApplyEditRejectedForMotionOnlyGoals) {
-  // Pure-motion goal (initial == goal, cursor differs) never reaches Transform.
+  // Pure-motion goal (initial == goal, cursor differs) has no planned edit
+  // slot, so applyEdit is gated out by requirePlannedEditTarget.
   Lines lines{Line("foo bar")};
   auto view = makeView(lines, {0, 0}, lines, {0, 4});
 
   auto outcome = view.applyEdit("x");
   ASSERT_FALSE(outcome.has_value());
-  EXPECT_NE(outcome.error().reason.find("transforming"), string::npos);
+  EXPECT_NE(outcome.error().reason.find("post-final-edit"), string::npos);
   EXPECT_EQ(view.state().lines, lines);
   EXPECT_EQ(view.state().cursor, CursorPos(0, 0));
+}
+
+TEST_F(ExploreViewTest, ApplyEditAcceptsCompositionFromNavigate) {
+  // EOL pure-insertion: from any column on the target line the composition
+  // recommendation is `A`. Under the unified apply abstraction it must be
+  // applicable even when the phase is Navigate (i.e. cursor is not at the
+  // ordinary Transform-start position).
+  Lines initial{Line("hello")};
+  Lines goal{Line("hello!")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 5});
+
+  ASSERT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  auto outcome = view.applyEdit("A");
+  ASSERT_TRUE(outcome.has_value()) << outcome.error().reason;
+  EXPECT_TRUE(std::holds_alternative<Explore::Insert>(view.phase()));
+  EXPECT_EQ(view.state().cursor, CursorPos(0, 5));
+}
+
+TEST_F(ExploreViewTest, ApplyEditRejectsFullCompositionInsertionBody) {
+  Lines initial{Line("hello")};
+  Lines goal{Line("hello!")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 5});
+
+  const auto priorState = view.state();
+  auto outcome = view.applyEdit("A!<Esc>");
+  ASSERT_FALSE(outcome.has_value());
+  EXPECT_NE(outcome.error().reason.find("planned edit scope"), string::npos);
+  EXPECT_EQ(view.state(), priorState);
+}
+
+TEST_F(ExploreViewTest, ApplyEditRejectsFullCompositionTextObjectBody) {
+  Lines initial{Line("foo (abc) bar")};
+  Lines goal{Line("foo (X) bar")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 5});
+
+  const auto priorState = view.state();
+  auto outcome = view.applyEdit("ci(X<Esc>");
+  ASSERT_FALSE(outcome.has_value());
+  EXPECT_NE(outcome.error().reason.find("planned edit scope"), string::npos);
+  EXPECT_EQ(view.state(), priorState);
+}
+
+TEST_F(ExploreViewTest, ApplyEditAcceptsJoinPlanProgress) {
+  Lines initial{Line("a"), Line("b")};
+  Lines goal{Line("a b!")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 3});
+
+  auto outcome = view.applyEdit("J");
+  ASSERT_TRUE(outcome.has_value()) << outcome.error().reason;
+  EXPECT_EQ(view.state().lines, Lines{Line("a b")});
+  EXPECT_TRUE(view.state().hasPartialEditSpan);
+}
+
+TEST_F(ExploreViewTest, ApplyEditRejectsUnplannedJoin) {
+  Lines initial{Line("abc"), Line("def")};
+  Lines goal{Line("aBc"), Line("def")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 1});
+
+  const auto priorState = view.state();
+  auto outcome = view.applyEdit("J");
+  ASSERT_FALSE(outcome.has_value());
+  EXPECT_NE(outcome.error().reason.find("planned edit scope"), string::npos);
+  EXPECT_EQ(view.state(), priorState);
+}
+
+TEST_F(ExploreViewTest, ApplyEditRejectsBogusToken) {
+  // Lookup-only validation: a token outside the planner-sanctioned scope at
+  // the current cursor must reject without mutating state.
+  Lines initial{Line("hello")};
+  Lines goal{Line("hello!")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 5});
+
+  const auto priorState = view.state();
+  auto outcome = view.applyEdit("totally-not-a-real-edit");
+  ASSERT_FALSE(outcome.has_value());
+  EXPECT_NE(outcome.error().reason.find("planned edit scope"), string::npos);
+  EXPECT_EQ(view.state(), priorState);
 }
 
 TEST_F(ExploreViewTest, AcceptBufferStateRejectedAtPostFinalEditNav) {

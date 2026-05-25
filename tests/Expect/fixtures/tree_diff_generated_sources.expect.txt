@@ -1,0 +1,292 @@
+TreeDiff expect report
+Case: generated source arithmetic reshape
+Initial:
+  0: int go_go() {
+  1:   int go_be = al_al + fn_co;
+  2:   go_be = go_be + al_al;
+  3:   return go_be + 5;
+  4: }
+Goal:
+  0: int go_go() {
+  1:   int go_be = al_al - fn_co;
+  2:   go_be = go_be + al_al; // adjusted
+  3:   // generated guard
+  4:   return go_be + 5;
+  5: }
+Initial tree:
+  flat: "int go_go() {\n  int go_be = al_al + fn_co;\n  go_be = go_be + al_al;\n  return go_be + 5;\n}"
+  counts: Root=1 Paragraph=1 Line=5 BigWord=19 Word=23 Char=89
+  Root:
+    [0] text=[0,89) children=[0,1) "int go_go() {\n  int go_be = al_al + fn_co;\n  go_be = go_be + al_al;\n  return go_be + 5;\n}"
+  Paragraph:
+    [0] text=[0,89) children=[0,5) "int go_go() {\n  int go_be = al_al + fn_co;\n  go_be = go_be + al_al;\n  return go_be + 5;\n}"
+  Line:
+    [0] text=[0,14) children=[0,3) "int go_go() {\n"
+    [1] text=[14,43) children=[3,9) "  int go_be = al_al + fn_co;\n"
+    [2] text=[43,68) children=[9,14) "  go_be = go_be + al_al;\n"
+    [3] text=[68,88) children=[14,18) "  return go_be + 5;\n"
+    [4] text=[88,89) children=[18,19) "}"
+  BigWord:
+    [0] text=[0,4) children=[0,1) "int "
+    [1] text=[4,12) children=[1,3) "go_go() "
+    [2] text=[12,13) children=[3,4) "{"
+    [3] text=[14,20) children=[4,5) "  int "
+    [4] text=[20,26) children=[5,6) "go_be "
+    [5] text=[26,28) children=[6,7) "= "
+    [6] text=[28,34) children=[7,8) "al_al "
+    [7] text=[34,36) children=[8,9) "+ "
+    [8] text=[36,42) children=[9,11) "fn_co;"
+    [9] text=[43,51) children=[11,12) "  go_be "
+    [10] text=[51,53) children=[12,13) "= "
+    [11] text=[53,59) children=[13,14) "go_be "
+    [12] text=[59,61) children=[14,15) "+ "
+    [13] text=[61,67) children=[15,17) "al_al;"
+    [14] text=[68,77) children=[17,18) "  return "
+    [15] text=[77,83) children=[18,19) "go_be "
+    [16] text=[83,85) children=[19,20) "+ "
+    [17] text=[85,87) children=[20,22) "5;"
+    [18] text=[88,89) children=[22,23) "}"
+  Word:
+    [0] text=[0,4) children=[0,4) "int "
+    [1] text=[4,9) children=[4,9) "go_go"
+    [2] text=[9,12) children=[9,12) "() "
+    [3] text=[12,13) children=[12,13) "{"
+    [4] text=[14,20) children=[14,20) "  int "
+    [5] text=[20,26) children=[20,26) "go_be "
+    [6] text=[26,28) children=[26,28) "= "
+    [7] text=[28,34) children=[28,34) "al_al "
+    [8] text=[34,36) children=[34,36) "+ "
+    [9] text=[36,41) children=[36,41) "fn_co"
+    [10] text=[41,42) children=[41,42) ";"
+    [11] text=[43,51) children=[43,51) "  go_be "
+    [12] text=[51,53) children=[51,53) "= "
+    [13] text=[53,59) children=[53,59) "go_be "
+    [14] text=[59,61) children=[59,61) "+ "
+    [15] text=[61,66) children=[61,66) "al_al"
+    [16] text=[66,67) children=[66,67) ";"
+    [17] text=[68,77) children=[68,77) "  return "
+    [18] text=[77,83) children=[77,83) "go_be "
+    [19] text=[83,85) children=[83,85) "+ "
+    [20] text=[85,86) children=[85,86) "5"
+    [21] text=[86,87) children=[86,87) ";"
+    [22] text=[88,89) children=[88,89) "}"
+Goal tree:
+  flat: "int go_go() {\n  int go_be = al_al - fn_co;\n  go_be = go_be + al_al; // adjusted\n  // generated guard\n  return go_be + 5;\n}"
+  counts: Root=1 Paragraph=1 Line=6 BigWord=24 Word=28 Char=122
+  Root:
+    [0] text=[0,122) children=[0,1) "int go_go() {\n  int go_be = al_al - fn_co;\n  go_be = go_be + al_al; // adjusted\n  // generated guard\n  return go_be + 5;\n}"
+  Paragraph:
+    [0] text=[0,122) children=[0,6) "int go_go() {\n  int go_be = al_al - fn_co;\n  go_be = go_be + al_al; // adjusted\n  // generated guard\n  return go_be + 5;\n}"
+  Line:
+    [0] text=[0,14) children=[0,3) "int go_go() {\n"
+    [1] text=[14,43) children=[3,9) "  int go_be = al_al - fn_co;\n"
+    [2] text=[43,80) children=[9,16) "  go_be = go_be + al_al; // adjusted\n"
+    [3] text=[80,101) children=[16,19) "  // generated guard\n"
+    [4] text=[101,121) children=[19,23) "  return go_be + 5;\n"
+    [5] text=[121,122) children=[23,24) "}"
+  BigWord:
+    [0] text=[0,4) children=[0,1) "int "
+    [1] text=[4,12) children=[1,3) "go_go() "
+    [2] text=[12,13) children=[3,4) "{"
+    [3] text=[14,20) children=[4,5) "  int "
+    [4] text=[20,26) children=[5,6) "go_be "
+    [5] text=[26,28) children=[6,7) "= "
+    [6] text=[28,34) children=[7,8) "al_al "
+    [7] text=[34,36) children=[8,9) "- "
+    [8] text=[36,42) children=[9,11) "fn_co;"
+    [9] text=[43,51) children=[11,12) "  go_be "
+    [10] text=[51,53) children=[12,13) "= "
+    [11] text=[53,59) children=[13,14) "go_be "
+    [12] text=[59,61) children=[14,15) "+ "
+    [13] text=[61,68) children=[15,17) "al_al; "
+    [14] text=[68,71) children=[17,18) "// "
+    [15] text=[71,79) children=[18,19) "adjusted"
+    [16] text=[80,85) children=[19,20) "  // "
+    [17] text=[85,95) children=[20,21) "generated "
+    [18] text=[95,100) children=[21,22) "guard"
+    [19] text=[101,110) children=[22,23) "  return "
+    [20] text=[110,116) children=[23,24) "go_be "
+    [21] text=[116,118) children=[24,25) "+ "
+    [22] text=[118,120) children=[25,27) "5;"
+    [23] text=[121,122) children=[27,28) "}"
+  Word:
+    [0] text=[0,4) children=[0,4) "int "
+    [1] text=[4,9) children=[4,9) "go_go"
+    [2] text=[9,12) children=[9,12) "() "
+    [3] text=[12,13) children=[12,13) "{"
+    [4] text=[14,20) children=[14,20) "  int "
+    [5] text=[20,26) children=[20,26) "go_be "
+    [6] text=[26,28) children=[26,28) "= "
+    [7] text=[28,34) children=[28,34) "al_al "
+    [8] text=[34,36) children=[34,36) "- "
+    [9] text=[36,41) children=[36,41) "fn_co"
+    [10] text=[41,42) children=[41,42) ";"
+    [11] text=[43,51) children=[43,51) "  go_be "
+    [12] text=[51,53) children=[51,53) "= "
+    [13] text=[53,59) children=[53,59) "go_be "
+    [14] text=[59,61) children=[59,61) "+ "
+    [15] text=[61,66) children=[61,66) "al_al"
+    [16] text=[66,68) children=[66,68) "; "
+    [17] text=[68,71) children=[68,71) "// "
+    [18] text=[71,79) children=[71,79) "adjusted"
+    [19] text=[80,85) children=[80,85) "  // "
+    [20] text=[85,95) children=[85,95) "generated "
+    [21] text=[95,100) children=[95,100) "guard"
+    [22] text=[101,110) children=[101,110) "  return "
+    [23] text=[110,116) children=[110,116) "go_be "
+    [24] text=[116,118) children=[116,118) "+ "
+    [25] text=[118,119) children=[118,119) "5"
+    [26] text=[119,120) children=[119,120) ";"
+    [27] text=[121,122) children=[121,122) "}"
+TreeDiff regions: 3
+  [0] replace range=(1,20)->(1,21) flat=[34,35)
+      del="+"
+      ins="-"
+  [1] insert range=(2,24)->(2,24) flat=[67,67)
+      del=""
+      ins=" // adjusted"
+  [2] insert range=(3,0)->(3,0) flat=[68,68)
+      del=""
+      ins="  // generated guard"
+Round trip: mismatch
+Reconstructed:
+  0: int go_go() {
+  1:   int go_be = al_al - fn_co;
+  2:   go_be = go_be + al_al; // adjusted
+  3:   // generated guard  return go_be + 5;
+  4: }
+
+Case: generated source block replacement
+Initial:
+  0: int di_go() {
+  1:   int di_hi = go_di + di_ex;
+  2:   di_hi = di_hi + go_di;
+  3:   return di_hi + 9;
+  4: }
+Goal:
+  0: long di_go() {
+  1:   long total = be_ex * 8;
+  2:   di_hi = di_hi + go_di;
+  3:   return total;
+  4: }
+Initial tree:
+  flat: "int di_go() {\n  int di_hi = go_di + di_ex;\n  di_hi = di_hi + go_di;\n  return di_hi + 9;\n}"
+  counts: Root=1 Paragraph=1 Line=5 BigWord=19 Word=23 Char=89
+  Root:
+    [0] text=[0,89) children=[0,1) "int di_go() {\n  int di_hi = go_di + di_ex;\n  di_hi = di_hi + go_di;\n  return di_hi + 9;\n}"
+  Paragraph:
+    [0] text=[0,89) children=[0,5) "int di_go() {\n  int di_hi = go_di + di_ex;\n  di_hi = di_hi + go_di;\n  return di_hi + 9;\n}"
+  Line:
+    [0] text=[0,14) children=[0,3) "int di_go() {\n"
+    [1] text=[14,43) children=[3,9) "  int di_hi = go_di + di_ex;\n"
+    [2] text=[43,68) children=[9,14) "  di_hi = di_hi + go_di;\n"
+    [3] text=[68,88) children=[14,18) "  return di_hi + 9;\n"
+    [4] text=[88,89) children=[18,19) "}"
+  BigWord:
+    [0] text=[0,4) children=[0,1) "int "
+    [1] text=[4,12) children=[1,3) "di_go() "
+    [2] text=[12,13) children=[3,4) "{"
+    [3] text=[14,20) children=[4,5) "  int "
+    [4] text=[20,26) children=[5,6) "di_hi "
+    [5] text=[26,28) children=[6,7) "= "
+    [6] text=[28,34) children=[7,8) "go_di "
+    [7] text=[34,36) children=[8,9) "+ "
+    [8] text=[36,42) children=[9,11) "di_ex;"
+    [9] text=[43,51) children=[11,12) "  di_hi "
+    [10] text=[51,53) children=[12,13) "= "
+    [11] text=[53,59) children=[13,14) "di_hi "
+    [12] text=[59,61) children=[14,15) "+ "
+    [13] text=[61,67) children=[15,17) "go_di;"
+    [14] text=[68,77) children=[17,18) "  return "
+    [15] text=[77,83) children=[18,19) "di_hi "
+    [16] text=[83,85) children=[19,20) "+ "
+    [17] text=[85,87) children=[20,22) "9;"
+    [18] text=[88,89) children=[22,23) "}"
+  Word:
+    [0] text=[0,4) children=[0,4) "int "
+    [1] text=[4,9) children=[4,9) "di_go"
+    [2] text=[9,12) children=[9,12) "() "
+    [3] text=[12,13) children=[12,13) "{"
+    [4] text=[14,20) children=[14,20) "  int "
+    [5] text=[20,26) children=[20,26) "di_hi "
+    [6] text=[26,28) children=[26,28) "= "
+    [7] text=[28,34) children=[28,34) "go_di "
+    [8] text=[34,36) children=[34,36) "+ "
+    [9] text=[36,41) children=[36,41) "di_ex"
+    [10] text=[41,42) children=[41,42) ";"
+    [11] text=[43,51) children=[43,51) "  di_hi "
+    [12] text=[51,53) children=[51,53) "= "
+    [13] text=[53,59) children=[53,59) "di_hi "
+    [14] text=[59,61) children=[59,61) "+ "
+    [15] text=[61,66) children=[61,66) "go_di"
+    [16] text=[66,67) children=[66,67) ";"
+    [17] text=[68,77) children=[68,77) "  return "
+    [18] text=[77,83) children=[77,83) "di_hi "
+    [19] text=[83,85) children=[83,85) "+ "
+    [20] text=[85,86) children=[85,86) "9"
+    [21] text=[86,87) children=[86,87) ";"
+    [22] text=[88,89) children=[88,89) "}"
+Goal tree:
+  flat: "long di_go() {\n  long total = be_ex * 8;\n  di_hi = di_hi + go_di;\n  return total;\n}"
+  counts: Root=1 Paragraph=1 Line=5 BigWord=17 Word=21 Char=83
+  Root:
+    [0] text=[0,83) children=[0,1) "long di_go() {\n  long total = be_ex * 8;\n  di_hi = di_hi + go_di;\n  return total;\n}"
+  Paragraph:
+    [0] text=[0,83) children=[0,5) "long di_go() {\n  long total = be_ex * 8;\n  di_hi = di_hi + go_di;\n  return total;\n}"
+  Line:
+    [0] text=[0,15) children=[0,3) "long di_go() {\n"
+    [1] text=[15,41) children=[3,9) "  long total = be_ex * 8;\n"
+    [2] text=[41,66) children=[9,14) "  di_hi = di_hi + go_di;\n"
+    [3] text=[66,82) children=[14,16) "  return total;\n"
+    [4] text=[82,83) children=[16,17) "}"
+  BigWord:
+    [0] text=[0,5) children=[0,1) "long "
+    [1] text=[5,13) children=[1,3) "di_go() "
+    [2] text=[13,14) children=[3,4) "{"
+    [3] text=[15,22) children=[4,5) "  long "
+    [4] text=[22,28) children=[5,6) "total "
+    [5] text=[28,30) children=[6,7) "= "
+    [6] text=[30,36) children=[7,8) "be_ex "
+    [7] text=[36,38) children=[8,9) "* "
+    [8] text=[38,40) children=[9,11) "8;"
+    [9] text=[41,49) children=[11,12) "  di_hi "
+    [10] text=[49,51) children=[12,13) "= "
+    [11] text=[51,57) children=[13,14) "di_hi "
+    [12] text=[57,59) children=[14,15) "+ "
+    [13] text=[59,65) children=[15,17) "go_di;"
+    [14] text=[66,75) children=[17,18) "  return "
+    [15] text=[75,81) children=[18,20) "total;"
+    [16] text=[82,83) children=[20,21) "}"
+  Word:
+    [0] text=[0,5) children=[0,5) "long "
+    [1] text=[5,10) children=[5,10) "di_go"
+    [2] text=[10,13) children=[10,13) "() "
+    [3] text=[13,14) children=[13,14) "{"
+    [4] text=[15,22) children=[15,22) "  long "
+    [5] text=[22,28) children=[22,28) "total "
+    [6] text=[28,30) children=[28,30) "= "
+    [7] text=[30,36) children=[30,36) "be_ex "
+    [8] text=[36,38) children=[36,38) "* "
+    [9] text=[38,39) children=[38,39) "8"
+    [10] text=[39,40) children=[39,40) ";"
+    [11] text=[41,49) children=[41,49) "  di_hi "
+    [12] text=[49,51) children=[49,51) "= "
+    [13] text=[51,57) children=[51,57) "di_hi "
+    [14] text=[57,59) children=[57,59) "+ "
+    [15] text=[59,64) children=[59,64) "go_di"
+    [16] text=[64,65) children=[64,65) ";"
+    [17] text=[66,75) children=[66,75) "  return "
+    [18] text=[75,80) children=[75,80) "total"
+    [19] text=[80,81) children=[80,81) ";"
+    [20] text=[82,83) children=[82,83) "}"
+TreeDiff regions: 3
+  [0] replace range=(0,0)->(0,3) flat=[0,3)
+      del="int"
+      ins="long"
+  [1] replace range=(1,2)->(1,27) flat=[16,41)
+      del="int di_hi = go_di + di_ex"
+      ins="long total = be_ex * 8"
+  [2] replace range=(3,9)->(3,18) flat=[77,86)
+      del="di_hi + 9"
+      ins="total"
+Round trip: ok

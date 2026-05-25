@@ -36,11 +36,9 @@ local function render_suggestion(summary)
   local result = summary.result
   if not result then return end
 
-  local header = "vimfy suggest "
-    .. result_view.format_position(result)
-    .. result_view.format_reason_suffix(result)
-  local body = result_view.format_body(result)
-  vim.notify(header .. "\n" .. table.concat(body, "\n"), vim.log.levels.INFO)
+  vim.notify(
+    result_view.format_message("vimfy suggest", result),
+    vim.log.levels.INFO)
 end
 
 --- Shared path for every trigger.

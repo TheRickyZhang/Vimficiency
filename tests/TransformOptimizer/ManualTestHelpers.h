@@ -16,6 +16,7 @@
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Types/Mode.h"
+#include "Utils/InterpreterModelReplay.h"
 #include "Utils/NeovimOracle.h"
 
 class TransformOptimizer_ManualTest : public ::testing::Test {
@@ -81,6 +82,29 @@ inline SimulationResult verifySequenceWithOracle(
       << "  Ours:   " << ours.pos << " mode=" << static_cast<int>(ours.mode) << "\n"
       << "  Neovim: (" << nvim.row << "," << nvim.col
       << ") mode=" << static_cast<int>(nvim.mode);
+
+  return nvim;
+}
+
+inline SimulationResult verifyUserSequenceWithOracle(
+    NeovimOracle* oracle,
+    const Lines& source,
+    CursorPos initialPos,
+    const std::string& sequence) {
+  SimulationResult nvim =
+      oracle->simulate(source, initialPos.line, initialPos.col, sequence);
+  InterpreterReplayResult ours =
+      applyUserSequence(source, initialPos, sequence);
+
+  EXPECT_EQ(ours.lines, nvim.lines)
+      << "Lines mismatch for seq='" << sequence << "' from " << initialPos << "\n"
+      << "  Source: " << source << "\n"
+      << "  Ours:   " << ours.lines << "\n"
+      << "  Neovim: " << nvim.lines;
+
+  EXPECT_EQ(ours.cursor.line, nvim.row);
+  EXPECT_EQ(ours.cursor.col, nvim.col);
+  EXPECT_EQ(ours.mode, nvim.mode);
 
   return nvim;
 }

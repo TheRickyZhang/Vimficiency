@@ -23,7 +23,7 @@ using namespace std;
 
 namespace {
 
-struct GoldenFixture {
+struct ExpectFixture {
   string name;
   Lines lines;
   Lines goalLines;
@@ -57,13 +57,13 @@ string readText(const filesystem::path& path) {
   return out.str();
 }
 
-GoldenFixture loadFixture(string_view name) {
+ExpectFixture loadFixture(string_view name) {
   const auto path = fixtureDir() / (string(name) + ".json");
   ifstream in(path);
   if (!in) throw runtime_error("cannot open " + path.string());
   const nlohmann::json root = nlohmann::json::parse(in);
 
-  GoldenFixture fixture;
+  ExpectFixture fixture;
   fixture.name = root.at("name").get<string>();
   fixture.lines = jsonToLines(root.at("lines"));
   fixture.goalLines = jsonToLines(root.at("goal_lines"));
@@ -74,7 +74,7 @@ GoldenFixture loadFixture(string_view name) {
   return fixture;
 }
 
-string goldenPhaseName(const Explore::Phase& phase) {
+string expectPhaseName(const Explore::Phase& phase) {
   if (holds_alternative<Explore::Navigate>(phase)) return "Navigate";
   if (holds_alternative<Explore::Transform>(phase)) return "Transform";
   if (holds_alternative<Explore::Insert>(phase)) return "Insert";
@@ -89,7 +89,7 @@ string renderLines(const Lines& lines) {
   return out.str();
 }
 
-string renderReport(const GoldenFixture& fixture) {
+string renderReport(const ExpectFixture& fixture) {
   Config config = Config::uniform();
   NavContext navContext{24, 12};
   NavBoundary boundary(
@@ -112,7 +112,7 @@ string renderReport(const GoldenFixture& fixture) {
   out << "Goal lines:\n" << renderLines(fixture.goalLines);
   out << "User sequence: " << fixture.userSeq
       << " (effort " << getEffort(fixture.userSeq, config) << ")\n";
-  out << "Phase: " << goldenPhaseName(view.phase()) << "("
+  out << "Phase: " << expectPhaseName(view.phase()) << "("
       << Explore::phaseIndex(view.phase()) << "/" << view.totalEdits() << ")\n";
   out << "Recommendations:\n";
 
@@ -127,18 +127,18 @@ string renderReport(const GoldenFixture& fixture) {
   return out.str();
 }
 
-void expectGolden(string_view name) {
-  const GoldenFixture fixture = loadFixture(name);
-  const string expected = readText(fixtureDir() / (string(name) + ".expected.txt"));
+void expectFixture(string_view name) {
+  const ExpectFixture fixture = loadFixture(name);
+  const string expected = readText(fixtureDir() / (string(name) + ".expect.txt"));
   EXPECT_EQ(renderReport(fixture), expected);
 }
 
-TEST(GoldenReportTest, MotionNextWord) {
-  expectGolden("motion_next_word");
+TEST(ExpectReportTest, MotionNextWord) {
+  expectFixture("motion_next_word");
 }
 
-TEST(GoldenReportTest, DeleteSingleChar) {
-  expectGolden("delete_single_char");
+TEST(ExpectReportTest, DeleteSingleChar) {
+  expectFixture("delete_single_char");
 }
 
 }  // namespace

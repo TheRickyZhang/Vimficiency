@@ -53,7 +53,11 @@ CompositionSearchContext::CompositionSearchContext(
     case DiffAlgorithm::Tree:
       rawDiffs = TreeDiff::calculate(
           Lines(initialLines.begin(), initialLines.end()),
-          Lines(goalLines.begin(), goalLines.end()));
+          Lines(goalLines.begin(), goalLines.end()),
+          config,
+          TreeDiff::CostOptions{
+              .diffOpenPenalty = params.treeDiffOpenPenalty,
+          });
       break;
     default:
       CHECK(false, "unknown composition diff algorithm");

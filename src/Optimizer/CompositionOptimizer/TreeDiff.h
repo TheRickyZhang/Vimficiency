@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "DiffState.h"
+#include "Keyboard/Config.h"
 #include "Types/Lines.h"
 
 namespace DiffAlgorithm {
@@ -81,8 +82,14 @@ struct Tree {
   }
 };
 
+struct CostOptions {
+  double diffOpenPenalty = 8.0;
+};
+
 std::vector<DiffState> calculate(
     const Lines& initialLines,
-    const Lines& goalLines);
+    const Lines& goalLines,
+    const Config& config,
+    CostOptions options = {});
 
 } // namespace TreeDiff

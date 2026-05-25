@@ -4,7 +4,7 @@
 // Expectations adapt at compile time, so the suite passes in both
 // VIMFICIENCY_LEGACY_VIM=ON and OFF configurations.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="VimOptionsTest.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="VimOptionsTest.*"
 
 #include <gtest/gtest.h>
 

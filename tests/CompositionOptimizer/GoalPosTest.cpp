@@ -5,7 +5,7 @@
 // segments interleaved among E edits. Pure-motion sessions (E == 0) flow
 // through the optimizer too, producing a one-nav-segment plan to goalPos.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="CompositionOptimizerGoalPos*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="CompositionOptimizerGoalPos*"
 
 #include <gtest/gtest.h>
 #include <memory>
@@ -140,5 +140,52 @@ TEST_F(CompositionOptimizerGoalPosTest, FinalNavCost_CursorActuallyLandsAtGoalPo
   for (size_t i = 0; i < results.size(); i++) {
     verifyGoalReached(results[i], initial, initialPos, goal, goalPos,
                       "FinalNavCost result " + to_string(i));
+  }
+}
+
+TEST_F(CompositionOptimizerGoalPosTest, SearchKeySeparatesStickyColumnBeforeEdit) {
+  Lines initial = {
+      "fcd e.. ,",
+      "f.c cda. ",
+      "a   ",
+  };
+  Lines goal = {
+      ".f.bc",
+      "fcd e.. ,",
+      "f.cdaeeaeda. ",
+  };
+  CursorPos initialPos(0, 5);
+  CursorPos goalPos(1, 3);
+
+  CompositionResult res = opt.optimize(
+      initial, initialPos, goal, goalPos,
+      CompositionOptimizerParams{}.withMaxResults(5));
+  const auto& results = res.getResults();
+  ASSERT_FALSE(results.empty())
+      << "Optimizer should find a composition plan for the fuzz regression";
+
+  for (size_t i = 0; i < results.size(); i++) {
+    verifyGoalReached(results[i], initial, initialPos, goal, goalPos,
+                      "StickyColumnBeforeEdit result " + to_string(i));
+  }
+}
+
+TEST_F(CompositionOptimizerGoalPosTest, WholeBufferRewriteClearsVisualChangeIndent) {
+  Lines initial = {" db"};
+  Lines goal = {" ", "db"};
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(1, 1);
+
+  CompositionResult res = opt.optimize(
+      initial, initialPos, goal, goalPos,
+      CompositionOptimizerParams{}.withMaxResults(5));
+  const auto& results = res.getResults();
+  ASSERT_FALSE(results.empty())
+      << "Optimizer should handle a multiline rewrite with leading space";
+
+  for (size_t i = 0; i < results.size(); i++) {
+    verifyGoalReached(results[i], initial, initialPos, goal, goalPos,
+                      "WholeBufferRewriteClearsVisualChangeIndent result " +
+                          to_string(i));
   }
 }
