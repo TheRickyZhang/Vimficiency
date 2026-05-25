@@ -15,6 +15,9 @@
 #include "Optimizer/NavOptimizer/NavOptimizerParams.h"
 #include "Optimizer/NavOptimizer/NavState.h"
 #include "Optimizer/OptimizerParamOverrides.h"
+#include "Utils/Debug.h"
+
+#include <unordered_set>
 
 using namespace std;
 
@@ -127,5 +130,13 @@ vector<Suggestion> rankNavFrontier(
     items.push_back(std::move(suggestion));
   }
   sortAndCapSuggestions(items, query.maxCount, query.sortMode);
+
+  // Pairwise-distinct tokens. Per-cell dedup above bounds each landing cell,
+  // but a global CHECK guards against any future enumeration overlap.
+  unordered_set<string> seen;
+  for (const Suggestion& s : items) {
+    CHECK(seen.insert(string(s.token)).second,
+          "duplicate NavFrontier token; fix enumerator overlap");
+  }
   return items;
 }

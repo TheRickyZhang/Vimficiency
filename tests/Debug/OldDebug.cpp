@@ -3,7 +3,7 @@
 // Previously used debug tests that were important for finding bugs.
 // Contains disabled tests for tracing and investigating specific behaviors.
 //
-// Run: ./build/tests/vimficiency_debug --gtest_filter="*Debug*"
+// Run: ./build/tests/vimfy_debug --gtest_filter="*Debug*"
 
 #include <cassert>
 

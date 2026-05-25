@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#include "Effort/RunningEffort.h"
+#include "Keyboard/KeyedSequence.h"
 #include "VimCore/CharMask.h"
 
 using namespace std;
@@ -125,7 +127,7 @@ struct EditSpan {
 };
 
 struct Plan {
-  int cost = numeric_limits<int>::max() / 4;
+  double cost = numeric_limits<double>::max() / 4.0;
   vector<EditSpan> spans;
 };
 
@@ -213,8 +215,14 @@ DiffState diffFromSpan(const Lines& initialLines,
 
 class Solver {
 public:
-  Solver(const Tree& oldTree, const Tree& newTree)
-      : oldTree(oldTree), newTree(newTree) {}
+  Solver(const Tree& oldTree,
+         const Tree& newTree,
+         const Config& config,
+         CostOptions options)
+      : oldTree(oldTree),
+        newTree(newTree),
+        config(config),
+        options(options) {}
 
   Plan solve() {
     return solveChildren(
@@ -224,11 +232,36 @@ public:
   }
 
 private:
-  static constexpr int INF = numeric_limits<int>::max() / 4;
-  static constexpr int DIFF_COST = 8;
+  static constexpr double INF = numeric_limits<double>::max() / 4.0;
 
   const Tree& oldTree;
   const Tree& newTree;
+  const Config& config;
+  CostOptions options;
+
+  double typedTextEffort(string_view text) const {
+    KeyedSequence typed;
+    typed.append(text);
+    RunningEffort effort(typed.keys, config);
+    return effort.getEffort(config);
+  }
+
+  double typedRangeEffort(const Tree& tree, TextRange range) const {
+    return typedTextEffort(string_view(tree.text).substr(
+        static_cast<size_t>(range.begin),
+        static_cast<size_t>(range.end - range.begin)));
+  }
+
+  double diffSpanCost(const EditSpan& span) const {
+    RunningEffort effort;
+    effort.addPenalty(options.diffOpenPenalty);
+    KeyedSequence typed;
+    typed.append(string_view(newTree.text).substr(
+        static_cast<size_t>(span.newText.begin),
+        static_cast<size_t>(textSize(span.newText))));
+    effort.append(typed.keys, config);
+    return effort.getEffort(config);
+  }
 
   struct ListDp {
     enum class OuterChoice {
@@ -238,12 +271,9 @@ private:
       Diff
     };
 
-    enum class InnerChoice {
-      Unset,
-      DropOld,
-      DropOldThenStop,
-      TakeNew,
-      TakeNewThenStop
+    struct InnerBuild {
+      int nextI = -1;
+      int nextJ = -1;
     };
 
     Solver& solver;
@@ -256,10 +286,11 @@ private:
     int newEnd;
     int oldCount;
     int newCount;
-    vector<vector<int>> outerCost;
-    vector<vector<int>> innerCost;
+    vector<vector<double>> outerCost;
+    vector<vector<double>> innerCost;
     vector<vector<OuterChoice>> outerChoice;
-    vector<vector<InnerChoice>> innerChoice;
+    vector<vector<InnerBuild>> innerChoice;
+    vector<vector<double>> newRangeEffort;
 
     ListDp(Solver& solver,
            Level parentLevel,
@@ -277,18 +308,29 @@ private:
           newCount(newEnd - newBegin),
           outerCost(
               static_cast<size_t>(oldCount + 1),
-              vector<int>(static_cast<size_t>(newCount + 1), INF)),
+              vector<double>(static_cast<size_t>(newCount + 1), INF)),
           innerCost(
               static_cast<size_t>(oldCount + 1),
-              vector<int>(static_cast<size_t>(newCount + 1), INF)),
+              vector<double>(static_cast<size_t>(newCount + 1), INF)),
           outerChoice(
               static_cast<size_t>(oldCount + 1),
               vector<OuterChoice>(
                   static_cast<size_t>(newCount + 1), OuterChoice::Unset)),
           innerChoice(
               static_cast<size_t>(oldCount + 1),
-              vector<InnerChoice>(
-                  static_cast<size_t>(newCount + 1), InnerChoice::Unset)) {}
+              vector<InnerBuild>(static_cast<size_t>(newCount + 1))),
+          newRangeEffort(
+              static_cast<size_t>(newCount + 1),
+              vector<double>(static_cast<size_t>(newCount + 1), 0.0)) {
+      for (int begin = 0; begin <= newCount; begin++) {
+        for (int end = begin + 1; end <= newCount; end++) {
+          newRangeEffort[static_cast<size_t>(begin)][static_cast<size_t>(end)] =
+              solver.typedRangeEffort(
+                  solver.newTree,
+                  TextRange{boundaryNew(begin), boundaryNew(end)});
+        }
+      }
+    }
 
     Plan solve() {
       return Plan{
@@ -297,13 +339,13 @@ private:
       };
     }
 
-    int outer(int i, int j) {
+    double outer(int i, int j) {
       if (i == oldCount && j == newCount) return 0;
 
-      int& res = outerCost[static_cast<size_t>(i)][static_cast<size_t>(j)];
+      double& res = outerCost[static_cast<size_t>(i)][static_cast<size_t>(j)];
       if (res != INF) return res;
 
-      auto update = [&](int cost, OuterChoice choice) {
+      auto update = [&](double cost, OuterChoice choice) {
         if (cost < res) {
           res = cost;
           outerChoice[static_cast<size_t>(i)][static_cast<size_t>(j)] = choice;
@@ -326,34 +368,33 @@ private:
       }
 
       if (i < oldCount || j < newCount) {
-        update(DIFF_COST + inner(i, j), OuterChoice::Diff);
+        update(solver.options.diffOpenPenalty + inner(i, j), OuterChoice::Diff);
       }
 
       return res;
     }
 
-    int inner(int i, int j) {
+    double inner(int i, int j) {
       if (i == oldCount && j == newCount) return 0;
 
-      int& res = innerCost[static_cast<size_t>(i)][static_cast<size_t>(j)];
+      double& res = innerCost[static_cast<size_t>(i)][static_cast<size_t>(j)];
       if (res != INF) return res;
 
-      auto update = [&](int cost, InnerChoice choice) {
+      auto update = [&](double cost, int nextI, int nextJ) {
         if (cost < res) {
           res = cost;
-          innerChoice[static_cast<size_t>(i)][static_cast<size_t>(j)] = choice;
+          innerChoice[static_cast<size_t>(i)][static_cast<size_t>(j)] =
+              InnerBuild{.nextI = nextI, .nextJ = nextJ};
         }
       };
 
-      if (i < oldCount) {
-        update(outer(i + 1, j), InnerChoice::DropOldThenStop);
-        update(inner(i + 1, j), InnerChoice::DropOld);
-      }
-
-      if (j < newCount) {
-        const int cost = textSize(newChild(j).text);
-        update(cost + outer(i, j + 1), InnerChoice::TakeNewThenStop);
-        update(cost + inner(i, j + 1), InnerChoice::TakeNew);
+      for (int nextI = i; nextI <= oldCount; nextI++) {
+        for (int nextJ = j; nextJ <= newCount; nextJ++) {
+          if (nextI == i && nextJ == j) continue;
+          double insertedCost =
+              newRangeEffort[static_cast<size_t>(j)][static_cast<size_t>(nextJ)];
+          update(insertedCost + outer(nextI, nextJ), nextI, nextJ);
+        }
       }
 
       return res;
@@ -401,36 +442,10 @@ private:
       return {};
     }
 
-    struct InnerBuild {
-      int nextI = 0;
-      int nextJ = 0;
-    };
-
     InnerBuild buildInner(int i, int j) {
-      InnerBuild build{.nextI = i, .nextJ = j};
-
-      while (build.nextI < oldCount || build.nextJ < newCount) {
-        inner(build.nextI, build.nextJ);
-        switch (innerChoice[static_cast<size_t>(build.nextI)]
-                           [static_cast<size_t>(build.nextJ)]) {
-          case InnerChoice::DropOld:
-            build.nextI++;
-            break;
-          case InnerChoice::DropOldThenStop:
-            build.nextI++;
-            return build;
-          case InnerChoice::TakeNew:
-            build.nextJ++;
-            break;
-          case InnerChoice::TakeNewThenStop:
-            build.nextJ++;
-            return build;
-          case InnerChoice::Unset:
-            assert(false);
-            return build;
-        }
-      }
-
+      inner(i, j);
+      InnerBuild build = innerChoice[static_cast<size_t>(i)][static_cast<size_t>(j)];
+      assert(build.nextI != -1 && build.nextJ != -1);
       return build;
     }
 
@@ -473,8 +488,7 @@ private:
           Node{.text = span.newText,
                .children = childRangeForNew(startJ, endJ)});
 
-      int coarseCost =
-          DIFF_COST + textSize(span.newText);
+      double coarseCost = solver.diffSpanCost(span);
       if (!refined.spans.empty() && refined.cost <= coarseCost) {
         return std::move(refined.spans);
       }
@@ -665,13 +679,17 @@ Tree::Tree(const Lines& lines) : text(lines.flatten()) {
   addNode(Level::Root, TextRange{0, sz}, ChildRange{0, size(Level::Root + 1)});
 }
 
-vector<DiffState> calculate(const Lines& initialLines, const Lines& goalLines) {
+vector<DiffState> calculate(
+    const Lines& initialLines,
+    const Lines& goalLines,
+    const Config& config,
+    CostOptions options) {
   Tree initialTree(initialLines);
   Tree goalTree(goalLines);
 
   if (initialTree.text == goalTree.text) return {};
 
-  Plan plan = Solver(initialTree, goalTree).solve();
+  Plan plan = Solver(initialTree, goalTree, config, options).solve();
   vector<DiffState> result;
   result.reserve(plan.spans.size());
   for (const EditSpan& span : plan.spans) {

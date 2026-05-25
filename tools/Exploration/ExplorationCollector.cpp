@@ -9,7 +9,7 @@ using namespace std;
 Config config = Config::uniform();
 
 static_assert(SEARCH_TRACE_STATS_ENABLED,
-              "vimficiency_explore must be built with -DVIMF_TRACK_STATES=ON; "
+              "vimfy_explore must be built with -DVIMF_TRACK_STATES=ON; "
               "without it, exploredStates_ stays empty and the dashboard "
               "exploration tree/charts cannot render.");
 

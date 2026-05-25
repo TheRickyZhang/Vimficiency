@@ -9,6 +9,14 @@ const TransformBoundary& TransformBoundary::noParent() {
   return instance;
 }
 
+TransformBoundary TransformBoundary::joinResidualBoundary(
+    bool hasLinesAbove, bool hasLinesBelow) {
+  TransformBoundary boundary;
+  boundary.hasLinesAbove_ = hasLinesAbove;
+  boundary.hasLinesBelow_ = hasLinesBelow;
+  return boundary;
+}
+
 // =============================================================================
 // TransformBoundary constructor
 // =============================================================================

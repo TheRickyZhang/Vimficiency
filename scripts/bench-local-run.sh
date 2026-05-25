@@ -133,8 +133,8 @@ cmake --build build
 echo "[bench] running suites"
 run_suite() {
   local filter="$1" out="$2"
-  VIMFICIENCY_SEED_MODE=fixed \
-    ./build/tests/vimficiency_benchmarks \
+  VIMFY_SEED_MODE=fixed \
+    ./build/tests/vimfy_benchmarks \
       --benchmark_filter="${filter}.*" \
       --benchmark_format=json \
       --benchmark_out="$out"
@@ -198,14 +198,14 @@ if $IS_MAIN; then
   cmake -B build_track -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF \
     -DVIMF_TRACK_STATES=ON \
     "${CCACHE_FLAGS[@]}"
-  cmake --build build_track --target vimficiency_explore
-  VIMFICIENCY_SEED_MODE=fixed ./build_track/tools/vimficiency_explore
+  cmake --build build_track --target vimfy_explore
+  VIMFY_SEED_MODE=fixed ./build_track/tools/vimfy_explore
 
   for f in edit_explore.json motion_explore.json composition_explore.json; do
     total=$(jq '[.cases[].states | length] | add // 0' "$f")
     if [ "$total" -eq 0 ]; then
       echo "ERROR: $f has zero explored states across all cases."
-      echo "  vimficiency_explore ran but recorded nothing — tracking"
+      echo "  vimfy_explore ran but recorded nothing — tracking"
       echo "  instrumentation is likely disconnected. Check VIMF_TRACK_STATES"
       echo "  and the maybeRecordExploredState call sites."
       exit 1
@@ -214,7 +214,7 @@ if $IS_MAIN; then
   done
 
   echo "[tests] running for timing"
-  ./build/tests/vimficiency_tests --gtest_brief=1 --gtest_output=json:test_timing.json
+  ./build/tests/vimfy_unit_tests --gtest_brief=1 --gtest_output=json:test_timing.json
   bun scripts/convert-gtest-timing.ts test_timing.json test_timing_bench.json
 fi
 

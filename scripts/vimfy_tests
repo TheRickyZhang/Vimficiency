@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$here/.." && pwd)"
+
+build_dir="${VIMFY_BUILD_DIR:-build}"
+case "$build_dir" in
+  /*) ;;
+  *) build_dir="$repo_root/$build_dir" ;;
+esac
+
+suite="${1:-all}"
+filter="${2:-}"
+mode="${3:-explore}"
+fuzztest_seed="OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk"
+
+if [[ "$suite" == "all" || "$suite" == "property" || "$suite" == "safety" ]]; then
+  if [[ $# -lt 3 ]]; then
+    case "$filter" in
+      seed|explore|campaign)
+        mode="$filter"
+        filter=""
+        ;;
+    esac
+  fi
+fi
+
+require_executable() {
+  local path="$1"
+  local target="$2"
+  if [[ -x "$path" ]]; then
+    return
+  fi
+
+  echo "error: $path not found" >&2
+  echo "  Run: cmake -B build && cmake --build build --target $target" >&2
+  exit 1
+}
+
+run_gtest() {
+  local binary="$1"
+  local test_filter="${2:-}"
+
+  local args=(--gtest_brief=1)
+  if [[ -n "$test_filter" ]]; then
+    args+=(--gtest_filter="$test_filter")
+  fi
+
+  "$binary" "${args[@]}"
+}
+
+filter_fuzztest_seed_line() {
+  local line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      FUZZTEST_PRNG_SEED=*) ;;
+      *) printf '%s\n' "$line" ;;
+    esac
+  done
+}
+
+run_seed_generated() {
+  local binary="$1"
+  shift
+
+  # FuzzTest always prints its seed at startup. Fixed-seed mode still explores,
+  # but with a deterministic runner seed, so print the seed only on failure.
+  if env FUZZTEST_PRNG_SEED="$fuzztest_seed" \
+    "$binary" "$@" 2> >(filter_fuzztest_seed_line >&2); then
+    return 0
+  else
+    local status=$?
+    echo "FUZZTEST_PRNG_SEED=$fuzztest_seed" >&2
+    return "$status"
+  fi
+}
+
+run_generated() {
+  local binary="$1"
+  local test_filter="${2:-}"
+  local run_mode="${3:-seed}"
+
+  local args=(--gtest_brief=1)
+  if [[ -n "$test_filter" ]]; then
+    args+=(--gtest_filter="$test_filter")
+  fi
+
+  case "$run_mode" in
+    seed)
+      run_seed_generated "$binary" "${args[@]}"
+      ;;
+    explore)
+      "$binary" "${args[@]}"
+      ;;
+    campaign)
+      if [[ -z "$test_filter" ]]; then
+        echo "error: campaign mode requires a test name/filter" >&2
+        exit 1
+      fi
+      "$binary" --fuzz="$test_filter" --fuzz_for="${VIMFY_FUZZ_FOR:-30s}"
+      ;;
+    *)
+      echo "error: unknown mode '$run_mode' (expected seed, explore, or campaign)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+run_lua() {
+  local file="${1:-}"
+  local lib="$build_dir/libvimficiency.so"
+  if [[ ! -f "$lib" ]]; then
+    echo "error: $lib not found" >&2
+    echo "  Run: cmake -B build && cmake --build build --target vimficiency" >&2
+    exit 1
+  fi
+
+  if [[ -n "$file" ]]; then
+    VIMFICIENCY_LIB_PATH="$lib" VF_TEST_FILE="$file" \
+      nvim --headless -u NONE -U NONE -l "$repo_root/tests/lua/runner.lua"
+  else
+    VIMFICIENCY_LIB_PATH="$lib" bash "$repo_root/tests/lua/run.sh"
+  fi
+}
+
+unit_binary="$build_dir/tests/vimfy_unit_tests"
+expect_binary="$build_dir/tests/vimfy_expect_tests"
+property_binary="$build_dir/tests/vimfy_property_tests"
+safety_binary="$build_dir/tests/vimfy_safety_tests"
+
+case "$suite" in
+  all)
+    require_executable "$unit_binary" vimfy_unit_tests
+    require_executable "$expect_binary" vimfy_expect_tests
+    require_executable "$property_binary" vimfy_property_tests
+    require_executable "$safety_binary" vimfy_safety_tests
+    run_gtest "$unit_binary"
+    run_gtest "$expect_binary"
+    run_generated "$property_binary" "" "$mode"
+    run_generated "$safety_binary" "" "$mode"
+    run_lua
+    ;;
+  unit)
+    require_executable "$unit_binary" vimfy_unit_tests
+    run_gtest "$unit_binary" "$filter"
+    ;;
+  expect)
+    require_executable "$expect_binary" vimfy_expect_tests
+    run_gtest "$expect_binary" "$filter"
+    ;;
+  property)
+    require_executable "$property_binary" vimfy_property_tests
+    run_generated "$property_binary" "$filter" "$mode"
+    ;;
+  safety)
+    require_executable "$safety_binary" vimfy_safety_tests
+    run_generated "$safety_binary" "$filter" "$mode"
+    ;;
+  lua)
+    run_lua "$filter"
+    ;;
+  *)
+    echo "usage: scripts/vimfy_tests [all|unit|expect|property|safety|lua] [filter-or-file] [seed|explore|campaign]" >&2
+    echo "  property/safety/all default to explore mode; CI passes seed for deterministic generated tests." >&2
+    exit 1
+    ;;
+esac

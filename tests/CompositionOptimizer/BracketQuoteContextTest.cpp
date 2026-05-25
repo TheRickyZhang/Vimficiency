@@ -4,7 +4,7 @@
 // the mask should agree with Neovim on whether ci"/ca"/ci(/ca( etc.
 // from that column produces the exact edit region.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="TextObjectContextTest.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="TextObjectContextTest.*"
 
 #include <gtest/gtest.h>
 #include <memory>

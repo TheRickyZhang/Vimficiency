@@ -6,7 +6,7 @@ namespace {
 
 // Counted basic motions (h/l/j/k, gg/G, f/F/t/T with ;/, repeat, and multi-digit
 // counts) are covered against the oracle by
-// tests/Properties/CountedMotionProperties.cpp. NavContext-dependent scroll
+// tests/Property/InterpreterMatchesOracle.cpp. NavContext-dependent scroll
 // motions (<C-d>, <C-u>, <C-f>, <C-b>) stay here because the oracle does not
 // receive the optimizer's NavContext.
 

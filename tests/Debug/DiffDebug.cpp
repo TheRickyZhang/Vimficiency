@@ -3,19 +3,20 @@
 // Standalone tool to visualize how diff planners split buffer changes into regions.
 //
 // Usage:
-//   ./build/tests/vimficiency_diff_debug <initial> <goal>
+//   ./build/tests/vimfy_diff_debug <initial> <goal>
 //
 // Buffers use \n literal for line breaks:
-//   ./build/tests/vimficiency_diff_debug 'aaa\nbbb\nccc' 'ccc\nddd'
+//   ./build/tests/vimfy_diff_debug 'aaa\nbbb\nccc' 'ccc\nddd'
 //
 // Or pipe via stdin (two lines: initial then goal):
-//   echo -e 'aaa\\nbbb\\nccc\nccc\\nddd' | ./build/tests/vimficiency_diff_debug
+//   echo -e 'aaa\\nbbb\\nccc\nccc\\nddd' | ./build/tests/vimfy_diff_debug
 
 #include <iostream>
 #include <string>
 
 #include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Optimizer/CompositionOptimizer/TreeDiff.h"
+#include "Keyboard/Config.h"
 #include "Types/Lines.h"
 
 using namespace std;
@@ -84,7 +85,7 @@ static void printDiffs(const Lines& initial, const Lines& goal) {
 
   printDiffs("Myers", Myers::calculate(initial, goal), initial, goal);
   cout << endl;
-  printDiffs("Tree", TreeDiff::calculate(initial, goal), initial, goal);
+  printDiffs("Tree", TreeDiff::calculate(initial, goal, Config::uniform()), initial, goal);
 }
 
 int main(int argc, char* argv[]) {

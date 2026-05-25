@@ -58,6 +58,7 @@ void yankRange(Lines& lines, CursorPos& pos, Mode mode, const LineCharRange& ran
 // -----------------------------------------------------------------------------
 
 bool updatesDotRepeat(Mode mode, std::string_view edit);
+bool isValidNormalEditOnEmptyLine(std::string_view edit);
 std::string formatDotRepeatCommand(const ParsedEdit& edit);
 std::optional<std::string> dotRepeatCommandFor(Mode mode, const ParsedEdit& edit);
 

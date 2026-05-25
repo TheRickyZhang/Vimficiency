@@ -189,11 +189,9 @@ local function do_finish(active, alias, reason)
     return
   end
 
-  local header = "vimfy finished [" .. alias .. "] "
-    .. result_view.format_position(result)
-    .. result_view.format_reason_suffix(result)
-  local body = result_view.format_body(result)
-  vim.notify(header .. "\n" .. table.concat(body, "\n"), vim.log.levels.INFO)
+  vim.notify(
+    result_view.format_message("vimfy finished [" .. alias .. "]", result),
+    vim.log.levels.INFO)
 end
 
 ---@param alias string

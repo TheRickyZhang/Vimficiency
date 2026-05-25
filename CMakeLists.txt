@@ -57,12 +57,12 @@ option(VIMF_DEBUG "Enable debug output" ON)
 
 # Compile in explored-state tracking for the A* exploration tooling (off by
 # default — enabling this adds per-state allocations on every popped node).
-option(VIMF_TRACK_STATES "Enable explored-state recording for vimficiency_explore" OFF)
+option(VIMF_TRACK_STATES "Enable explored-state recording for vimfy_explore" OFF)
 
-# FuzzTest is the canonical generated-property and fuzzing framework. In its
-# default unit-test mode it runs as a normal gtest-compatible binary; coverage
-# guided fuzzing is enabled separately with FUZZTEST_FUZZING_MODE.
-option(VIMF_ENABLE_FUZZTEST "Build FuzzTest-based property/fuzz tests" ON)
+# FuzzTest powers generated property tests and safety tests. In its default
+# unit-test mode it runs as normal gtest-compatible binaries; coverage-guided
+# campaigns are enabled separately with FUZZTEST_FUZZING_MODE.
+option(VIMF_ENABLE_FUZZTEST "Build FuzzTest-based property/safety tests" ON)
 
 # Legacy Vim compatibility mode (uses Vim defaults instead of Neovim defaults)
 # Key differences when enabled:
@@ -71,7 +71,7 @@ option(VIMF_ENABLE_FUZZTEST "Build FuzzTest-based property/fuzz tests" ON)
 #   - Y: yy behavior (yank line) instead of y$ (yank to EOL)
 option(VIMF_LEGACY_VIM "Use legacy Vim defaults instead of Neovim defaults" OFF)
 
-# Produces STATIC libvimficiency_core.a.
+# Produces STATIC libvimfy_core.a.
 # Note to self: Static library just produces bundled code for purposes of easier inclsusion into others
 
 # Generate a single header carrying every build-time flag. Source code reads
@@ -97,24 +97,17 @@ configure_file(
     @ONLY
 )
 
-# NOTE Remove configure_depends when convenience no longer needed in development
-file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
-    src/Boundary/*.cpp
-    src/Effort/*.cpp
-    src/Interpreter/*.cpp
-    src/Keyboard/*.cpp
-    src/Optimizer/*.cpp
-    src/Session/*.cpp
-    src/Explore/*.cpp
-    src/Utils/*.cpp
-    src/VimCore/*.cpp
-    src/Types/*.cpp
+# Source globs are intentional for fast-moving local development.
+file(GLOB_RECURSE VIMFY_CORE_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
 )
-add_library(vimficiency_core STATIC ${CORE_SOURCES})
+list(FILTER VIMFY_CORE_SOURCES EXCLUDE REGEX [[/src/(LuaExports/|lua_exports\.cpp$|main\.cpp$)]])
+
+add_library(vimfy_core STATIC ${VIMFY_CORE_SOURCES})
 
 # We can reference everything under src/ absolutely. The generated/ directory
 # carries BuildConfig.h; source includes it as `#include "BuildConfig.h"`.
-target_include_directories(vimficiency_core PUBLIC
+target_include_directories(vimfy_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
@@ -123,25 +116,25 @@ target_include_directories(vimficiency_core PUBLIC
 # VIMF_DEBUG and VIMF_LEGACY_VIM are still surfaced as raw macros here because
 # their source-side readers currently use mismatched names (tracked as
 # cleanup items in dev/architecture/todo.md).
-target_compile_definitions(vimficiency_core PUBLIC
+target_compile_definitions(vimfy_core PUBLIC
     $<$<BOOL:${VIMF_DEBUG}>:VIMF_DEBUG>
     $<$<BOOL:${VIMF_LEGACY_VIM}>:VIMF_LEGACY_VIM>
 )
 
 # SHARED library for Neovim/Lua direct usage
+file(GLOB VIMFY_LUA_EXPORT_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/LuaExports/*.cpp
+)
+
 add_library(vimficiency SHARED
     src/lua_exports.cpp
-    src/LuaExports/AnalyzeExports.cpp
-    src/LuaExports/InteractiveExports.cpp
-    src/LuaExports/Logic.cpp
-    src/LuaExports/Payload.cpp
-    src/LuaExports/UtilityExports.cpp
+    ${VIMFY_LUA_EXPORT_SOURCES}
 )
-target_link_libraries(vimficiency PRIVATE vimficiency_core)
+target_link_libraries(vimficiency PRIVATE vimfy_core)
 
 # CLI for independent testing
 add_executable(vimficiency_cli src/main.cpp)
-target_link_libraries(vimficiency_cli PRIVATE vimficiency_core)
+target_link_libraries(vimficiency_cli PRIVATE vimfy_core)
 
 # Tests
 enable_testing()

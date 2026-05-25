@@ -478,6 +478,23 @@ static pair<CursorPos, CursorPos> findMatchingBrackets(
   }
 
 foundOpen:
+  if (openPos.line < 0 && !cursorOnClose) {
+    searchLine = std::max(0, pos.line);
+    while (searchLine < n) {
+      const string& ln = lines[searchLine];
+      int startCol = searchLine == pos.line ? std::max(0, pos.col) : 0;
+
+      for (int c = startCol; c < static_cast<int>(ln.size()); c++) {
+        if (ln[c] == open) {
+          openPos = CursorPos(searchLine, c);
+          goto foundOpenForward;
+        }
+      }
+      searchLine++;
+    }
+  }
+
+foundOpenForward:
   if (openPos.line < 0) return {CursorPos(-1, -1), CursorPos(-1, -1)};
 
   depth = 1;
@@ -533,7 +550,7 @@ static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
     return 0;
 
   cursorLine = std::clamp(cursorLine, 0, n - 1);
-  bool cursorOnBlank = isBlankLine(lines[cursorLine]);
+  bool cursorOnBlank = isParagraphSeparatorLine(lines[cursorLine]);
 
   int result = cursorLine;
 
@@ -552,7 +569,8 @@ static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
       if (cursorOnBlank) {
         // Already on blanks - return end of blank run
         result = blockEnd;
-      } else if (blockEnd + 1 < n && isBlankLine(lines[blockEnd + 1])) {
+      } else if (blockEnd + 1 < n &&
+                 isParagraphSeparatorLine(lines[blockEnd + 1])) {
         // Skip past non-blank paragraph, find end of following blank run
         result = paragraphEndLine(lines, blockEnd + 1);
       } else {
@@ -565,7 +583,8 @@ static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
       if (cursorOnBlank) {
         // Already on blanks - return start of blank run
         result = blockStart;
-      } else if (blockStart > 0 && isBlankLine(lines[blockStart - 1])) {
+      } else if (blockStart > 0 &&
+                 isParagraphSeparatorLine(lines[blockStart - 1])) {
         // Skip past non-blank paragraph, find start of preceding blank run
         result = paragraphStartLine(lines, blockStart - 1);
       } else {
@@ -578,7 +597,7 @@ static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
     if constexpr (Forward) {
       // Skip current blank lines
       int i = cursorLine;
-      while (i < n && isBlankLine(lines[i])) {
+      while (i < n && isParagraphSeparatorLine(lines[i])) {
         i++;
       }
       if (i >= n) {
@@ -587,7 +606,7 @@ static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
       } else {
         // Scan forward for next blank line
         i++;
-        while (i < n && !isBlankLine(lines[i])) {
+        while (i < n && !isParagraphSeparatorLine(lines[i])) {
           i++;
         }
         // Return blank line, or last line if not found
@@ -596,12 +615,12 @@ static int motionParagraphEndpointCore(int cursorLine, const Lines& lines) {
     } else {
       // Skip current blank lines
       int i = cursorLine;
-      while (i > 0 && isBlankLine(lines[i])) {
+      while (i > 0 && isParagraphSeparatorLine(lines[i])) {
         i--;
       }
       // Scan backward for previous blank line
       i--;
-      while (i >= 0 && !isBlankLine(lines[i])) {
+      while (i >= 0 && !isParagraphSeparatorLine(lines[i])) {
         i--;
       }
       // Return blank line, or line 0 if not found
@@ -676,7 +695,7 @@ LineRange paragraphTextObjectRange(int cursorLine, const Lines& lines,
     return LINE_RANGE_OUTSIDE_BOUNDARY;
 
   cursorLine = std::clamp(cursorLine, 0, n - 1);
-  bool cursorOnBlank = isBlankLine(lines[cursorLine]);
+  bool cursorOnBlank = isParagraphSeparatorLine(lines[cursorLine]);
 
   int startLine;
   int endLine;
@@ -713,7 +732,8 @@ LineRange paragraphTextObjectRange(int cursorLine, const Lines& lines,
 
     // Check for trailing blank lines
     bool hasTrailingBlanks =
-        (blockEnd + 1 < n && isBlankLine(lines[blockEnd + 1]));
+        (blockEnd + 1 < n &&
+         isParagraphSeparatorLine(lines[blockEnd + 1]));
 
     if (hasTrailingBlanks) {
       // Has trailing blank lines: (Backward, BlockEdge) + (Forward, GapEdge)
@@ -945,6 +965,34 @@ static bool sentenceEndpointOutsideBoundary(CursorPos result, const Lines& lines
   return false;
 }
 
+static bool sentenceOperatorEndpointOutsideBoundary(
+    CursorPos result, const Lines& lines, bool forward, int boundaryOffset,
+    bool hasLinesOutside) {
+  int lastLine = lines.lastLine();
+  if (forward) {
+    if (hasLinesOutside && result.line == lastLine &&
+        result.col >= lines[lastLine].effectiveSize()) {
+      return true;
+    }
+    if (result.line > lastLine) {
+      return hasLinesOutside || boundaryOffset > 0;
+    }
+    if (boundaryOffset > 0 && result.line == lastLine &&
+        result.col >= static_cast<int>(lines[lastLine].size()) - boundaryOffset) {
+      return true;
+    }
+  } else {
+    if (hasLinesOutside && result.line == 0 &&
+        result.col <= firstNonBlankColInLine(lines[0])) {
+      return true;
+    }
+    if (boundaryOffset > 0 && result.line == 0 && result.col < boundaryOffset) {
+      return true;
+    }
+  }
+  return false;
+}
+
 CursorPos sentenceMotionEndpoint(CursorPos cursor, const Lines& lines, bool forward,
                                  int boundaryOffset, bool hasLinesOutside) {
   if (lines.empty()) return cursor;
@@ -971,7 +1019,10 @@ static CursorPos sentenceOperatorEndpointCore(CursorPos cursor, const Lines& lin
 
   if (forward) {
     if (isBlankLine(lines[clamped.line])) {
-      return firstSentenceStartAfterBlankRun(lines, clamped.line);
+      CursorPos start = firstSentenceStartAfterBlankRun(lines, clamped.line);
+      auto extent = sentenceExtentAtOrAfter(start, lines);
+      return extent ? extent->operatorEndpoint
+                    : CursorPos(static_cast<int>(lines.size()), 0);
     }
     if (auto gapEndpoint = sentenceGapEndpoint(clamped, lines)) {
       return *gapEndpoint;
@@ -980,15 +1031,15 @@ static CursorPos sentenceOperatorEndpointCore(CursorPos cursor, const Lines& lin
     return extent ? extent->operatorEndpoint : cursor;
   }
 
-  CursorPos start = currentSentenceStart(clamped, lines);
-  return start == clamped ? previousSentenceStart(start, lines) : start;
+  motionSentencePrev(clamped, lines);
+  return clamped;
 }
 
 CursorPos sentenceOperatorEndpoint(CursorPos cursor, const Lines& lines, bool forward,
                                    int boundaryOffset, bool hasLinesOutside) {
   if (lines.empty()) return cursor;
   CursorPos result = sentenceOperatorEndpointCore(cursor, lines, forward);
-  if (sentenceEndpointOutsideBoundary(
+  if (sentenceOperatorEndpointOutsideBoundary(
           result, lines, forward, boundaryOffset, hasLinesOutside)) {
     return POSITION_OUTSIDE_BOUNDARY;
   }

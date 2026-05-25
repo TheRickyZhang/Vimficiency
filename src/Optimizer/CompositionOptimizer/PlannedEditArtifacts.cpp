@@ -7,6 +7,7 @@
 
 #include "Effort/RunningEffort.h"
 #include "Optimizer/BuildTypedCommands.h"
+#include "Utils/Debug.h"
 #include "Utils/StringUtils.h"
 #include "VimCore/VimEditUtils.h"
 
@@ -220,6 +221,10 @@ TransformResult computeTransformResultForDiff(
           .withMaxResultsPerStartPos(params.transformMaxResultsPerStartPos);
 
   if (diff.isPureDeletion()) {
+    if (diff.deletedText.find('\n') == string::npos &&
+        (diff.boundary.hasLinesAbove() || diff.boundary.hasLinesBelow())) {
+      editParams.withLinewisePureDeletion(false);
+    }
     TransformResult result = transformOptimizer.optimizePureDeletion(
         diff.deletedLines(), diff.boundary, editParams,
         diff.beginPos.line, diff.beginPos.col, diff.beginPos);
@@ -260,7 +265,10 @@ optional<JoinPlan> computeJoinPlanForDiff(
     const Config& config,
     int* nodesExplored) {
   if (nodesExplored) *nodesExplored = 0;
-  if (diff.isPureInsertion() || diff.isPureDeletion()) return nullopt;
+  if (diff.isPureInsertion()) return nullopt;
+  if (diff.isPureDeletion() && diff.deletedText.find('\n') == string::npos) {
+    return nullopt;
+  }
 
   TransformOptimizer transformOptimizer(config);
 
@@ -360,7 +368,15 @@ optional<JoinPlan> computeJoinPlanForDiff(
 
     if (sim.joinedLine != fullTargetLines[g]) {
       Lines residualInitial = {sim.joinedLine};
-      TransformBoundary groupBoundary;
+      CHECK(residualInitial.size() == 1,
+            "joinResidualBoundary requires a single-line residual buffer");
+      bool hasLinesAbove =
+          diff.boundary.hasLinesAbove() || srcFirstLine + begin > 0;
+      bool hasLinesBelow =
+          diff.boundary.hasLinesBelow() ||
+          srcFirstLine + end < static_cast<int>(preEditLines.size());
+      TransformBoundary groupBoundary =
+          TransformBoundary::joinResidualBoundary(hasLinesAbove, hasLinesBelow);
       CursorPos residualGoalPos(
           0, fullTargetLines[g].empty() ? 0 : static_cast<int>(fullTargetLines[g].size()) - 1);
       TransformOptimizerParams residualParams =

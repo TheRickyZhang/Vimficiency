@@ -22,6 +22,10 @@ namespace VimCore {
 // Check if line is blank (empty or whitespace-only)
 bool isBlankLine(std::string_view s);
 
+// Vim paragraph motions use empty lines as separators; whitespace-only lines
+// still belong to a paragraph.
+bool isParagraphSeparatorLine(std::string_view s);
+
 // Return column of first non-blank character (or 0 if all blank)
 int firstNonBlankColInLine(std::string_view s);
 

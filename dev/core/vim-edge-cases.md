@@ -4,7 +4,7 @@ Vim's `d` (delete) and `c` (change) operators share motions but diverge in subtl
 
 ## 1. Exclusive-to-Linewise Conversion (`:help exclusive-linewise`)
 
-**The rule:** When an exclusive motion's endpoint lands at column 0 of a line past the start, Vim promotes the operation to **linewise**. But `c` overrides this: it stays **characterwise** and backs up the endpoint to the last character of the previous line.
+**The rule:** When an exclusive motion's endpoint lands at column 0 of a line past the start, Vim promotes the operation to **linewise**. `d` removes those lines. `c` replaces those lines in Insert mode, preserving autoindent from the first changed line.
 
 ### `d}` vs `c}` (paragraph forward)
 
@@ -13,15 +13,15 @@ When `}` lands at col 0 (a blank-line separator):
 | Operator | pos.col == 0 | pos.col > 0 | EOF (last non-blank line) |
 |----------|-------------|-------------|--------------------------|
 | `d}` | Linewise: delete lines `[pos.line, goalPos.line-1]` | Characterwise: back up to `(goalPos.line-1, lastCol)` | Characterwise: inclusive through `(lastLine, lastCol)` |
-| `c}` | Characterwise: back up to `(goalPos.line-1, lastCol)`, enter Insert | Same as d} but enter Insert | Same as d} but enter Insert |
+| `c}` | Linewise change: replace affected lines with one autoindented insert line | Characterwise if content before cursor must be preserved | Same as d} but enter Insert |
 
 **Why `d}` with `pos.col > 0` is also characterwise:** The linewise conversion only fires when the start position is at or before the first non-blank. With `pos.col > 0`, there's content before the cursor on the start line that must be preserved, so Vim falls through to characterwise with the backed-up endpoint.
 
-**Code:** `Edit.cpp` in the `d}/c}` case. The `atCol0` branch splits on `e[0]`.
+**Code:** `EditInterpreter.cpp` handles `c`'s linewise replacement via `tryApplyExclusiveLinewiseChange`; backed-up and delete cases use `VimCore::resolveExclusiveDeleteRange`.
 
 ### `d)` / `d(` vs `c)` / `c(`
 
-Same principle applies to sentence motions. The `deleteRange` call passes `Mode::Insert` for `c` and `Mode::Normal` for `d`, which affects empty-line removal (see Section 2).
+Same principle applies to sentence motions. `c)` / `c(` use the autoindented linewise-change path for col-0 exclusive-linewise geometry, otherwise they fall back to the characterwise change path.
 
 ### `d{` / `c{`
 

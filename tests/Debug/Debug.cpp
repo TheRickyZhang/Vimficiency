@@ -3,8 +3,8 @@
 // Debug utilities and scratch tests for development.
 // Enable a test by removing DISABLED_ prefix.
 //
-// Run: ./build/tests/vimficiency_debug --gtest_filter="DebugTest.*"
-//   - Or: ./vimficiency_tests --gtest_filter="NeovimOracleDebug.*"
+// Run: ./build/tests/vimfy_debug --gtest_filter="DebugTest.*"
+//   - Or: ./vimfy_unit_tests --gtest_filter="NeovimOracleDebug.*"
 
 #include <cassert>
 
@@ -22,9 +22,10 @@
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Boundary/TransformBoundary.h"
 #include "Boundary/NavBoundary.h"
-#include "Utils/EditTestGenerators.h"
+#include "TransformOptimizer/EmbeddedRegionTestUtils.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/RandomBufferHelpers.h"
+#include "Utils/RandomGeneration.h"
 #include "Utils/StringUtils.h"
 #include "Optimizer/TransformOptimizer/TransformState.h"
 #include "VimCore/VimEditUtils.h"
@@ -55,6 +56,7 @@ template<bool TrackExploredStates>
   return stats.nodesExplored() + stats.motionsEmitted()
       + stats.statesSkipped() + static_cast<int>(stats.exploredStates().size());
 }
+
 } // namespace
 
 // ============================================================================
@@ -158,6 +160,74 @@ protected:
 TEST_F(DebugTest, DISABLED_SearchStatsCodegen) {
   cerr << "NoTrace=" << searchStatsHotLoop<false>(1000) << endl;
   cerr << "WithTrace=" << searchStatsHotLoop<true>(1000) << endl;
+}
+
+TEST_F(DebugTest, DISABLED_InvestigateMovementSequences) {
+  NeovimOracle oracle;
+  auto trace = [&](Lines lines, CursorPos start, string seq) {
+    cerr << "=== seq='" << seq << "' start=" << start << " ===" << endl;
+    auto full = oracle.simulate(lines, start.line, start.col, seq);
+    cerr << "full nvim=" << CursorPos(full.row, full.col) << endl;
+    auto parsed = parseMovements(seq);
+    ASSERT_TRUE(parsed.has_value());
+    vector<string> tokens;
+    for (const ParsedMovement& movement : *parsed) {
+      string token;
+      if (movement.hasCount()) {
+        token += to_string(movement.effectiveCount());
+      }
+      token += movement.motion;
+      tokens.push_back(token);
+    }
+    auto tokenwise = oracle.simulateTokens(lines, start.line, start.col, tokens);
+    cerr << "tokenwise nvim="
+         << CursorPos(tokenwise.row, tokenwise.col) << endl;
+    cerr << "simulateMovements=" << simulateMovements(start, seq, lines) << endl;
+    vector<string> prefix;
+    for (const string& token : tokens) {
+      prefix.push_back(token);
+      auto prefixResult = oracle.simulateTokens(
+          lines, start.line, start.col, prefix);
+      cerr << "prefix ";
+      for (const string& p : prefix) cerr << p << " ";
+      cerr << "=> " << CursorPos(prefixResult.row, prefixResult.col) << endl;
+    }
+
+    CursorPos ours = start;
+    CursorPos nvim = start;
+    Mode mode = Mode::Normal;
+    for (const ParsedMovement& movement : *parsed) {
+      string token;
+      if (movement.hasCount()) {
+        token += to_string(movement.effectiveCount());
+      }
+      token += movement.motion;
+      auto result = oracle.simulate(lines, nvim.line, nvim.col, token);
+      applyParsedMovement(ours, mode, movement, lines, NavContext());
+      nvim = CursorPos(result.row, result.col);
+      cerr << token << " nvim=" << nvim << " ours=" << ours << endl;
+    }
+  };
+
+  trace({
+      "  aaaaa f cc ddffaa! ffccc f eae e eedda ffff ddab ffffdddd.",
+      "fffffff aaaaaaaa aabbb a!",
+  }, CursorPos(0, 57), "ggggweE^^j2$j4Fcw");
+
+  trace({
+      "  cc cc bbbbbb a a a aaaa fcfcfcf. ccc cfcfc fc bbbbb bc bbbbbb.",
+  }, CursorPos(0, 2), "Wge^3$2G");
+
+  trace({
+      "  cdbeaaff aaaaaa eeeffff cbcbc eeeeffff eeeeee. cceee aecdbcfa cccccc cccccc ffffff bbfff. fbfbf dededed dddddd aaaaaa bdbdbdbd bdbdb cbdcb ccfff.",
+      "abfaaedd fee f aaaaaa cb aaaadddd. fffccc eee eeee ffff cccccc ffffdddd aca cc.",
+      "eee cece fb acdc c!",
+      "ff beb aaaaaaaa.",
+  }, CursorPos(3, 1), "3f h,6$4k4gEWk4gEG");
+
+  trace({
+      "  fffffff ddbd ebb eeeccc. cf eeeeeee fff dfdfdfdf fd aaaaaaa! ffffeeee bbff dddddd f ccc f.",
+  }, CursorPos(0, 12), "3k6ggtf5$6G;j;;ge4W");
 }
 
 TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
@@ -1063,6 +1133,9 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCCloseBrace) {
   testBoth({"abc", "def", "", "ghi"}, 0, 0);
   testBoth({"abc", "def", "", "ghi"}, 0, 1);
   testBoth({"abc", "def", "", "ghi"}, 0, 2);
+  testBoth({"  abc", "", "def"}, 0, 0);
+  testBoth({"  abc", "", "def"}, 0, 1);
+  testBoth({"  abc", "", "def"}, 0, 2);
 
   // Compare c}<BS> vs d}i vs d}A for the failing case
   cerr << "=== Comparing alternatives for aaa/xxx/ccc from (1,0) ===" << endl;

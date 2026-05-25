@@ -196,7 +196,10 @@ static void applyParsedMovementWithState(CursorPos& pos, Mode& mode,
     if(hasCount) {
       int targetLine = pos.line + count - 1;
       if (targetLine >= n) {
-        if (pos.line == n - 1) return;
+        if (pos.line == n - 1) {
+          pos.targetCol = TARGETCOL_EOL;
+          return;
+        }
         pos.line = n - 1;
       } else {
         pos.line = targetLine;

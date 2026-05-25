@@ -75,10 +75,11 @@ TEST_F(ExploreViewTest, RecommendationCostDiffIncludesAcceptedSequence) {
 }
 
 TEST_F(ExploreViewTest, NavigatePhaseSurfacesACompositionForEolInsertion) {
-  // For an EOL pure insertion the optimizer telescopes Navigate+Transform
-  // by emitting `A<text>` from any column on the line. The composition
-  // frontier should surface this during Navigate phase so the user sees
-  // the shortcut alongside pure motions toward the insertion point.
+  // For an EOL pure insertion the composition frontier surfaces the direct
+  // Insert-entering action `A` when the cursor is inside the line-scope
+  // activation range. Under the single-action invariant the typed payload
+  // (`!`) and the `<Esc>` are owned by Explore's Insert phase, not encoded
+  // in the frontier recommendation.
   Lines initial{Line("hello")};
   Lines goal{Line("hello!")};
   auto view = makeView(initial, {0, 0}, goal, {0, 5});
@@ -87,66 +88,55 @@ TEST_F(ExploreViewTest, NavigatePhaseSurfacesACompositionForEolInsertion) {
   auto recs = view.recommendations(20);
   ASSERT_FALSE(recs.empty());
 
-  // Composition motions include trailing <Esc> for the typed-payload exit
-  // (mirrors what the optimizer emits in its flat sequences).
   const bool hasA = any_of(recs.begin(), recs.end(),
-      [](const Suggestion& s) { return string_view(s.token) == "A!<Esc>"; });
-  const bool hasMotionA = any_of(recs.begin(), recs.end(),
-      [](const Suggestion& s) { return string_view(s.token) == "$a!<Esc>"; });
+      [](const Suggestion& s) { return string_view(s.token) == "A"; });
   EXPECT_TRUE(hasA)
-      << "Navigate phase must surface `A!<Esc>` composition motion (zero-prefix)";
-  EXPECT_TRUE(hasMotionA)
-      << "Navigate phase must surface `$a!<Esc>` composition motion (motion-prefixed)";
+      << "Navigate phase must surface `A` as a single-action composition recommendation";
+
+  // Frontier emits single actions only — never a motion prefix, typed payload,
+  // or trailing <Esc>.
+  for (const auto& s : recs) {
+    string_view tok(s.token);
+    EXPECT_EQ(tok.find("<Esc>"), string_view::npos) << tok;
+    EXPECT_EQ(tok.find('!'), string_view::npos) << tok;
+  }
 }
 
-TEST_F(ExploreViewTest, NavigateCompositionHonorsCompositionCountPrefixOverrides) {
+TEST_F(ExploreViewTest, CompositionFrontierEmitsNoMotionPrefix) {
+  // Composition recommendations are valid only at their own activation
+  // region; the navigation step to reach that region is NavFrontier's job.
+  // From a position multiple lines away from a new-line insertion site, the
+  // composition frontier must not synthesize a `Nj` prefix into its tokens.
   Lines initial;
   for (int i = 0; i < 20; i++) initial.push_back(Line("line " + to_string(i)));
   Lines goal = initial;
   goal.insert(goal.begin() + 5, Line("X"));
   auto view = makeView(initial, {0, 0}, goal, {5, 0});
 
-  auto hasCountedLineInsert = [](const vector<Suggestion>& recs) {
-    return any_of(recs.begin(), recs.end(), [](const Suggestion& s) {
-      string_view token(s.token);
-      return token.rfind("4j", 0) == 0 &&
-             token.find("oX<Esc>") != string_view::npos;
-    });
-  };
-  auto tokens = [](const vector<Suggestion>& recs) {
-    string out;
-    for (const auto& rec : recs) {
-      if (!out.empty()) out += ", ";
-      out += rec.token;
-    }
-    return out;
-  };
-
-  auto defaultRecs = view.recommendations(100);
-  EXPECT_TRUE(hasCountedLineInsert(defaultRecs)) << tokens(defaultRecs);
-
-  const auto disableCompositionCounts = OptimizerParamOverrides::parse(
-      "composition:maxPrefixCount=0");
-  auto withoutCounts = view.recommendations(
-      100, &disableCompositionCounts, SuggestionSortMode::Effort);
-  EXPECT_FALSE(hasCountedLineInsert(withoutCounts))
-      << "composition frontier must pass composition count-prefix settings into nav: "
-      << tokens(withoutCounts);
+  auto recs = view.recommendations(100);
+  for (const auto& s : recs) {
+    string_view tok(s.token);
+    EXPECT_EQ(tok.find("oX"), string_view::npos)
+        << "composition frontier must not synthesize motion+insert tokens: " << tok;
+    EXPECT_EQ(tok.find("<Esc>"), string_view::npos)
+        << "composition frontier must not bundle <Esc>: " << tok;
+  }
 }
 
-TEST_F(ExploreViewTest, CompositionRecommendationCostIncludesFullShortcut) {
+TEST_F(ExploreViewTest, CompositionRecommendationCostMatchesSingleAction) {
+  // Under the single-action invariant a composition recommendation's cost is
+  // the cost of typing exactly that one Vim action — no bundled payload.
   Lines initial{Line("hello")};
   Lines goal{Line("hello!")};
   auto view = makeView(initial, {0, 0}, goal, {0, 5});
 
   auto recs = view.recommendations(20);
   auto rec = find_if(recs.begin(), recs.end(), [](const Suggestion& s) {
-    return string_view(s.token) == "$a!<Esc>";
+    return string_view(s.token) == "A";
   });
   ASSERT_NE(rec, recs.end());
 
-  EXPECT_NEAR(rec->costDiff, getEffort("$a!<Esc>", config), 1e-9);
-  EXPECT_GT(rec->costDiff, getEffort("$", config));
+  EXPECT_NEAR(rec->costDiff, getEffort("A", config), 1e-9);
 }
 
 TEST_F(ExploreViewTest, TransformDeletionHonorsTransformCountPrefixOverrides) {
@@ -192,6 +182,14 @@ TEST_F(ExploreViewTest, TransformPhaseSurfacesReplaceCharForSingleCharDiff) {
 
   auto recs = view.recommendations(20);
   ASSERT_FALSE(recs.empty());
+  auto tokens = [](const vector<Suggestion>& items) {
+    string out;
+    for (const auto& item : items) {
+      if (!out.empty()) out += ", ";
+      out += item.token;
+    }
+    return out;
+  };
   const bool hasReplaceChar = any_of(recs.begin(), recs.end(),
       [](const Suggestion& s) { return string_view(s.token) == "rB"; });
   const bool hasDeleteFirst = any_of(recs.begin(), recs.end(),
@@ -199,9 +197,73 @@ TEST_F(ExploreViewTest, TransformPhaseSurfacesReplaceCharForSingleCharDiff) {
         return string_view(s.token) == "x";
       });
   EXPECT_TRUE(hasReplaceChar)
-      << "depth-1 transform must emit `rB` for single-char same-length replacement";
+      << "depth-1 transform must emit `rB` for single-char same-length replacement: "
+      << tokens(recs);
   EXPECT_TRUE(hasDeleteFirst)
       << "replacement transform must expose deletion-first prefixes like `x`";
+}
+
+TEST_F(ExploreViewTest, TransformFrontierDoesNotBundleInsertPayload) {
+  Lines initial{Line("foo bar baz")};
+  Lines goal{Line("foo Qbaz")};
+  auto view = makeView(initial, {0, 4}, goal, {0, 4});
+
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+  auto recs = view.recommendations(30);
+  ASSERT_FALSE(recs.empty());
+
+  bool hasDeleteFirst = false;
+  for (const auto& rec : recs) {
+    string_view token(rec.token);
+    EXPECT_EQ(token.find("<Esc>"), string_view::npos) << token;
+    EXPECT_EQ(token.find('Q'), string_view::npos) << token;
+    EXPECT_NE(token, "dwi");
+    if (token == "dw") hasDeleteFirst = true;
+  }
+  EXPECT_TRUE(hasDeleteFirst)
+      << "dw replacement should continue through Transform -> Insert phases";
+}
+
+TEST_F(ExploreViewTest, TransformFrontierExcludesVisualDeleteMacros) {
+  Lines lines{Line("alpha"), Line("beta"), Line("gamma")};
+  DiffState diff(
+      CursorPos(0, 0), CursorPos(2, 5), lines.flatten(), "",
+      TransformBoundary{});
+  auto recs = rankTransformFrontier(
+      TransformFrontierQuery{
+          FrontierQuery{
+              .lines = lines,
+              .cursor = {0, 0},
+              .maxCount = 50,
+          },
+          diff,
+      },
+      Config::uniform());
+  ASSERT_FALSE(recs.empty());
+  for (const auto& rec : recs) {
+    ASSERT_FALSE(string_view(rec.token).empty());
+    EXPECT_NE(string_view(rec.token).front(), 'v') << rec.token;
+  }
+}
+
+TEST_F(ExploreViewTest, FrontierTokensArePairwiseDistinct) {
+  // CompositionFrontier's CHECK guards the invariant in release builds; this
+  // test exercises representative inputs to ensure no current emission path
+  // produces a duplicate. Builds an Explore::View whose recommendations
+  // include both NavFrontier and CompositionFrontier output.
+  Lines initial{Line("foo (hello) bar"), Line("baz")};
+  Lines goal{Line("foo (goodbye) bar"), Line("baz")};
+  auto view = makeView(initial, {0, 0}, goal, {0, 4});
+
+  auto recs = view.recommendations(50);
+  ASSERT_FALSE(recs.empty());
+
+  unordered_set<string> seen;
+  for (const auto& rec : recs) {
+    string token(rec.token);
+    EXPECT_TRUE(seen.insert(token).second)
+        << "duplicate token across frontier output: " << token;
+  }
 }
 
 TEST_F(ExploreViewTest, RecommendationSortModesUseDifferentMetrics) {
@@ -251,16 +313,6 @@ TEST_F(ExploreViewTest, RecommendationSortModesUseDifferentMetrics) {
   EXPECT_LT(scoreReplace, scoreIncomplete);
   EXPECT_GT(effort[effortIncomplete].distance, 0.0);
   EXPECT_EQ(effort[effortReplace].distance, 0.0);
-}
-
-TEST(ExtractStructuralToken, ReturnsFirstNonTypedTextToken) {
-  EXPECT_EQ(extractStructuralToken("sm<Esc>"), "s");
-  EXPECT_EQ(extractStructuralToken("clm<Esc>"), "cl");
-  EXPECT_EQ(extractStructuralToken("clfoo<Esc>"), "cl");
-  EXPECT_EQ(extractStructuralToken("Jj"), "J");
-  EXPECT_EQ(extractStructuralToken("x"), "x");
-  EXPECT_EQ(extractStructuralToken("rm"), "rm");
-  EXPECT_EQ(extractStructuralToken(""), "");
 }
 
 TEST(TransformFrontier, PreservesDistinctResultsFromSameStart) {

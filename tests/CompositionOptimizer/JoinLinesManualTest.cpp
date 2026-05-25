@@ -58,6 +58,19 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesWithResidual) {
   EXPECT_TRUE(hasJ) << "Expected at least one result with J";
 }
 
+TEST_F(CompositionOptimizer_ManualTest, JoinResidualKeepsSentenceContext) {
+  Lines initial = {"a bc", "bec .", "aaca", ".e.c cbf"};
+  Lines goal = {"a bc", "bec .aacac"};
+  CursorPos initialPos(3, 0);
+  CursorPos goalPos(0, 3);
+
+  CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
+
+  expectHasValidResults(
+      res.getResults(), initial, initialPos, goal,
+      "join residual keeps context");
+}
+
 TEST_F(CompositionOptimizer_ManualTest, JoinLinesPartialJoin) {
   // M=2 partition: join first two lines, join last two lines
   Lines initial = {"aaa", "bbb", "ccc", "ddd"};

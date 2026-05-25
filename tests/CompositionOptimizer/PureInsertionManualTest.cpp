@@ -67,6 +67,25 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_AppendWithNewline) {
   expectHasValidResults(results, initial, initialPos, goal, "append with newline");
 }
 
+TEST_F(CompositionOptimizer_ManualTest, PureInsertion_NewLineWithWhitespaceOnlyContent) {
+  Lines initial = {",,a.fccb", "ddc cfe .", " dd"};
+  Lines goal = {",,a.fccb", "ddc cfe .", " dd", " "};
+  CursorPos initialPos(2, 1);
+  CursorPos goalPos(2, 2);
+
+  auto compResult = opt.optimize(
+      initial, initialPos, goal, goalPos, params);
+  const auto& results = compResult.getResults();
+
+  ASSERT_FALSE(results.empty());
+  for (size_t i = 0; i < results.size(); i++) {
+    EXPECT_TRUE(OracleReplay::matches(
+        *oracle, initial, initialPos, results[i].getSequence().str(),
+        goal, goalPos, Mode::Normal,
+        "newline whitespace-only result " + to_string(i)));
+  }
+}
+
 TEST_F(CompositionOptimizer_ManualTest, PureInsertion_MidLineNewlinePreservesWhitespaceSuffix) {
   Lines initial = {", ba", "afd  ", "cbcc  b."};
   Lines goal = {", ba", "afdfadd", "afd  ", "cbcc  b."};

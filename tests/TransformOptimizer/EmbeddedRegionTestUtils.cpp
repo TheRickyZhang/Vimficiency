@@ -1,17 +1,9 @@
-// tests/Utils/EditTestGenerators.cpp
-//
-// Implementation of Edit-specific test utilities.
-// Core random generation is now in RandomBufferHelpers.h (header-only).
+#include "TransformOptimizer/EmbeddedRegionTestUtils.h"
 
-#include "EditTestGenerators.h"
-
+#include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 
 using namespace std;
-
-// =============================================================================
-// CursorPos Index Utilities
-// =============================================================================
 
 int toFlatIndex(int row, int col, const Lines& lines) {
   int idx = 0;
@@ -30,12 +22,8 @@ CursorPos fromFlatIndex(int flatIdx, const Lines& lines) {
     }
     remaining -= lineSize;
   }
-  return CursorPos(-1, -1);  // Invalid
+  return CursorPos(-1, -1);
 }
-
-// =============================================================================
-// EmbeddedEditRegion Methods
-// =============================================================================
 
 TransformBoundary EmbeddedEditRegion::makeBoundary() const {
   return TransformBoundary(fullBuffer, {startLine, startCol}, {endLine, endCol});
@@ -53,10 +41,6 @@ CursorPos EmbeddedEditRegion::toFullBufferPos(const CursorPos& editPos) const {
 string EmbeddedEditRegion::expectedAfterDeletion() const {
   return prefix + suffix;
 }
-
-// =============================================================================
-// EmbeddedEditRegion Generators
-// =============================================================================
 
 EmbeddedEditRegion generateSingleLineEmbedded(
     int prefixLen,
@@ -89,14 +73,11 @@ EmbeddedEditRegion generateMultiLineEmbedded(
 
   EmbeddedEditRegion result;
 
-  // Generate edit region content
   result.editRegion = randomLines(numLines, minLineLen, maxLineLen);
 
-  // Generate prefix and suffix
   result.prefix = randomWord(prefixLen);
   result.suffix = randomWord(suffixLen);
 
-  // Build full buffer with prefix/suffix baked in
   result.fullBuffer.reserve(numLines);
   for (int i = 0; i < numLines; i++) {
     string line = result.editRegion[i];
@@ -109,7 +90,6 @@ EmbeddedEditRegion generateMultiLineEmbedded(
     result.fullBuffer.push_back(line);
   }
 
-  // Set boundary positions
   result.startLine = 0;
   result.startCol = static_cast<int>(result.prefix.size());
   result.endLine = numLines - 1;
@@ -132,5 +112,6 @@ EmbeddedEditRegion generateRandomMultiLineEmbedded() {
   int maxLineLen = 5;
   int prefixLen = RandomGen::range(1, 3);
   int suffixLen = RandomGen::range(1, 3);
-  return generateMultiLineEmbedded(numLines, minLineLen, maxLineLen, prefixLen, suffixLen);
+  return generateMultiLineEmbedded(
+      numLines, minLineLen, maxLineLen, prefixLen, suffixLen);
 }

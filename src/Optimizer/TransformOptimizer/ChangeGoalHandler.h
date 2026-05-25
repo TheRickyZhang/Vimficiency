@@ -12,7 +12,6 @@
 
 #include "Boundary/TransformBoundary.h"
 #include "Effort/RunningEffort.h"
-#include "Interpreter/EditInterpreter.h"
 #include "Keyboard/Config.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Optimizer/Result.h"
@@ -99,6 +98,11 @@ struct ChangeGoalHandler {
   static KeyedSequence deleteToChangeLine(const SequenceBinding& sourceCmd,
                                           std::string_view lineContent);
 
+  struct SuffixCommandInfo {
+    bool isDotRepeat = false;
+    bool updatesDotRepeat = false;
+  };
+
 private:
   struct KeyedSegment {
     const KeyedSequence& sequence;
@@ -116,6 +120,7 @@ private:
   static KeyedSequence buildCollapseSequence(int totalLines, int cursorLine);
   static void appendOptionalCount(KeyedSequence& out, int count, const KeyedSequence& base);
   static KeyedSequence withOptionalCount(int count, const KeyedSequence& base);
+  static std::string formatCountedCommand(int count, std::string_view baseCmd);
   static RunningEffort mergeGoalSuffixEffort(const KeyedSequence& prefix,
                                              const RunningEffort& typedSuffixEffort,
                                              double completionPenalty,
@@ -133,19 +138,18 @@ private:
                                   const Lines& preDelLines, const LineCharRange& range) const;
 
   // Suffix cache helpers
-  std::vector<KeyedSequence> buildKeyedSequencesFromParsedEdits(
-      const std::vector<ParsedEdit>& edits) const;
   std::vector<RunningEffort> buildRawSuffixEfforts(const SuffixProgram& program,
                                                    const RunningEffort& terminalSuffixEffort,
                                                    int extraPenaltyIndex,
                                                    double extraPenalty) const;
   SuffixValue buildSuffixValueForNextIndex(
       const std::shared_ptr<const SuffixProgram>& suffixProgram,
-      const std::vector<ParsedEdit>& dotAwareEdits,
+      const std::vector<SuffixCommandInfo>& commandInfos,
       const std::vector<RunningEffort>& rawSuffixEfforts,
       int nextIndex,
-      const std::string& lastEditCmd) const;
-  void replayAndCacheSuffix(int startIndex, const std::string& searchPrefixSeq,
+      int lastEditCount,
+      std::string_view lastEditBase) const;
+  void cacheSuffixesForPath(const TransformState& base,
                             const KeyedSequence& completionSuffix,
                             double completionPenalty,
                             const KeyedSequence& typedSuffix,
@@ -163,7 +167,8 @@ private:
                                     const TransformState& base,
                                     const SequenceBinding& sourceCmd, int line,
                                     int ccLineCount, const KeyedSequence& changeCmd,
-                                    bool applyAutoindent);
+                                    bool applyAutoindent,
+                                    bool collapseLines = true);
 
   static CursorPos seedPositionForStart(int startIndex, const Lines& initialLines, int leftColOffset);
 };

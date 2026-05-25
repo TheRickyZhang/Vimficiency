@@ -5,6 +5,7 @@
 
 using namespace std;
 
+// TODO: how does this work??
 namespace VF::LuaExports::payload {
 
 Result<vector<string>> decodeLengthPrefixedStrings(string_view encoded) {

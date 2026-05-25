@@ -4,7 +4,7 @@
 // Since no ground truth optimizer exists, we manually verify that outputs
 // are sensible and contain expected efficient sequences.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="TransformOptimizerHumanApprovalTests.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="TransformOptimizerHumanApprovalTests.*"
 
 #include <gtest/gtest.h>
 

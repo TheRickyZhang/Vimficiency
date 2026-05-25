@@ -1,35 +1,29 @@
 #pragma once
 
 // =============================================================================
-// Composition motion frontier — depth-1 cross-phase shortcuts
+// Composition frontier — single direct edit-bearing tokens
 // =============================================================================
-// Parallel to rankNavFrontier. Where NavFrontier surfaces pure motions toward
-// the diff range, CompositionFrontier surfaces *composition motions*:
-// sequences that telescope motion + transform progress into one stroke.
+// Parallel to rankNavFrontier. Where NavFrontier surfaces motions toward
+// edit sites, CompositionFrontier surfaces single Vim primitives whose
+// activation regions go beyond ordinary TransformFrontier start columns:
 //
-// Three families correspond 1:1 with CompositionOptimizer.cpp's
-// cross-phase emission sites:
-//   - Pure-insertion shortcuts:  I/A/o (line-scope), i/a (point-scope)
-//                                + typed insert payload + <Esc>
-//                                (shared with `exploreInsertionStrategy`)
-//   - Bracket/quote shortcuts:   di"/da{/ci"/ca{ + (typed for replacement)
-//                                fired from any column where the bracket
-//                                pair is visible (`validQuoteMask` /
-//                                `validBracketMask`)
-//                                (shared with the bqContext block)
-//   - joinPlan shortcut:          J/gJ/NJ/NgJ + optional embedded edit,
-//                                fired from any column on the entry line
-//                                (shared with the joinPlan dispatch)
+//   - Pure-insertion shortcuts: `i / a / I / A / o`. Activation:
+//     cursor inside the strategy's insertion column range.
+//   - Bracket/quote text objects: `di" / da{ / ci( / ca[ / ...`. Activation:
+//     cursor at the enumerated `(line, col)` of a visible bracket/quote.
+//   - Join shortcut: bare `J`. Activation: cursor on the join plan's entry
+//     line AND one `J` makes progress on the planned diff (without
+//     reaching the fencepost — that case is owned by TransformFrontier's
+//     explorer J lane).
 //
-// Each emitted Suggestion's `token` is the FULL composition sequence
-// (motion prefix + structural [+ typed]) — what the user actually types.
-// Cost is computed end-to-end via RunningEffort to match the optimizer's
-// scoring; `landingPos` is the cursor position after the structural
-// completes (i.e. ready for Insert phase or already past the edit).
+// Invariant: every emitted Suggestion's `token` is a single immediately
+// executable Vim action. No motion prefix. No typed insert payload. No
+// `<Esc>`. Movement to a composition activation region is NavFrontier's
+// job. Typed payload + `<Esc>` after Insert-entering actions is owned by
+// Explore's Insert phase, derived from observed state.
 //
-// Caller (Explore::recommendNavigate) is responsible for merging the
-// CompositionFrontier output with rankNavFrontier output and ranking the
-// combined set by cost.
+// Tokens across all returned suggestions are pairwise distinct
+// (release-active CHECK).
 
 #include <vector>
 
@@ -45,7 +39,7 @@ struct CompositionFrontierQuery : FrontierQuery {
   const NavContext& navContext;
 };
 
-// Depth-1 enumeration of composition motions for `query.diff`. Returns up
+// Depth-1 enumeration of composition actions for `query.diff`. Returns up
 // to `query.maxCount` Suggestions sorted by cost (cheapest first). Empty
 // when the diff has no composition shortcuts available from this cursor.
 std::vector<Suggestion> rankCompositionFrontier(

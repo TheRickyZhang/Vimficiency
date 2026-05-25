@@ -1,5 +1,6 @@
 #include "OracleReplay.h"
 
+#include <exception>
 #include <string>
 
 using namespace std;
@@ -61,6 +62,38 @@ namespace OracleReplay {
   }
 
   return failure;
+}
+
+void expectMatchesOracle(
+    NeovimOracle& oracle,
+    const Lines& initial,
+    CursorPos initialPos,
+    string_view sequence,
+    const Lines& expectedLines,
+    CursorPos expectedPos,
+    Mode expectedMode,
+    string_view context) {
+  string seq(sequence);
+  SCOPED_TRACE(::testing::Message()
+               << "seq='" << seq << "'"
+               << " from " << initialPos
+               << contextText(context)
+               << "\ninitial=" << initial);
+
+  SimulationResult nvim;
+  try {
+    nvim = oracle.simulate(initial, initialPos.line, initialPos.col, seq);
+  } catch (const exception& e) {
+    oracle.restart();
+    FAIL() << "NeovimOracle failed for seq='" << seq << "': " << e.what();
+  }
+
+  EXPECT_EQ(nvim.lines, expectedLines);
+  EXPECT_EQ(nvim.row, expectedPos.line);
+  EXPECT_EQ(nvim.col, expectedPos.col);
+  EXPECT_EQ(nvim.mode, expectedMode)
+      << "expected mode " << modeName(expectedMode)
+      << ", got " << modeName(nvim.mode);
 }
 
 }  // namespace OracleReplay

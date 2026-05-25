@@ -28,10 +28,9 @@ Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.
 2. Restores compiler cache via `hendrikmuhs/ccache-action@v1` (`key: test`)
 3. Restores CMake dependency cache (`build/_deps`, `deps-v2-*`)
 4. Builds in Release mode (`-DVIMF_DEBUG=OFF`, `-DVIMF_TRACK_STATES=OFF`)
-5. Runs unit tests: `./build/tests/vimficiency_tests --gtest_brief=1`
-6. Runs the FuzzTest generated-property seed corpus with `FUZZTEST_FUZZ_FOR=0`
-7. Runs Lua tests via `tests/lua/run.sh` (FFI smoke)
-8. Builds `vimficiency_explore` with tracking on as a smoke test — does not
+5. Runs the fast correctness gate via `scripts/vimfy_tests`: unit, expect,
+   seeded property, seeded safety, and Lua/FFI smoke tests
+6. Builds `vimfy_explore` with tracking on as a smoke test — does not
    run it; the local bench pipeline is what executes it and ingests results
 
 ### CI cache and performance notes
@@ -84,7 +83,7 @@ appear on the timeline as historical points — accepted as the cost of
 keeping the bench/merge concerns decoupled.
 
 Main-only extras are conditional on `BRANCH=main` (a cheap optimization,
-not a correctness boundary): exploration data via `vimficiency_explore`
+not a correctness boundary): exploration data via `vimfy_explore`
 with `VIMF_TRACK_STATES=ON`, test-suite timing via `--gtest_output=json`,
 and the docs-site build. Branch pushes skip these to stay fast.
 
@@ -96,7 +95,7 @@ Steps:
    - `MotionOpt.*` → `motion_result.json`
    - `CompositionOpt.*` → `composition_result.json`
 3. Baseline comparison: look up the parent SHA's stored entry in `gh-pages/{edit,motion,composition}/data.json` via `scripts/bench-baseline-from-stored.ts`, feed it to `bench-compare.ts`. Skipped when the parent has no stored entry (first run on this machine, parent was rebased away, etc.) — informational, never gates the run.
-4. **Main only:** build and run `vimficiency_explore` for exploration data; run the test suite and convert timing to bench format
+4. **Main only:** build and run `vimfy_explore` for exploration data; run the test suite and convert timing to bench format
 5. Build `bench-dashboard/` with `--base=/Vimficiency/`. **Main only:** also build `docs-site/`
 6. In the `gh-pages` worktree: ingest results, prune to 100 entries, ingest exploration (main only), copy dashboard/docs assets
 7. Commit + push to `origin gh-pages`. On push conflict (race with another local run) fetch + rebase once and retry
@@ -148,7 +147,7 @@ Google Benchmark outputs JSON → `scripts/bench-data.ts ingest` parses it and a
 
 ### Exploration data (`explore.json`)
 
-`vimficiency_explore` outputs JSON → CI merges it into `{optimizer}/explore.json` on gh-pages. The dashboard fetches this JSON directly.
+`vimfy_explore` outputs JSON → CI merges it into `{optimizer}/explore.json` on gh-pages. The dashboard fetches this JSON directly.
 
 ### Migration from legacy format
 

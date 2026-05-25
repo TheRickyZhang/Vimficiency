@@ -1,7 +1,7 @@
 // tests/TransformOptimizer/RegressionTests.cpp
 //
 // Regression tests for TransformOptimizer edge cases.
-// Run: ./build/tests/vimficiency_tests --gtest_filter="TransformOptimizerRegression.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="TransformOptimizerRegression.*"
 
 #include <cassert>
 
@@ -18,7 +18,7 @@
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
 #include "Types/Mode.h"
 #include "Types/CursorPos.h"
-#include "Utils/EditTestGenerators.h"
+#include "TransformOptimizer/EmbeddedRegionTestUtils.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/OracleReplay.h"
 #include "Utils/RandomBufferHelpers.h"
@@ -204,6 +204,155 @@ TEST(TransformOptimizerRegression, SuffixCacheExpandsMismatchedDotRepeatContext)
         bucket[i].getSequence().str(), expectedFull,
         nullopt, Mode::Normal, "transform suffix cache dot context"))
         << "sequence=" << bucket[i].getSequence().str();
+  }
+}
+
+TEST(TransformOptimizerRegression, ParagraphChangeAtEofCollapsesIntoPrefixLine) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  const Lines fullBuffer = {
+      "fe,d ,",
+      "eba,c",
+      "b cb",
+      "c,dbea.f ",
+  };
+  const Lines editRegion = {
+      "",
+      "eba,c",
+      "b cb",
+      "c,dbea.f ",
+  };
+  const Lines goalLines = {"b cb"};
+  const Lines expectedFull = {"fe,d ,b cb"};
+  TransformBoundary boundary(fullBuffer, CursorPos(0, 6), CursorPos(3, 9));
+
+  TransformResult result = optimizer.optimizeTransform(
+      editRegion, goalLines, boundary,
+      TransformOptimizerParams{}
+          .withMaxResults(200)
+          .withMaxResultsPerStartPos(3),
+      0, 6, CursorPos(0, 9));
+
+  auto bucket = result.resultsAt(1, 0);
+  ASSERT_FALSE(bucket.empty());
+  EXPECT_NE(bucket.front().getSequence().str().find("<BS>"), string::npos)
+      << "sequence=" << bucket.front().getSequence().str();
+
+  size_t checked = min<size_t>(3, bucket.size());
+  for (size_t i = 0; i < checked; i++) {
+    EXPECT_TRUE(OracleReplay::matches(
+        oracle, fullBuffer, CursorPos(1, 0),
+        bucket[i].getSequence().str(), expectedFull,
+        CursorPos(0, 9), Mode::Normal,
+        "paragraph c} prefix collapse"))
+        << "sequence=" << bucket[i].getSequence().str();
+  }
+}
+
+TEST(TransformOptimizerRegression, EmbeddedChangePrunesBoundaryEscapingContinuation) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  const Lines fullBuffer = {
+      "bfa   ",
+      "cbde",
+      " a.",
+      ", fded",
+  };
+  const Lines editRegion = {
+      "   ",
+      "cbde",
+      " a.",
+      ", f",
+  };
+  const Lines goalLines = {
+      ".da e d,",
+      "d.b,",
+      "ccbcc.,f",
+      "b.,b",
+  };
+  const Lines expectedFull = {
+      "bfa.da e d,",
+      "d.b,",
+      "ccbcc.,f",
+      "b.,bded",
+  };
+  TransformBoundary boundary(fullBuffer, CursorPos(0, 3), CursorPos(3, 3));
+
+  TransformResult result = optimizer.optimizeTransform(
+      editRegion, goalLines, boundary,
+      TransformOptimizerParams{}
+          .withMaxResults(40)
+          .withMaxResultsPerStartPos(3));
+
+  auto bucket = result.resultsAt(1, 1);
+
+  size_t checked = min<size_t>(3, bucket.size());
+  for (size_t i = 0; i < checked; i++) {
+    EXPECT_TRUE(OracleReplay::matches(
+        oracle, fullBuffer, CursorPos(1, 1),
+        bucket[i].getSequence().str(), expectedFull,
+        nullopt, Mode::Normal, "embedded change boundary preservation"))
+        << "sequence=" << bucket[i].getSequence().str();
+  }
+}
+
+TEST(TransformOptimizerRegression, EmbeddedPureDeletionDoesNotUseVisualShortcutAcrossBoundary) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  const Lines fullBuffer = {"cdf .e.,", "d.a ", ",abb"};
+  const Lines editRegion = {" .e.,", "d.a ", ",ab"};
+  const Lines expectedFull = {"cdfb"};
+  TransformBoundary boundary(fullBuffer, CursorPos(0, 3), CursorPos(2, 3));
+
+  TransformResult result = optimizer.optimizePureDeletion(
+      editRegion, boundary,
+      TransformOptimizerParams{}
+          .withMaxResults(100)
+          .withMaxResultsPerStartPos(5));
+
+  auto bucket = result.resultsAt(0, 0);
+  ASSERT_FALSE(bucket.empty());
+  for (const Result& candidate : bucket) {
+    EXPECT_TRUE(OracleReplay::matches(
+        oracle, fullBuffer, CursorPos(0, 3),
+        candidate.getSequence().str(), expectedFull,
+        nullopt, Mode::Normal, "embedded visual-delete shortcut"))
+        << "sequence=" << candidate.getSequence().str();
+  }
+}
+
+TEST(TransformOptimizerRegression, ContentOnlyPureDeletionKeepsParentLine) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  const Lines fullBuffer = {"prefix", "delete me"};
+  const Lines editRegion = {"delete me"};
+  const Lines expectedFull = {"prefix", ""};
+  TransformBoundary boundary(fullBuffer, CursorPos(1, 0), CursorPos(1, 9));
+
+  TransformResult result = optimizer.optimizePureDeletion(
+      editRegion, boundary,
+      TransformOptimizerParams{}
+          .withMaxResults(40)
+          .withMaxResultsPerStartPos(5)
+          .withLinewisePureDeletion(false),
+      1, 0, CursorPos(1, 0));
+
+  auto bucket = result.resultsAt(1, 0);
+  ASSERT_FALSE(bucket.empty());
+  for (const Result& candidate : bucket) {
+    EXPECT_TRUE(OracleReplay::matches(
+        oracle, fullBuffer, CursorPos(1, 0),
+        candidate.getSequence().str(), expectedFull,
+        nullopt, Mode::Normal, "content-only pure deletion"))
+        << "sequence=" << candidate.getSequence().str();
   }
 }
 

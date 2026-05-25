@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -64,8 +65,8 @@
 //      mid-search without an operator re-anchor. This is the general form
 //      of #1-#3; any change of that shape invalidates the invariant.
 //
-// Where the bug would surface first. The fuzz suite in tests/Properties/
-// (especially NavOptimizerProperties and TransformOptimizerProperties)
+// Where the bug would surface first. The property suite in tests/Property/
+// (especially Verify_NavOptimizerResults and Verify_TransformOptimizerResults)
 // generates prose-like buffers with varying line widths — the soil this
 // kind of divergence grows in. Tabular fixtures rarely expose it because
 // all lines are similar width and clamping rarely happens. If you add a
@@ -123,6 +124,37 @@ public:
   CursorPos getPos() const { return pos_; }
   Mode getMode() const { return mode_; }
   size_t getLinesHash() const { return linesHash_; }
+};
+
+struct TransformPathStep {
+  std::shared_ptr<const TransformPathStep> prev;
+  size_t linesHashAfter = 0;
+  int lineCountAfter = 0;
+  CursorPos posAfter;
+  Mode modeAfter = Mode::Normal;
+  int lastEditCountAfter = 0;
+  std::string lastEditBaseAfter;
+  std::string command;
+  bool isDotRepeat = false;
+  bool updatesDotRepeat = false;
+
+  TransformPathStep(std::shared_ptr<const TransformPathStep> prev,
+                    const TransformEditorState& editorAfter,
+                    int lastEditCountAfter,
+                    std::string lastEditBaseAfter,
+                    std::string command,
+                    bool isDotRepeat,
+                    bool updatesDotRepeat)
+      : prev(std::move(prev)),
+        linesHashAfter(editorAfter.getLinesHash()),
+        lineCountAfter(static_cast<int>(editorAfter.getLines().size())),
+        posAfter(editorAfter.getPos()),
+        modeAfter(editorAfter.getMode()),
+        lastEditCountAfter(lastEditCountAfter),
+        lastEditBaseAfter(std::move(lastEditBaseAfter)),
+        command(std::move(command)),
+        isDotRepeat(isDotRepeat),
+        updatesDotRepeat(updatesDotRepeat) {}
 };
 
 // Pure editor mutations used by optimizer exploration and replay verification.
@@ -233,18 +265,37 @@ public:
   }
 };
 
-inline bool usesOperatorLinewiseCursor(std::string_view baseCmd) {
+inline bool usesExclusiveLinewiseCursor(std::string_view baseCmd) {
   return baseCmd == "d}" || baseCmd == "d{" ||
-         baseCmd == "d)" || baseCmd == "d(" ||
-         baseCmd == "db" || baseCmd == "dB";
+         baseCmd == "d)" || baseCmd == "d(";
+}
+
+inline bool usesOperatorLinewiseCursor(std::string_view baseCmd) {
+  return baseCmd == "db" || baseCmd == "dB";
 }
 
 inline TransformEditorState afterLinewiseDeletionForCommand(
     const TransformEditorState& state, LineRange range, bool hasLinesBelow,
     std::string_view baseCmd) {
-  return usesOperatorLinewiseCursor(baseCmd)
+  TransformEditorState next = usesOperatorLinewiseCursor(baseCmd) ||
+          usesExclusiveLinewiseCursor(baseCmd)
       ? TransformSimulator::afterOperatorLinewiseDeletion(state, range, hasLinesBelow)
       : TransformSimulator::afterMultiLinewiseDeletion(state, range, hasLinesBelow);
+
+  if (usesExclusiveLinewiseCursor(baseCmd) && !hasLinesBelow &&
+      state.getPos().col > 0 &&
+      !VimCore::isBlankLine(state.getLines()[state.getPos().line]) &&
+      VimCore::hasOnlyBlankPrefix(
+          state.getLines()[state.getPos().line], state.getPos().col) &&
+      next.getPos().line >= 0 &&
+      next.getPos().line < static_cast<int>(next.getLines().size())) {
+    CursorPos adjusted = next.getPos();
+    adjusted.setCol(VimCore::firstNonBlankColInLine(
+        next.getLines()[next.getPos().line]));
+    next = TransformEditorState(next.getLines(), adjusted, next.getMode());
+  }
+
+  return next;
 }
 
 // =============================================================================
@@ -263,6 +314,7 @@ class TransformState {
   std::string seq_{};             // Sequence of operations taken
   int lastEditCount_ = 0;         // Count prefix of last edit for dot repeat (0 = uncounted)
   std::string lastEditBase_{};    // Base command of last edit for dot repeat (not in TransformStateKey)
+  std::shared_ptr<const TransformPathStep> pathTail_;
   RunningEffort runningEffort{};  // Typing effort tracker (internal)
   double effort_ = 0.0;           // Cached effort value
   double cost_ = 0.0;             // Priority = effort + heuristic
@@ -297,6 +349,7 @@ public:
   const std::string& getLastEditBase() const { return lastEditBase_; }
   bool hasLastEdit() const { return !lastEditBase_.empty(); }
   const RunningEffort& getRunningEffort() const { return runningEffort; }
+  std::shared_ptr<const TransformPathStep> getPathTail() const { return pathTail_; }
 
   // -----------------------------------------------------------------------------
   // Debug/Output
@@ -318,6 +371,22 @@ public:
 class TransformStateFactory {
   const Config& config;
   double effortWeight;
+
+  static std::string countedCommandString(int count, std::string_view baseCmd) {
+    if (count <= 0) return std::string(baseCmd);
+    return std::to_string(count) + std::string(baseCmd);
+  }
+
+  static void recordPathStep(TransformState& state,
+                             const TransformState& base,
+                             std::string command,
+                             bool updatesDotRepeat) {
+    bool isDotRepeat = command == ".";
+    state.pathTail_ = std::make_shared<TransformPathStep>(
+        base.pathTail_, state.editor, state.lastEditCount_,
+        state.lastEditBase_, std::move(command),
+        isDotRepeat, updatesDotRepeat);
+  }
 
   void appendCommand(TransformState& state, std::string_view cmd,
                      const RunningEffort& precomputed,
@@ -360,6 +429,7 @@ public:
     TransformState state = base;
     state.editor = std::move(editor);
     appendCommand(state, cmd, precomputed, heuristicCost);
+    recordPathStep(state, base, std::string(cmd), false);
     return state;
   }
 
@@ -375,6 +445,7 @@ public:
     appendCountedCommand(state, count, baseCmd, precomputed, heuristicCost);
     state.lastEditCount_ = count;
     state.lastEditBase_ = baseCmd;
+    recordPathStep(state, base, countedCommandString(count, baseCmd), true);
     return state;
   }
 
@@ -386,10 +457,15 @@ public:
       double heuristicCost,
       int lastEditCount,
       std::string_view lastEditBase) const {
-    TransformState state = afterCommand(
-        base, std::move(editor), cmd, precomputed, heuristicCost);
+    TransformState state = base;
+    state.editor = std::move(editor);
+    appendCommand(state, cmd, precomputed, heuristicCost);
     state.lastEditCount_ = lastEditCount;
     state.lastEditBase_ = lastEditBase;
+    state.pathTail_ = std::make_shared<TransformPathStep>(
+        base.pathTail_, state.editor, state.lastEditCount_,
+        state.lastEditBase_, std::string(cmd), cmd == ".",
+        !lastEditBase.empty());
     return state;
   }
 };

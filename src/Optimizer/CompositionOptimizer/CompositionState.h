@@ -14,25 +14,23 @@
 // CompositionStateKey: Unique identifier for deduplication in A* search
 // =============================================================================
 //
-// Unlike TransformStateKey, which includes a TransformEditorState content hash,
-// CompositionState derives lines from editsCompleted, so key is just
-// (pos, mode, editsCompleted).
-//
-// `targetCol` is intentionally omitted — see TransformStateKey in
-// src/Optimizer/TransformOptimizer/TransformState.h for the invariant and
-// the trip wires that would invalidate it.
+// CompositionState derives lines from editsCompleted, but Vim's sticky column
+// can change later linewise edits even when visible line/col are identical.
 
 struct CompositionStateKey {
   int line;
   int col;
+  int targetCol;
   Mode mode;
   int editsCompleted;
 
-  CompositionStateKey(int line, int col, Mode mode, int editsCompleted)
-      : line(line), col(col), mode(mode), editsCompleted(editsCompleted) {}
+  CompositionStateKey(
+      int line, int col, int targetCol, Mode mode, int editsCompleted)
+      : line(line), col(col), targetCol(targetCol), mode(mode),
+        editsCompleted(editsCompleted) {}
 
   bool operator==(const CompositionStateKey& other) const {
-    return line == other.line && col == other.col &&
+    return line == other.line && col == other.col && targetCol == other.targetCol &&
            mode == other.mode && editsCompleted == other.editsCompleted;
   }
 };
@@ -42,6 +40,7 @@ struct CompositionStateKeyHash {
     size_t h = 0;
     combine(h, key.line);
     combine(h, key.col);
+    combine(h, key.targetCol);
     combine(h, static_cast<int>(key.mode));
     combine(h, key.editsCompleted);
     return h;
@@ -90,7 +89,8 @@ public:
 
   // Key for deduplication
   CompositionStateKey getKey() const {
-    return CompositionStateKey(pos.line, pos.col, mode, editsCompleted);
+    return CompositionStateKey(
+        pos.line, pos.col, pos.targetCol, mode, editsCompleted);
   }
 
   // Accessors

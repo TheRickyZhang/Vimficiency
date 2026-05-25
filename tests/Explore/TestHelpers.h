@@ -8,6 +8,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include "Boundary/NavBoundary.h"
@@ -21,7 +22,6 @@
 #include "Optimizer/OptimizerParamOverrides.h"
 #include "Optimizer/Result.h"
 #include "Optimizer/TransformOptimizer/TransformFrontier.h"
-#include "Optimizer/TransformOptimizer/TransformSequenceDecomposition.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Types/NavContext.h"

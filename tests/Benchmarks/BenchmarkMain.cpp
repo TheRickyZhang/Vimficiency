@@ -14,9 +14,10 @@
 #include "Benchmarks/BenchUtils.h"
 
 int main(int argc, char** argv) {
-  // Initialize SeedManager (reads VIMFICIENCY_SEED_MODE env var)
+  // Initialize SeedManager (reads VIMFY_SEED_MODE env var)
   auto& seedMgr = SeedManager::instance();
-  if (std::getenv("VIMFICIENCY_SEED_MODE") == nullptr &&
+  if (std::getenv("VIMFY_SEED_MODE") == nullptr &&
+      std::getenv("VIMFY_RANDOM_SEEDS") == nullptr &&
       std::getenv("VIMFICIENCY_RANDOM_SEEDS") == nullptr) {
     seedMgr.setFixedMode();
   }

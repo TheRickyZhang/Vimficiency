@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Optimizer/Result.h"
 #include "Keyboard/Key.h"
 #include "Types/Lines.h"
 

@@ -2,7 +2,7 @@
 //
 // Verifies that reported costs match independently computed costs.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="NavOptimizerCostConsistencyTests.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="NavOptimizerCostConsistencyTests.*"
 
 #include <gtest/gtest.h>
 
@@ -47,8 +47,8 @@ TEST_F(NavOptimizerCostConsistencyTests, CostMatchesComputed) {
 
   for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
     Lines lines = randomLines(RandomGen::range(2, 4), 8, 25);
-    CursorPos start = randomPosition(lines);
-    CursorPos end = randomPosition(lines);
+    CursorPos start = randomPos(lines);
+    CursorPos end = randomPos(lines);
 
     auto results = opt.optimize(
       lines, start, end, NavOptimizerParams{}.withMaxResults(5), "jjjjj"

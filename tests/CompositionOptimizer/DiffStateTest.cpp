@@ -3,7 +3,7 @@
 // Tests for DiffState computation used in CompositionOptimizer.
 // Manual edge case tests + generated-property invariant validation.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="*DiffState*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="*DiffState*"
 
 #include <gtest/gtest.h>
 
@@ -13,6 +13,7 @@
 
 #include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Optimizer/CompositionOptimizer/TreeDiff.h"
+#include "Keyboard/Config.h"
 #include "Types/Lines.h"
 
 using namespace std;
@@ -39,7 +40,7 @@ static void expectRoundTrip(const Lines& start, const Lines& end) {
 }
 
 static void expectTreeRoundTrip(const Lines& start, const Lines& end) {
-  auto diffs = TreeDiff::calculate(start, end);
+  auto diffs = TreeDiff::calculate(start, end, Config::uniform());
   EXPECT_EQ(Myers::applyAllDiffState(diffs, start), end);
 }
 
@@ -298,6 +299,20 @@ TEST(TreeDiffTest, RoundTrip_MixedInsertDeleteReplace) {
   expectTreeRoundTrip(
       Lines{"alpha beta", "  gamma", "", "tail"},
       Lines{"alpha beet", "  gamma plus", "", "fin"});
+}
+
+TEST(TreeDiffTest, OpenPenaltyControlsSplitVsMerge) {
+  Config config = Config::uniform();
+  Lines initial{"aaa bbb ccc"};
+  Lines goal{"xxx bbb yyy"};
+
+  auto lowPenalty = TreeDiff::calculate(
+      initial, goal, config, TreeDiff::CostOptions{.diffOpenPenalty = 0.0});
+  EXPECT_GT(lowPenalty.size(), 1u);
+
+  auto highPenalty = TreeDiff::calculate(
+      initial, goal, config, TreeDiff::CostOptions{.diffOpenPenalty = 100.0});
+  expectDiffs(highPenalty, {{"aaa bbb ccc", "xxx bbb yyy"}});
 }
 
 // =============================================================================

@@ -16,7 +16,7 @@ Completed items should be deleted, not crossed out.
 
 **What.** Replace the ad-hoc `-D` flags in `bench.yml` (e.g. `-DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF -DVIMF_TRACK_STATES=ON ...`) with named presets (`release-track`, `release-bench`, etc.) defined in `CMakePresets.json`. Preset names are validated against the file, so a typo fails loudly at `cmake --preset` time rather than being silently accepted as an unused cache variable.
 
-**Why deferred.** Today the workflow has two real configurations (release-no-tracking, release-tracking) and three CMake options (`VIMF_DEBUG`, `VIMF_TRACK_STATES`, `VIMF_LEGACY_VIM`). `BuildConfig.h` + the `static_assert` in `vimficiency_explore` + the `jq`-based validation step already give layered protection. Presets would add a second config file, a learning curve for contributors, and wouldn't meaningfully harden the current setup further.
+**Why deferred.** Today the workflow has two real configurations (release-no-tracking, release-tracking) and three CMake options (`VIMF_DEBUG`, `VIMF_TRACK_STATES`, `VIMF_LEGACY_VIM`). `BuildConfig.h` + the `static_assert` in `vimfy_explore` + the `jq`-based validation step already give layered protection. Presets would add a second config file, a learning curve for contributors, and wouldn't meaningfully harden the current setup further.
 
 **Threshold to revisit.**
 - The CMake option list grows past ~5 build-time flags, **or**
@@ -66,6 +66,32 @@ Any of those makes the "one preset per config" structure pay for itself.
 **Why deferred.** Entangled with items 2 and 3 — moving the flag into `BuildConfig.h.in` requires changing the source-side checks at the same time, and those changes carry real behavior deltas (see 2, 3). Do all three together.
 
 **Threshold to revisit.** Do this as part of item 2 and/or item 3.
+
+---
+
+## 6. Re-introduce visual-delete shortcuts to TransformFrontier
+
+**What.** `tryVisualDelete` is still invoked by the batch TransformOptimizer
+(`TransformOptimizer.cpp` in the `PureDeletion` finalization block) but the
+TransformFrontier comment at the `emitReplaceCharAction` call site
+explicitly skips it because visual-delete sequences are multi-token
+structural macros (`v{motion}d`) that don't fit the single-action invariant
+the rest of the frontier now enforces.
+
+**Why deferred.** The frontier contract is "one immediately executable Vim
+action per recommendation, and Explore re-derives phase from observed
+state". `v)hd` is three structural tokens; supporting it in the frontier
+requires a continuation/macro abstraction Explore doesn't have today.
+Composition's text-object lane already covers the most common cases that
+visual-delete used to surface.
+
+**Threshold to revisit.** Either (a) Explore gains a `Macro` phase that can
+track a multi-step structural token across `acceptSnapshot` calls, or
+(b) a benchmark / activity-log case demonstrates that a real session is
+losing ground because the visual-delete shortcut isn't surfaced
+interactively. Pointer to the current skip site:
+`src/Optimizer/TransformOptimizer/TransformFrontier.cpp` ("Visual deletion
+is a multi-token structural macro" comment).
 
 ---
 

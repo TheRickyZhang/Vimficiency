@@ -140,6 +140,7 @@ struct TransformTransitionDispatcher {
   double distanceWeight;
   int leftColOffset;
   int rightColOffset;
+  bool allowLinewisePureDeletion;
 
   void emitState(TransformState&& state) {
     stats.incrementMotionsEmitted();
@@ -188,6 +189,9 @@ struct TransformTransitionDispatcher {
   }
 
   void deleteLinewise(LineRange range, const SequenceBinding& sourceCmd) {
+    if constexpr (PureDeletion) {
+      if (!allowLinewisePureDeletion) return;
+    }
     TransformEditorState afterDeletion =
         afterLinewiseDeletionForCommand(
             baseState.getEditorState(), range, transformBoundary.hasLinesBelow(),
@@ -201,6 +205,9 @@ struct TransformTransitionDispatcher {
   }
 
   void deleteCountedLinewise(LineRange range, const SequenceBinding& sourceCmd) {
+    if constexpr (PureDeletion) {
+      if (!allowLinewisePureDeletion) return;
+    }
     TransformEditorState afterDeletion =
         TransformSimulator::afterMultiLinewiseDeletion(
             baseState.getEditorState(), range, transformBoundary.hasLinesBelow());
@@ -243,7 +250,9 @@ private:
 
   bool finishTransition(TransformEditorState& next, const SequenceBinding& sourceCmd) {
     const Lines& nextLines = next.getLines();
+    if (!protectedTextPreserved(next)) return false;
     if (mode.isGoalReached(nextLines)) return true;
+    if (cursorOutsideEditableRegion(next)) return false;
 
     continueWithEdit(
         std::move(next),
@@ -256,15 +265,46 @@ private:
     const Lines& nextLines = next.getLines();
     bool lineOutOfBounds = next.getPos().line < 0 ||
                            next.getPos().line >= static_cast<int>(nextLines.size());
+    if (!protectedTextPreserved(next)) return false;
     if (mode.isGoalReached(nextLines)) {
       return !lineOutOfBounds || PureDeletion;
     }
     if (lineOutOfBounds) return false;
+    if (cursorOutsideEditableRegion(next)) return false;
 
     continueWithEdit(
         std::move(next),
         sourceCmd,
         weightedHeuristicCost(nextLines, leftColOffset, rightColOffset, distanceWeight));
     return false;
+  }
+
+  bool cursorOutsideEditableRegion(const TransformEditorState& state) const {
+    CursorPos pos = state.getPos();
+    const Lines& lines = state.getLines();
+    if (pos.line == 0 && pos.col < leftColOffset) return true;
+    if (pos.line == lines.lastLine() && rightColOffset > 0 &&
+        pos.col >= static_cast<int>(lines[pos.line].size()) - rightColOffset) {
+      return true;
+    }
+    return false;
+  }
+
+  bool protectedTextPreserved(const TransformEditorState& state) const {
+    const Lines& lines = state.getLines();
+    if (lines.empty()) return false;
+    const std::string& prefix = transformBoundary.prefix();
+    if (!prefix.empty() && lines.front().rfind(prefix, 0) != 0) {
+      return false;
+    }
+    const std::string& suffix = transformBoundary.suffix();
+    if (!suffix.empty()) {
+      const std::string& last = lines.back();
+      if (last.size() < suffix.size()) return false;
+      if (last.compare(last.size() - suffix.size(), suffix.size(), suffix) != 0) {
+        return false;
+      }
+    }
+    return true;
   }
 };

@@ -3,10 +3,12 @@
 #include <expected>
 #include <string_view>
 
+#include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Rejected.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
+#include "Types/Mode.h"
 
 // Transform-side logic for Explore::View. Historical Edit naming retained
 // because this layer consumes TransformResult from the current codebase.
@@ -33,15 +35,34 @@ std::expected<BufferStateSuccess, Rejected> validateBufferState(
     const Lines& currentFencepost,
     const Lines& nextFencepost);
 
-// Full-sequence apply path. Validates `text` against the planned edit-start
-// set for `cursor`; returns the per-start goal cursor on accept.
+// Apply one planner-sanctioned action token at the current cursor. Accepts both
+// Transform-start tokens (in `transformResult.resultsAt(cursor)`) and
+// Composition activation tokens (insertion entry chars, text-object
+// structurals, J — looked up against CompositionStrategies for the diff).
+// Full live sequences with typed payloads are handled by acceptSnapshot.
+// Simulates via the canonical Vim interpreter (Edit::applyEdit) so the
+// post-state is identical to live Vim execution.
+//
+//   postLines / postCursor / postMode  : simulated post-token state.
+//   reachesPostFencepost               : post-state matches the planned
+//                                        post-fencepost (caller advances
+//                                        to the next edit).
+//   entersInsert                       : token transitioned to Insert mode
+//                                        (caller switches to Insert phase).
 struct EditSuccess {
+  Lines postLines;
   CursorPos postCursor{0, 0};
+  Mode postMode = Mode::Normal;
+  bool reachesPostFencepost = false;
+  bool entersInsert = false;
 };
 
 std::expected<EditSuccess, Rejected> applyEdit(
-    const TransformResult& transformResult,
+    const PlannedEditView& pedView,
+    const Lines& currentLines,
     CursorPos cursor,
-    std::string_view text);
+    std::string_view text,
+    const CompositionOptimizerParams& params,
+    const Config& config);
 
 }  // namespace Explore::EditHandler

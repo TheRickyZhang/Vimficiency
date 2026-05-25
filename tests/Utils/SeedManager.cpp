@@ -21,8 +21,8 @@ SeedManager::SeedManager() {
 }
 
 void SeedManager::initFromEnvironment() {
-  // Check environment variable for mode
-  const char* envMode = std::getenv("VIMFICIENCY_SEED_MODE");
+  const char* envMode = std::getenv("VIMFY_SEED_MODE");
+  if (!envMode) envMode = std::getenv("VIMFICIENCY_SEED_MODE");
   if (envMode) {
     std::string mode(envMode);
     if (mode == "random" || mode == "1") {
@@ -34,14 +34,14 @@ void SeedManager::initFromEnvironment() {
     }
   }
 
-  // Legacy support: VIMFICIENCY_RANDOM_SEEDS=1
-  const char* envRandom = std::getenv("VIMFICIENCY_RANDOM_SEEDS");
+  const char* envRandom = std::getenv("VIMFY_RANDOM_SEEDS");
+  if (!envRandom) envRandom = std::getenv("VIMFICIENCY_RANDOM_SEEDS");
   if (envRandom && std::string(envRandom) == "1") {
     mode_ = Mode::Random;
   }
 
-  // Check for custom seed file path
-  const char* envSeedFile = std::getenv("VIMFICIENCY_SEED_FILE");
+  const char* envSeedFile = std::getenv("VIMFY_SEED_FILE");
+  if (!envSeedFile) envSeedFile = std::getenv("VIMFICIENCY_SEED_FILE");
   if (envSeedFile) {
     seedFilePath_ = envSeedFile;
   }
@@ -161,7 +161,7 @@ void SeedManager::saveSeedsToFile() {
   file << "# Vimficiency test seeds\n";
   file << "# Generated: " << std::ctime(&time);
   file << "# Mode: random\n";
-  file << "# To replay: VIMFICIENCY_SEED_MODE=replay ./build/tests/vimficiency_tests\n";
+  file << "# To replay: VIMFY_SEED_MODE=replay ./build/tests/vimfy_unit_tests\n";
   file << "#\n";
 
   // Write seeds

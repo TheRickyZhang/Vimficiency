@@ -2,7 +2,7 @@
 //
 // Tests for count prefix motions (e.g., 3w, 5j) and BufferIndex.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="CountMotionsOptimizerTest.*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="CountMotionsOptimizerTest.*"
 
 #include <gtest/gtest.h>
 

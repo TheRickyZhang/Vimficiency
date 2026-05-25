@@ -129,6 +129,8 @@ inline void linewiseChangeWithAutoindent(Lines& lines,
 //                  cursor (1,0) is at col 0  →  backed up to (0,8)
 //                  deletes "xyz" (cols 5–7), newline stays
 //                  result: ["End. ", "abc"],  cursor (0,4)
+//     Exception:  if that kept prefix is only whitespace, Vim removes the
+//                 line break too and the operation becomes linewise.
 //
 // Callers:
 //   - EditInterpreter.cpp:  d)/c), d(/c(, d}/c}, d{/c{
@@ -136,8 +138,8 @@ inline void linewiseChangeWithAutoindent(Lines& lines,
 //
 // Operator-specific notes:
 //   - d with Linewise: use deleteLineRangeAndUpdatePos() for proper cursor placement.
-//   - c with Linewise: Vim forces characterwise, preserving the line break by
-//     backing the range up to the previous line's end.
+//   - c with Linewise: EditInterpreter handles the autoindented replacement
+//     line before using this resolver for backed-up characterwise cases.
 //   - d} has a paragraph-specific EOF exception: when } reaches the last
 //     non-blank line, the motion becomes inclusive (position is ON the last
 //     char, not past it).  This is handled before calling
@@ -185,23 +187,54 @@ struct ResolvedDeleteRange {
 };
 
 // Resolve a raw exclusive [begin, end) range into an explicit characterwise
-// CharRange or linewise LineRange. `allowLinewise` should be false for
-// change-like operators, which keep newline-preserving characterwise behavior
-// in the col-0 case.
+// CharRange or linewise LineRange. For change-like operators, handle their
+// linewise replacement case before calling this with `allowLinewise=false`.
+inline bool hasOnlyBlankPrefix(std::string_view line, int endCol, int contentStartCol = 0) {
+  int begin = std::clamp(contentStartCol, 0, static_cast<int>(line.size()));
+  int end = std::clamp(endCol, begin, static_cast<int>(line.size()));
+  for (int col = begin; col < end; col++) {
+    char c = line[col];
+    if (c != ' ' && c != '\t') return false;
+  }
+  return true;
+}
+
+inline bool hasOnlyBlankSuffix(std::string_view line, int beginCol) {
+  int begin = std::clamp(beginCol, 0, static_cast<int>(line.size()));
+  for (int col = begin; col < static_cast<int>(line.size()); col++) {
+    char c = line[col];
+    if (c != ' ' && c != '\t') return false;
+  }
+  return true;
+}
+
 inline ResolvedDeleteRange resolveExclusiveDeleteRange(
     CharRange range, const Lines& lines, bool allowLinewise) {
   range.normalize();
   if (range.end.col != 0 || range.end.line <= range.begin.line) {
+    if (allowLinewise && range.begin.col == 0 &&
+        range.begin.line < range.end.line &&
+        hasOnlyBlankSuffix(lines[range.end.line], range.end.col)) {
+      return ResolvedDeleteRange::linewise(
+          LineRange(range.begin.line, range.end.line + 1));
+    }
     if (range.begin.col == 0 && range.begin.line < range.end.line) {
       return ResolvedDeleteRange::lineChar(LineCharRange(range.begin.line, range.end));
     }
     return ResolvedDeleteRange::characterwise(range);
   }
 
+  if (allowLinewise &&
+      hasOnlyBlankPrefix(lines[range.begin.line], range.begin.col)) {
+    return ResolvedDeleteRange::linewise(LineRange(range.begin.line, range.end.line));
+  }
+
+  if (!allowLinewise &&
+      hasOnlyBlankPrefix(lines[range.begin.line], range.begin.col)) {
+    range.begin.col = firstNonBlankColInLine(lines[range.begin.line]);
+  }
+
   if (range.begin.col == 0) {
-    if (allowLinewise) {
-      return ResolvedDeleteRange::linewise(LineRange(range.begin.line, range.end.line));
-    }
     return ResolvedDeleteRange::characterwise(
         CharRange(range.begin,
                   CursorPos(range.end.line - 1,
@@ -234,19 +267,17 @@ inline CharRange buildBackwardExclusiveCharRange(
   return CharRange(endpoint, cursor);
 }
 
-inline bool hasOnlyBlankPrefix(std::string_view line, int endCol, int contentStartCol = 0) {
-  int begin = std::clamp(contentStartCol, 0, static_cast<int>(line.size()));
-  int end = std::clamp(endCol, begin, static_cast<int>(line.size()));
-  for (int col = begin; col < end; col++) {
-    char c = line[col];
-    if (c != ' ' && c != '\t') return false;
-  }
-  return true;
-}
-
 inline ResolvedDeleteRange resolveBackwardExclusiveWordDeleteRange(
     const CursorPos& endpoint, const CursorPos& cursor, const Lines& lines,
     int contentStartCol = 0) {
+  if (endpoint.line < cursor.line && cursor.col != contentStartCol &&
+      VimCore::isBlankLine(lines[cursor.line]) &&
+      hasOnlyBlankPrefix(
+          lines[endpoint.line], endpoint.col,
+          endpoint.line == 0 ? contentStartCol : 0)) {
+    return ResolvedDeleteRange::linewise(LineRange(endpoint.line, cursor.line + 1));
+  }
+
   if (cursor.col == contentStartCol && endpoint.line < cursor.line) {
     int endpointContentStart = endpoint.line == 0 ? contentStartCol : 0;
     if (endpointContentStart == 0 &&

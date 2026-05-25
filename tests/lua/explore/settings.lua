@@ -87,6 +87,7 @@ test("explore settings: get_optimizer_defaults parses C++ defaults across types"
   assert_eq(type(defaults.nav.exploreFactor), "number")
   assert_eq(defaults.nav.effortWeight, 1.0)
   assert_eq(defaults.composition.overshootPenalty, 3.0)
+  assert_eq(defaults.composition.treeDiffOpenPenalty, 8.0)
   assert_eq(defaults.composition.diffAlgorithm, 0)
 
   -- Bools — the wire encodes true as "1" and false as "0".

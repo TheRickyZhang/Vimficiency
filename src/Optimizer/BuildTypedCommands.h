@@ -66,6 +66,13 @@ inline KeyedSequence buildTypedCommands(
       return;
     }
 
+    if (line == autoindent &&
+        leadingWhitespace(line).size() == line.size()) {
+      ks += computeIndentAdjustment(static_cast<int>(autoindent.size()), 0);
+      ks.append(line);
+      return;
+    }
+
     // Case 2: goal starts with autoindent — strip it
     if (line.size() >= autoindent.size() &&
         line.substr(0, autoindent.size()) == autoindent) {

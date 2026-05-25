@@ -327,6 +327,25 @@ void NeovimOracle::restart() {
 SimulationResult NeovimOracle::simulate(const Lines &lines,
                                         int startRow, int startCol,
                                         const std::string &keys) {
+  return simulateChunks(lines, startRow, startCol, {keys},
+                        /*asSeparateUserActions=*/false);
+}
+
+SimulationResult NeovimOracle::simulateTokens(
+    const Lines& lines,
+    int startRow,
+    int startCol,
+    const std::vector<std::string>& tokens) {
+  return simulateChunks(lines, startRow, startCol, tokens,
+                        /*asSeparateUserActions=*/true);
+}
+
+SimulationResult NeovimOracle::simulateChunks(
+    const Lines& lines,
+    int startRow,
+    int startCol,
+    const std::vector<std::string>& chunks,
+    bool asSeparateUserActions) {
   if (++callsSinceRestart_ >= AUTO_RESTART_INTERVAL) {
     restart();
   }
@@ -378,21 +397,30 @@ SimulationResult NeovimOracle::simulate(const Lines &lines,
     impl_->call_void("nvim_win_set_cursor", args);
   }
 
-  // Use nvim_input (preserves mode correctly) then force processing via
-  // nvim_exec_lua. Convert special keys to raw bytes to avoid ambiguity
-  // when literal '<' appears in commands like "ci<".
-  {
-    std::string convertedKeys = convertSpecialKeys(keys);
-    auto args = msgpack::object(std::make_tuple(convertedKeys), z);
-    impl_->send_request("nvim_input", args);
-    impl_->recv_response();
-  }
-  // Force event loop to process the input
-  {
-    std::vector<msgpack::object> empty_args;
-    auto args = msgpack::object(std::make_tuple("return nil", empty_args), z);
-    impl_->send_request("nvim_exec_lua", args);
-    impl_->recv_response();
+  auto replaceTermcodes = [&](const std::string& input) {
+    std::string convertedKeys = convertSpecialKeys(input);
+    auto replaced = impl_->call(
+        "nvim_replace_termcodes", convertedKeys, true, true, true);
+    return replaced.get().via.array.ptr[3].as<std::string>();
+  };
+
+  auto runNormalCommand = [&](const std::string& input) {
+    if (input.empty()) return;
+    std::string keysToRun = replaceTermcodes(input);
+    std::vector<std::string> luaArgs = {keysToRun};
+    auto args = msgpack::object(std::make_tuple(
+        std::string("local keys = ...; vim.cmd.normal({ bang = true, args = { keys } })"),
+        luaArgs), z);
+    impl_->call_void("nvim_exec_lua", args);
+  };
+
+  if (asSeparateUserActions) {
+    for (const std::string& chunk : chunks) {
+      runNormalCommand(chunk);
+    }
+  } else {
+    assert(chunks.size() == 1);
+    runNormalCommand(chunks.front());
   }
 
   // Get final state

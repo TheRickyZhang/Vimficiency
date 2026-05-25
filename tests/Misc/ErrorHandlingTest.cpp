@@ -2,7 +2,7 @@
 //
 // Tests for error handling in motion/edit parsing.
 //
-// Run: ./build/tests/vimficiency_tests --gtest_filter="*ErrorHandling*"
+// Run: ./build/tests/vimfy_unit_tests --gtest_filter="*ErrorHandling*"
 
 #include <gtest/gtest.h>
 

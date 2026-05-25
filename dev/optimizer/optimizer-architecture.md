@@ -68,7 +68,8 @@ if (range.first == POSITION_OUTSIDE_BOUNDARY) continue;
 These motions use different boundary handling:
 
 - **f/F motions**: Same-line only, check if they don't go into prefix/suffix. Explored via `generateFMotions()`.
-- **Count searches**: use `BufferIndex` to find positions not in prefix/suffix
+- **Count searches**: usually use `BufferIndex`; counted sentence motions replay
+  `sentenceMotionEndpoint()` per count because Vim's sentence scan is stateful
 
 ### Templated Motion Specs
 
@@ -146,9 +147,9 @@ Also note that a `debug(...)`-style helper only removes the helper body. Functio
 
 ### Workflow Guidance
 
-- `vimficiency_tests`: should rely on core counters being present; avoid enabling heavy trace collection unless the test is explicitly about exploration details
-- `vimficiency_benchmarks`: should consume aggregate counters only; do not enable `exploredStates`
-- `vimficiency_debug` and exploration export tooling: may enable trace payloads when investigating behavior, but should do so explicitly because they are not cheap
+- `vimfy_unit_tests`: should rely on core counters being present; avoid enabling heavy trace collection unless the test is explicitly about exploration details
+- `vimfy_benchmarks`: should consume aggregate counters only; do not enable `exploredStates`
+- `vimfy_debug` and exploration export tooling: may enable trace payloads when investigating behavior, but should do so explicitly because they are not cheap
 
 By default, detailed trace stats follow `DEBUG_ENABLED`. If a non-debug workflow needs trace payloads, build with `VIMFICIENCY_TRACE_SEARCH_STATS` to enable them explicitly without tying that decision to the general debug stream.
 
