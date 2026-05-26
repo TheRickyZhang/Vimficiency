@@ -1,9 +1,0 @@
-{
-  "name": "delete single char",
-  "lines": ["abc"],
-  "goal_lines": ["ac"],
-  "start": [0, 1],
-  "goal": [0, 1],
-  "user_seq": "x",
-  "max_recommendations": 5
-}

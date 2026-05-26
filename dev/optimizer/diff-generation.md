@@ -155,8 +155,8 @@ a -> a\n
 ```
 
 Use `./build/tests/vimfy_diff_debug <initial> <goal>` for side-by-side Myers
-and Tree output. The broader rendered TreeDiff examples live in
-`tests/Expect/TreeDiffExpect.cpp`.
+and Tree output. The short approval snapshots for extracted tree structure live
+in `tests/Approval/TreeApproval.cpp`.
 
 ### Design Intent
 

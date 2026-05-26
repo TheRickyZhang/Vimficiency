@@ -6,11 +6,9 @@
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 
-namespace CharPools {
-constexpr std::string_view LETTERS = "abcdef";
-constexpr std::string_view SYMBOLS = ".,";
-constexpr std::string_view SPACE = " ";
-}  // namespace CharPools
+inline constexpr std::string_view RANDOM_LETTERS = "abcdef";
+inline constexpr std::string_view RANDOM_SYMBOLS = ".,";
+inline constexpr std::string_view RANDOM_SPACE = " ";
 
 std::string randomWord(int len);
 std::string randomHighSpaceLine(int len);

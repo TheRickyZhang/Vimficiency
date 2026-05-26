@@ -20,11 +20,11 @@
 // in Logic.cpp. FFI export bodies live in *Exports.cpp.
 namespace VF::LuaExports {
 
-inline constexpr char kEventFieldSep = '\x1f';
-inline constexpr char kEventRecordSep = '\x1e';
-inline constexpr int kManualEvictNone = 0;
-inline constexpr int kManualEvictDrift = 1;
-inline constexpr int kManualEvictIdle = 2;
+inline constexpr char EVENT_FIELD_SEP = '\x1f';
+inline constexpr char EVENT_RECORD_SEP = '\x1e';
+inline constexpr int MANUAL_EVICT_NONE = 0;
+inline constexpr int MANUAL_EVICT_DRIFT = 1;
+inline constexpr int MANUAL_EVICT_IDLE = 2;
 
 enum class ExportErrorKind {
   MissingInput,
@@ -97,7 +97,7 @@ inline int storeIntOr(int fallback, Result<int> result) {
 }
 
 inline std::string packInts(int first, int second) {
-  return std::to_string(first) + std::string(1, kEventFieldSep) + std::to_string(second);
+  return std::to_string(first) + std::string(1, EVENT_FIELD_SEP) + std::to_string(second);
 }
 
 inline std::string joinWithTrailingNewline(const std::vector<std::string>& items) {

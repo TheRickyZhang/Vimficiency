@@ -4,9 +4,9 @@
 
 #include "BuildConfig.h"
 
-inline constexpr bool kDebugTrackingEnabled = VIMF_TRACK_STATES;
+inline constexpr bool DEBUG_TRACKING_ENABLED = VIMF_TRACK_STATES;
 
-template<typename T, bool Enabled = kDebugTrackingEnabled>
+template<typename T, bool Enabled = DEBUG_TRACKING_ENABLED>
 struct Maybe;
 
 template<typename T>

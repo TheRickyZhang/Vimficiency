@@ -26,8 +26,6 @@
 #include "Types/Lines.h"
 #include "Types/NavContext.h"
 
-namespace ExploreTestSupport {
-
 class ExploreViewTest : public ::testing::Test {
 protected:
   Config config = Config::uniform();
@@ -55,5 +53,3 @@ protected:
                          goalPos, std::move(boundary), navContext, config);
   }
 };
-
-}  // namespace ExploreTestSupport

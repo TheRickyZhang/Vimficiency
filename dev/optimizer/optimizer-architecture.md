@@ -68,8 +68,7 @@ if (range.first == POSITION_OUTSIDE_BOUNDARY) continue;
 These motions use different boundary handling:
 
 - **f/F motions**: Same-line only, check if they don't go into prefix/suffix. Explored via `generateFMotions()`.
-- **Count searches**: usually use `BufferIndex`; counted sentence motions replay
-  `sentenceMotionEndpoint()` per count because Vim's sentence scan is stateful
+- **Count searches**: `BufferIndex` covers word/bigWord/paragraph landings. Counted sentence motions replay `sentenceMotionEndpoint()` per count because Vim's sentence scan is stateful.
 
 ### Templated Motion Specs
 

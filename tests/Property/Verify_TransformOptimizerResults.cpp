@@ -191,7 +191,7 @@ class TransformOptimizerGeneratedPropertyTest {
   }
 
  private:
-  static constexpr size_t kMaxResultsPerStartToReplay = 3;
+  static constexpr size_t MAX_RESULTS_PER_START_TO_REPLAY = 3;
 
   Config config_ = Config::uniform();
   TransformOptimizerParams params_{};
@@ -212,9 +212,9 @@ class TransformOptimizerGeneratedPropertyTest {
       int& checkedStarts) {
     if (bucket.empty()) return;
     checkedStarts++;
-    OptimizerResultChecks::expectTopResultsReplay(
+    expectTopResultsReplay(
         oracle_, bucket, initial, initialPos, goal,
-        kMaxResultsPerStartToReplay, context);
+        MAX_RESULTS_PER_START_TO_REPLAY, context);
   }
 };
 

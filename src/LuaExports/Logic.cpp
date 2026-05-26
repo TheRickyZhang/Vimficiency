@@ -139,12 +139,12 @@ int manualEvictReason(
     int maxSearchLines,
     int manualIdleTimeoutSeconds) {
   if (abs(cursorRow - startRow) + 1 > maxSearchLines) {
-    return kManualEvictDrift;
+    return MANUAL_EVICT_DRIFT;
   }
   if (hasLastKey && nowNs - lastKeyTimeNs > static_cast<int64_t>(manualIdleTimeoutSeconds) * 1000000000LL) {
-    return kManualEvictIdle;
+    return MANUAL_EVICT_IDLE;
   }
-  return kManualEvictNone;
+  return MANUAL_EVICT_NONE;
 }
 
 }  // namespace VF::LuaExports::logic

@@ -1,7 +1,5 @@
-// Safety property: payload and sequence decoders must handle arbitrary bytes by
-// rejecting cleanly or returning canonical, bounded results. Accepted payloads
-// must round-trip through the encoder; accepted sequence tokens must have stable
-// string representations.
+// Safety property: payload and sequence decoders reject arbitrary bytes cleanly
+// or return stable, bounded results.
 
 #include <string>
 #include <string_view>
@@ -18,13 +16,6 @@ namespace payload = VF::LuaExports::payload;
 
 namespace {
 
-// `.WithSeeds(...)` gives deterministic smoke inputs. Longer FuzzTest campaigns
-// still generate from the domain and use those seeds as corpus starting points.
-// Payload seeds include valid frames because random strings rarely preserve the
-// `<len>:<bytes>` relationship long enough to reach accepted-input logic.
-// Separate FUZZ_TESTs are intentional here: the framing decoder, line-array
-// wrapper, and sequence parser have different accepted-output contracts.
-
 template <typename Fields>
 string encodeFields(const Fields& fields) {
   string encoded;
@@ -34,31 +25,31 @@ string encodeFields(const Fields& fields) {
   return encoded;
 }
 
-void LengthPrefixedPayloadsRoundTripAfterSuccessfulDecode(string encoded) {
+void LengthPrefixedPayloadsRoundTrip(string encoded) {
   auto decoded = payload::decodeLengthPrefixedStrings(encoded);
   if (!decoded) return;
 
   auto reparsed = payload::decodeLengthPrefixedStrings(encodeFields(*decoded));
-  ASSERT_TRUE(reparsed.has_value()) << reparsed.error().message;
+  ASSERT_TRUE(reparsed) << reparsed.error().message;
   EXPECT_EQ(*reparsed, *decoded);
 }
 
-void LineArrayDecoderRejectsInvalidLinesOrRoundTrips(string encoded) {
+void LineArraysRoundTrip(string encoded) {
   auto decoded = payload::decodeLineArray(encoded);
   if (!decoded) return;
 
   ASSERT_FALSE(decoded->empty());
   for (const string& line : *decoded) {
-    EXPECT_EQ(line.find('\n'), string::npos);
-    EXPECT_EQ(line.find('\0'), string::npos);
+    EXPECT_FALSE(line.contains('\n'));
+    EXPECT_FALSE(line.contains('\0'));
   }
 
-  auto reparsed = payload::decodeLineArray(encodeFields(decoded.value()));
-  ASSERT_TRUE(reparsed.has_value()) << reparsed.error().message;
+  auto reparsed = payload::decodeLineArray(encodeFields(*decoded));
+  ASSERT_TRUE(reparsed) << reparsed.error().message;
   EXPECT_EQ(*reparsed, *decoded);
 }
 
-void SequenceParserRejectsInvalidInputOrReturnsStableTokens(string sequence) {
+void SequenceTokensAreStable(string sequence) {
   auto parsed = parseSequence(sequence);
   if (!parsed) {
     EXPECT_LE(parsed.error().offset, sequence.size());
@@ -67,22 +58,22 @@ void SequenceParserRejectsInvalidInputOrReturnsStableTokens(string sequence) {
   }
 
   auto parsedStrings = parseSequenceStrings(sequence);
-  ASSERT_TRUE(parsedStrings.has_value())
-      << formatSequenceParseError(parsedStrings.error());
+  ASSERT_TRUE(parsedStrings) << formatSequenceParseError(parsedStrings.error());
   ASSERT_EQ(parsedStrings->size(), parsed->size());
   for (size_t i = 0; i < parsed->size(); i++) {
-    EXPECT_EQ((*parsedStrings)[i], string((*parsed)[i].token));
+    const auto& token = (*parsed)[i];
+    EXPECT_EQ((*parsedStrings)[i], string(token.token));
   }
 }
 
 }  // namespace
 
-FUZZ_TEST(PayloadSafetyTest, LengthPrefixedPayloadsRoundTripAfterSuccessfulDecode)
+FUZZ_TEST(PayloadSafetyTest, LengthPrefixedPayloadsRoundTrip)
     .WithDomains(fuzztest::String().WithMaxSize(512))
     .WithSeeds({
         "",
 
-        // Valid single and multi-field payloads.
+        // Valid frames.
         "0:",
         "1:a",
         "2:ab",
@@ -94,7 +85,7 @@ FUZZ_TEST(PayloadSafetyTest, LengthPrefixedPayloadsRoundTripAfterSuccessfulDecod
         "1::",
         string("3:a\0b", 5),
 
-        // Length mismatch and malformed header shapes.
+        // Malformed frames.
         "1:",
         "1:ab",
         "2:a",
@@ -109,18 +100,18 @@ FUZZ_TEST(PayloadSafetyTest, LengthPrefixedPayloadsRoundTripAfterSuccessfulDecod
         "1;",
         " 1:a",
 
-        // Numeric overflow and long decimal headers.
+        // Overflow.
         "18446744073709551615:x",
         "18446744073709551616:x",
         "999999999999999999999999999999:x",
     });
 
-FUZZ_TEST(PayloadSafetyTest, LineArrayDecoderRejectsInvalidLinesOrRoundTrips)
+FUZZ_TEST(PayloadSafetyTest, LineArraysRoundTrip)
     .WithDomains(fuzztest::String().WithMaxSize(512))
     .WithSeeds({
         "",
 
-        // Valid line arrays, including leading/trailing empty lines.
+        // Valid arrays.
         "0:",
         "1:a",
         "3:abc",
@@ -128,13 +119,13 @@ FUZZ_TEST(PayloadSafetyTest, LineArrayDecoderRejectsInvalidLinesOrRoundTrips)
         "0:1:a",
         "0:0:",
 
-        // Framing succeeds, but line-array validation should reject contents.
+        // Framing succeeds; line validation rejects contents.
         "3:a\nb",
         "1:\n",
         string("3:a\0b", 5),
         string("1:\0", 3),
 
-        // Reuse malformed frame shapes against the line-array wrapper.
+        // Malformed frames.
         "1:",
         "1:ab",
         "2:a",
@@ -145,7 +136,7 @@ FUZZ_TEST(PayloadSafetyTest, LineArrayDecoderRejectsInvalidLinesOrRoundTrips)
 
 FUZZ_TEST(
     SequenceParserSafetyTest,
-    SequenceParserRejectsInvalidInputOrReturnsStableTokens)
+    SequenceTokensAreStable)
     .WithDomains(fuzztest::String().WithMaxSize(256))
     .WithSeeds({
         "",
@@ -155,7 +146,7 @@ FUZZ_TEST(
         "<C-d>",
         "\xffw",
 
-        // Token boundaries and partial angle/control notations.
+        // Partial and malformed tokens.
         "<",
         "<C-",
         "<Bad>",

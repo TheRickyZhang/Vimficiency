@@ -21,7 +21,6 @@ inline const std::vector<CountableMovementPair> COUNT_SEARCHABLE_MOTIONS_LINE = 
 
 inline const std::vector<CountableMovementPair> COUNT_SEARCHABLE_MOTIONS_GLOBAL = {
   {KeyedSequence::RBrace, KeyedSequence::LBrace, LandingType::Paragraph},
-  {KeyedSequence::RParen, KeyedSequence::LParen, LandingType::Sentence},
 };
 
 inline const std::vector<std::string> COUNT_SEARCHABLE_MOTIONS = [] {

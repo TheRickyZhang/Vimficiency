@@ -279,11 +279,11 @@ bool sentenceStartPS(const Lines& lines, int line, int para = 0, bool both = fal
       (both && first == '}')) {
     return true;
   }
-  static constexpr string_view kSections = "SHNHH HUnhsh";
-  static constexpr string_view kParagraphs = "IPLPPPQPP TPHPLIPpLpItpplpipbp";
+  static constexpr string_view SECTIONS = "SHNHH HUnhsh";
+  static constexpr string_view PARAGRAPHS = "IPLPPPQPP TPHPLIPpLpItpplpipbp";
   return first == '.' &&
-      (sentenceInMacro(kSections, string_view(s).substr(1)) ||
-       (para == 0 && sentenceInMacro(kParagraphs, string_view(s).substr(1))));
+      (sentenceInMacro(SECTIONS, string_view(s).substr(1)) ||
+       (para == 0 && sentenceInMacro(PARAGRAPHS, string_view(s).substr(1))));
 }
 
 CursorPos sentenceScanToCursor(const Lines& lines, SentenceScanPos pos) {

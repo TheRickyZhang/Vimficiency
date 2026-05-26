@@ -106,6 +106,53 @@ int vf_manual_evict_reason(
   int max_search_lines,
   int manual_idle_timeout_seconds);
 VFByteSlice vf_format_sequence(const char* seq, size_t seq_len);
+VFByteSlice vf_sequence_display_lines(
+  const char* seq,
+  size_t seq_len,
+  bool tokenize,
+  bool sectionize);
+VFByteSlice vf_sequence_display_inline(
+  const char* seq,
+  size_t seq_len,
+  bool tokenize);
+VFByteSlice vf_sequence_display_key_notation(
+  const char* text,
+  size_t text_len);
+VFByteSlice vf_sequence_display_typed_text(
+  const char* text,
+  size_t text_len,
+  bool key_notation);
+VFByteSlice vf_sequence_display_typed_chunks(
+  const char* encoded_chunks,
+  size_t encoded_chunks_len,
+  bool tokenize);
+VFByteSlice vf_format_result_position(
+  int start_row,
+  int start_col,
+  int end_row,
+  int end_col);
+VFByteSlice vf_format_result_reason_suffix(
+  const char* reason,
+  size_t reason_len);
+VFByteSlice vf_format_result_body(
+  const char* encoded_result,
+  size_t encoded_result_len,
+  bool tokenize,
+  bool sectionize);
+VFByteSlice vf_format_result_message(
+  const char* title,
+  size_t title_len,
+  const char* encoded_result,
+  size_t encoded_result_len,
+  bool tokenize,
+  bool sectionize);
+VFByteSlice vf_format_saved_result_lines(
+  const char* name,
+  size_t name_len,
+  const char* encoded_result,
+  size_t encoded_result_len,
+  bool tokenize,
+  bool sectionize);
 VFByteSlice vf_simulate_movements(
   const char* encoded_lines,
   size_t encoded_lines_len,

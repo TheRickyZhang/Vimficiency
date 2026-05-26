@@ -28,8 +28,9 @@ Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.
 2. Restores compiler cache via `hendrikmuhs/ccache-action@v1` (`key: test`)
 3. Restores CMake dependency cache (`build/_deps`, `deps-v2-*`)
 4. Builds in Release mode (`-DVIMF_DEBUG=OFF`, `-DVIMF_TRACK_STATES=OFF`)
-5. Runs the fast correctness gate via `scripts/vimfy_tests`: unit, expect,
-   seeded property, seeded safety, and Lua/FFI smoke tests
+5. Runs the fast correctness gate via `scripts/vimfy_tests`: unit, approval,
+   property and safety exploration with the fixed CI FuzzTest runner seed, and
+   Lua/FFI smoke tests
 6. Builds `vimfy_explore` with tracking on as a smoke test — does not
    run it; the local bench pipeline is what executes it and ingests results
 

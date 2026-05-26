@@ -67,7 +67,7 @@ jobs:
       - name: Unit tests (Debug)
         run: |
           ./build/tests/vimfy_unit_tests --gtest_brief=1
-          ./build/tests/vimfy_expect_tests --gtest_brief=1
+          ./build/tests/vimfy_approval_tests --gtest_brief=1
 
   test:
     runs-on: ubuntu-latest
@@ -101,7 +101,7 @@ jobs:
           cmake --build build -j$(nproc)
 
       - name: Fast correctness gate
-        # Exercises deterministic C++ unit and expect tests, seeded property and
+        # Exercises deterministic C++ unit and approval tests, seeded property and
         # safety tests, and the Lua/FFI boundary through Neovim headless.
         run: scripts/vimfy_tests all "" seed
 

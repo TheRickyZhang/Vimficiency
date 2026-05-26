@@ -111,7 +111,7 @@ static void BM_CompEditSize(benchmark::State& state, EditSizeType sizeType) {
           int replaceLen = min(5, lineLen);
           int offset = RandomGen::range(0, max(0, lineLen - replaceLen));
           for (int i = offset; i < offset + replaceLen && i < lineLen; i++)
-            modified[i] = RandomGen::pick(CharPools::LETTERS);
+            modified[i] = RandomGen::pick(RANDOM_LETTERS);
           goal[line] = modified;
           if (goal[line] == initial[line]) goal[line][offset] = 'z';
           break;
@@ -121,7 +121,7 @@ static void BM_CompEditSize(benchmark::State& state, EditSizeType sizeType) {
           string modified = initial[line];
           int start = lineLen / 2;
           for (int i = start; i < lineLen; i++)
-            modified[i] = RandomGen::pick(CharPools::LETTERS);
+            modified[i] = RandomGen::pick(RANDOM_LETTERS);
           goal[line] = modified;
           if (goal[line] == initial[line]) goal[line][start] = 'z';
           break;

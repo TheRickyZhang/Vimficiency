@@ -16,7 +16,7 @@ using namespace std;
 
 namespace {
 
-constexpr double kEffortTolerance = 1e-9;
+constexpr double EFFORT_TOLERANCE = 1e-9;
 
 class EffortCompositionGeneratedPropertyTest {
  public:
@@ -51,10 +51,10 @@ class EffortCompositionGeneratedPropertyTest {
 
     EXPECT_NEAR(
         naive.getEffort(qwerty_), appended.getEffort(qwerty_),
-        kEffortTolerance);
+        EFFORT_TOLERANCE);
     EXPECT_NEAR(
         naive.getEffort(qwerty_), merged.getEffort(qwerty_),
-        kEffortTolerance);
+        EFFORT_TOLERANCE);
     EXPECT_EQ(naive.getStrokes(), appended.getStrokes());
     EXPECT_EQ(naive.getStrokes(), merged.getStrokes());
   }
@@ -83,7 +83,7 @@ class EffortCompositionGeneratedPropertyTest {
 
     EXPECT_NEAR(
         naive.getEffort(qwerty_), merged.getEffort(qwerty_),
-        kEffortTolerance)
+        EFFORT_TOLERANCE)
         << "Merged effort should equal naive sequential effort";
     EXPECT_EQ(naive.getStrokes(), merged.getStrokes())
         << "Stroke counts should match";
@@ -109,10 +109,10 @@ class EffortCompositionGeneratedPropertyTest {
 
     EXPECT_NEAR(
         naive.getEffort(qwerty_), left.getEffort(qwerty_),
-        kEffortTolerance);
+        EFFORT_TOLERANCE);
     EXPECT_NEAR(
         naive.getEffort(qwerty_), right.getEffort(qwerty_),
-        kEffortTolerance);
+        EFFORT_TOLERANCE);
     EXPECT_EQ(naive.getStrokes(), left.getStrokes());
     EXPECT_EQ(naive.getStrokes(), right.getStrokes());
   }

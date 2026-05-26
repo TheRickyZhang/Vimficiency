@@ -37,13 +37,13 @@ void* openVimfyLib() {
 }
 
 // Analyze's machine-readable body line is `<raw_seq>\x1f<cost>\n`, using
-// `kEventFieldSep` (0x1F) — not whitespace — so that insert-mode text
+// `EVENT_FIELD_SEP` (0x1F) — not whitespace — so that insert-mode text
 // and other unusual bytes survive round-tripping. See
 // `dev/lua/ffi-separators.md` and `AnalyzeExports.cpp`. The previous
 // version of this parser used `iss >> seq >> cost`, which silently
 // failed after the separator was switched from space to 0x1F because
 // `operator>>` stops on whitespace only.
-constexpr char kFieldSep = '\x1f';
+constexpr char FIELD_SEP = '\x1f';
 
 std::unordered_map<std::string, double> parseBySequence(const std::string& analyzeOut) {
   std::unordered_map<std::string, double> bySeq;
@@ -56,7 +56,7 @@ std::unordered_map<std::string, double> parseBySequence(const std::string& analy
       headerSeen = true;
       continue;
     }
-    const auto sepPos = line.find(kFieldSep);
+    const auto sepPos = line.find(FIELD_SEP);
     if (sepPos == std::string::npos) continue;
     const std::string seq = line.substr(0, sepPos);
     const std::string costStr = line.substr(sepPos + 1);
@@ -81,7 +81,7 @@ std::string firstSequence(const std::string& analyzeOut) {
       headerSeen = true;
       continue;
     }
-    const auto sepPos = line.find(kFieldSep);
+    const auto sepPos = line.find(FIELD_SEP);
     if (sepPos == std::string::npos) continue;
     return line.substr(0, sepPos);
   }

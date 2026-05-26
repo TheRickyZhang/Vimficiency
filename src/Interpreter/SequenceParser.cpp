@@ -64,12 +64,12 @@ const unordered_set<string> TEXT_OBJECTS = {
 // Parse a count prefix (digits, not starting with 0)
 // Returns the count (0 if no count) and advances i past the digits
 int parseCount(string_view sv, size_t& i) {
-  if (i >= sv.size() || !ParserChar::is_digit(sv[i]) || sv[i] == '0') {
+  if (i >= sv.size() || !isAsciiDigit(sv[i]) || sv[i] == '0') {
     return 0;
   }
   constexpr int INT_MAX_VALUE = std::numeric_limits<int>::max();
   int cnt = 0;
-  while (i < sv.size() && ParserChar::is_digit(sv[i])) {
+  while (i < sv.size() && isAsciiDigit(sv[i])) {
     int digit = sv[i] - '0';
     if (cnt > (INT_MAX_VALUE - digit) / 10) {
       cnt = INT_MAX_VALUE;

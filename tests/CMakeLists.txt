@@ -24,6 +24,12 @@ FetchContent_Declare(
   GIT_TAG        v3.11.3
 )
 
+FetchContent_Declare(
+  ApprovalTests
+  GIT_REPOSITORY https://github.com/approvals/ApprovalTests.cpp.git
+  GIT_TAG        v.10.13.0
+)
+
 if(VIMF_ENABLE_FUZZTEST)
   FetchContent_Declare(
     fuzztest
@@ -40,11 +46,30 @@ set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
 set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
+set(APPROVAL_TESTS_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(APPROVAL_TESTS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(APPROVAL_TESTS_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(googletest msgpack-c googlebenchmark nlohmann_json)
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 4.0)
+  set(VIMFY_CMAKE_POLICY_VERSION_MINIMUM_PREV "${CMAKE_POLICY_VERSION_MINIMUM}")
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
+endif()
+
+FetchContent_MakeAvailable(
+  googletest
+  msgpack-c
+  googlebenchmark
+  nlohmann_json
+  ApprovalTests
+)
 
 if(VIMF_ENABLE_FUZZTEST)
   FetchContent_MakeAvailable(fuzztest)
+endif()
+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 4.0)
+  set(CMAKE_POLICY_VERSION_MINIMUM "${VIMFY_CMAKE_POLICY_VERSION_MINIMUM_PREV}")
+  unset(VIMFY_CMAKE_POLICY_VERSION_MINIMUM_PREV)
 endif()
 
 set(VIMFY_TEST_MAIN_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/TestMain.cpp)
@@ -84,15 +109,15 @@ target_link_libraries(test_utils
 )
 
 # =============================================================================
-# Unit and expect test binaries
+# Unit and approval test binaries
 # =============================================================================
-# Unit tests cover deterministic C++ correctness. Expect tests cover curated
-# report fixtures and are separate so methodology-specific runners stay simple.
+# Unit tests cover deterministic C++ correctness. Approval tests stay in a
+# separate binary because ApprovalTests.cpp needs process-wide main() setup.
 
 file(GLOB_RECURSE VIMFY_UNIT_TEST_SOURCES CONFIGURE_DEPENDS
   ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
 )
-list(FILTER VIMFY_UNIT_TEST_SOURCES EXCLUDE REGEX [[/tests/(Benchmarks|Debug|Expect|Property|Safety|Utils)/]])
+list(FILTER VIMFY_UNIT_TEST_SOURCES EXCLUDE REGEX [[/tests/(Benchmarks|Debug|Approval|Property|Safety|Utils)/]])
 list(REMOVE_ITEM VIMFY_UNIT_TEST_SOURCES
   ${VIMFY_TEST_MAIN_SOURCE}
   ${CMAKE_CURRENT_SOURCE_DIR}/Operator/TestHelpers.cpp
@@ -115,23 +140,22 @@ target_link_libraries(vimfy_unit_tests
 include(GoogleTest)
 gtest_discover_tests(vimfy_unit_tests)
 
-file(GLOB VIMFY_EXPECT_TEST_SOURCES CONFIGURE_DEPENDS
-  ${CMAKE_CURRENT_SOURCE_DIR}/Expect/*.cpp
+file(GLOB VIMFY_APPROVAL_TEST_SOURCES CONFIGURE_DEPENDS
+  ${CMAKE_CURRENT_SOURCE_DIR}/Approval/*.cpp
 )
 
-add_executable(vimfy_expect_tests
-  ${VIMFY_TEST_MAIN_SOURCE}
-  ${VIMFY_EXPECT_TEST_SOURCES}
+add_executable(vimfy_approval_tests
+  ${VIMFY_APPROVAL_TEST_SOURCES}
 )
 
-target_link_libraries(vimfy_expect_tests
+target_link_libraries(vimfy_approval_tests
   PRIVATE
     test_utils
     GTest::gtest
-    nlohmann_json::nlohmann_json
+    ApprovalTests::ApprovalTests
 )
 
-gtest_discover_tests(vimfy_expect_tests)
+gtest_discover_tests(vimfy_approval_tests)
 
 # =============================================================================
 # FuzzTest generated-property and safety test binaries
@@ -140,6 +164,16 @@ gtest_discover_tests(vimfy_expect_tests)
 # checks adversarial or malformed inputs at parser/payload/file boundaries.
 
 if(VIMF_ENABLE_FUZZTEST)
+  function(suppress_fuzztest_header_warnings target_name)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      target_compile_options(${target_name}
+        PRIVATE
+          -Wno-non-template-friend
+          -Wno-return-type
+      )
+    endif()
+  endfunction()
+
   if(FUZZTEST_FUZZING_MODE AND COMMAND fuzztest_setup_fuzzing_flags)
     fuzztest_setup_fuzzing_flags()
   endif()
@@ -158,6 +192,7 @@ if(VIMF_ENABLE_FUZZTEST)
   )
 
   link_fuzztest(vimfy_property_tests)
+  suppress_fuzztest_header_warnings(vimfy_property_tests)
   if(NOT FUZZTEST_FUZZING_MODE AND NOT FUZZTEST_COMPATIBILITY_MODE STREQUAL "libfuzzer")
     gtest_discover_tests(vimfy_property_tests
       PROPERTIES
@@ -177,10 +212,11 @@ if(VIMF_ENABLE_FUZZTEST)
 
   target_link_libraries(vimfy_safety_tests
     PRIVATE
-      test_utils
+      vimfy_core
   )
 
   link_fuzztest(vimfy_safety_tests)
+  suppress_fuzztest_header_warnings(vimfy_safety_tests)
   if(NOT FUZZTEST_FUZZING_MODE AND NOT FUZZTEST_COMPATIBILITY_MODE STREQUAL "libfuzzer")
     gtest_discover_tests(vimfy_safety_tests
       PROPERTIES
@@ -194,7 +230,7 @@ endif()
 # scripts/vimfy_tests so seed/env handling stays centralized.
 set(VIMFY_FAST_TEST_TARGETS
   vimfy_unit_tests
-  vimfy_expect_tests
+  vimfy_approval_tests
   vimficiency
 )
 
@@ -252,12 +288,7 @@ target_link_libraries(vimfy_debug
     GTest::gtest_main
 )
 
-# =============================================================================
-# Diff debug tool
-# =============================================================================
-# Visualize how diff planners split buffer changes into regions.
-# Run with: ./vimfy_diff_debug 'aaa\nbbb\nccc' 'ccc\nddd'
-
+# Standalone CLI; keep separate from vimfy_debug because it owns main().
 add_executable(vimfy_diff_debug
   Debug/DiffDebug.cpp
 )

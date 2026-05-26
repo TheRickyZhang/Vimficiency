@@ -19,11 +19,11 @@
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"
 #include "Optimizer/CompositionOptimizer/DiffState.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
-#include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Boundary/TransformBoundary.h"
 #include "Boundary/NavBoundary.h"
 #include "TransformOptimizer/EmbeddedRegionTestUtils.h"
 #include "Utils/NeovimOracle.h"
+#include "Utils/PrettyText.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 #include "Utils/StringUtils.h"
@@ -57,6 +57,86 @@ template<bool TrackExploredStates>
       + stats.statesSkipped() + static_cast<int>(stats.exploredStates().size());
 }
 
+void debugPrintLines(string_view label, const Lines& lines) {
+  cerr << label << " (" << lines.size() << " lines)" << endl;
+  for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+    cerr << "  [" << i << "] '" << lines[i] << "' len=" << lines[i].size()
+         << endl;
+  }
+}
+
+struct DebugCompositionReplayCase {
+  Lines initial;
+  CursorPos initialPos;
+  Lines goal;
+  CursorPos goalPos;
+};
+
+void debugReplaceLineSpan(Lines& lines) {
+  int line = randomLineIndex(lines);
+  string& text = lines[line];
+  int begin = randomInsertCol(text);
+  int end = RandomGen::range(begin, static_cast<int>(text.size()));
+  text.replace(begin, end - begin, randomLine(RandomGen::range(0, 6)));
+}
+
+void debugSplitLine(Lines& lines) {
+  int line = randomLineIndex(lines);
+  string& text = lines[line];
+  int col = randomInsertCol(text);
+  string suffix = text.substr(col);
+  text.erase(col);
+  lines.insert(lines.begin() + line + 1, suffix);
+}
+
+void debugJoinAdjacentLines(Lines& lines) {
+  if (lines.size() < 2) {
+    debugReplaceLineSpan(lines);
+    return;
+  }
+  int line = RandomGen::range(0, lines.lastLine() - 1);
+  lines[line] += lines[line + 1];
+  lines.erase(lines.begin() + line + 1);
+}
+
+void debugInsertLine(Lines& lines) {
+  int index = RandomGen::range(0, static_cast<int>(lines.size()));
+  lines.insert(lines.begin() + index, randomLine(RandomGen::range(0, 8)));
+}
+
+void debugDeleteLine(Lines& lines) {
+  if (lines.size() < 2) {
+    debugReplaceLineSpan(lines);
+    return;
+  }
+  lines.erase(lines.begin() + randomLineIndex(lines));
+}
+
+void debugApplyRandomMutation(Lines& lines) {
+  switch (RandomGen::range(0, 4)) {
+    case 0: debugReplaceLineSpan(lines); break;
+    case 1: debugSplitLine(lines); break;
+    case 2: debugJoinAdjacentLines(lines); break;
+    case 3: debugInsertLine(lines); break;
+    default: debugDeleteLine(lines); break;
+  }
+}
+
+DebugCompositionReplayCase debugGenerateCompositionReplayCase() {
+  DebugCompositionReplayCase test;
+  test.initial = randomLines(RandomGen::range(1, 4), 3, 9);
+  test.goal = test.initial;
+  int mutationCount = RandomGen::range(1, 3);
+  for (int i = 0; i < mutationCount; i++) {
+    debugApplyRandomMutation(test.goal);
+  }
+  if (test.goal == test.initial) {
+    test.goal[0] += "a";
+  }
+  test.initialPos = randomPos(test.initial);
+  test.goalPos = randomPos(test.goal);
+  return test;
+}
 } // namespace
 
 // ============================================================================
@@ -228,6 +308,53 @@ TEST_F(DebugTest, DISABLED_InvestigateMovementSequences) {
   trace({
       "  fffffff ddbd ebb eeeccc. cf eeeeeee fff dfdfdfdf fd aaaaaaa! ffffeeee bbff dddddd f ccc f.",
   }, CursorPos(0, 12), "3k6ggtf5$6G;j;;ge4W");
+}
+
+TEST_F(DebugTest, DISABLED_InvestigateCompositionRandomMutation) {
+  RandomGen::seed(531082);
+  DebugCompositionReplayCase test;
+  for (int caseIndex = 0; caseIndex <= 42; caseIndex++) {
+    test = debugGenerateCompositionReplayCase();
+  }
+
+  Lines initial = test.initial;
+  Lines goal = test.goal;
+  CursorPos initialPos = test.initialPos;
+  CursorPos goalPos = test.goalPos;
+
+  CompositionOptimizer optimizer(config);
+  auto result = optimizer.optimize(initial, initialPos, goal, goalPos);
+  NeovimOracle oracle;
+
+  debugPrintLines("initial", initial);
+  debugPrintLines("goal", goal);
+  cerr << "initialPos=" << initialPos << " goalPos=" << goalPos << endl;
+
+  cerr << "diffs=" << result.getDiffs().size() << endl;
+  for (const DiffState& diff : result.getDiffs()) {
+    cerr << "diff deleted=" << diff.deletedLines()
+         << " inserted=" << diff.insertedLines()
+         << " prefix='" << diff.boundary.prefix()
+         << "' suffix='" << diff.boundary.suffix() << "'" << endl;
+  }
+
+  int i = 0;
+  for (const auto& candidate : result.getResults()) {
+    string seq = candidate.getSequence().str();
+    auto replay = oracle.simulate(initial, initialPos.line, initialPos.col, seq);
+    cerr << "result " << i++ << " seq='" << seq << "'"
+         << " replay=" << replay.lines
+         << " cursor=" << CursorPos(replay.row, replay.col)
+         << " cost=" << candidate.getCost() << endl;
+    debugPrintLines("  replay lines", replay.lines);
+    if (i >= 5) break;
+  }
+
+  for (string seq : {"A<CR><Esc>", "A<CR><BS><Esc>"}) {
+    auto replay = oracle.simulate(initial, initialPos.line, initialPos.col, seq);
+    debugPrintLines("oracle after " + seq, replay.lines);
+    cerr << "  cursor=" << CursorPos(replay.row, replay.col) << endl;
+  }
 }
 
 TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
@@ -2256,11 +2383,13 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
     const auto& d = ctx.edits[0].diffState;
     Lines deleted = d.deletedLines();
     Lines inserted = d.insertedLines();
-    cerr << "  Original: deletedLines=" << deleted << " → insertedLines=" << inserted << endl;
+    cerr << "  Original: deletedLines=" << deleted << " " << VF::PrettyText::ARROW
+         << " insertedLines=" << inserted << endl;
 
     if (deleted.size() > 1 && deleted[0].empty() && !d.boundary.prefix().empty()) {
       deleted.erase(deleted.begin());
-      cerr << "  After strip: deletedLines=" << deleted << " → insertedLines=" << inserted << endl;
+      cerr << "  After strip: deletedLines=" << deleted << " " << VF::PrettyText::ARROW
+           << " insertedLines=" << inserted << endl;
       cerr << "  Edit region now starts at (1,0), no prefix" << endl;
       cerr << "  Buffer before edit: " << ctx.getLinesAfter(0) << endl;
 

@@ -11,7 +11,7 @@ using namespace std;
 namespace helpers = VF::LuaExports::helpers;
 namespace payload = VF::LuaExports::payload;
 using VF::LuaExports::g_config_internal;
-using VF::LuaExports::kEventFieldSep;
+using VF::LuaExports::EVENT_FIELD_SEP;
 
 namespace {
 
@@ -133,11 +133,11 @@ VF::LuaExports::Result<string> analyzeImpl(
       // Machine-readable export for the Lua bridge: use the raw sequence
       // bytes, not Sequence's human formatter, so insert-mode text and
       // <Esc> survive round-tripping through ffi.lua's line parser.
-      // Field separator is the shared `kEventFieldSep` (0x1F Unit Sep);
+      // Field separator is the shared `EVENT_FIELD_SEP` (0x1F Unit Sep);
       // rationale and the project-wide convention live in
       // `dev/lua/ffi-separators.md`.
       oss << result->getSequence().view()
-          << kEventFieldSep
+          << EVENT_FIELD_SEP
           << fixed << setprecision(3) << result->getCost() << "\n";
     }
   }

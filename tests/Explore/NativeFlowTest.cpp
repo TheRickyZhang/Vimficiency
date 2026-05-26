@@ -1,7 +1,6 @@
 #include "Explore/TestHelpers.h"
 
 using namespace std;
-using ExploreTestSupport::ExploreViewTest;
 
 namespace {
 

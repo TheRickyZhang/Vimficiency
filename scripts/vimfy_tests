@@ -13,7 +13,22 @@ esac
 suite="${1:-all}"
 filter="${2:-}"
 mode="${3:-explore}"
+approval_update=0
 fuzztest_seed="OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk"
+
+if [[ "$suite" == "approval" ]]; then
+  case "$filter" in
+    --approve|--update|--override)
+      approval_update=1
+      filter="${3:-}"
+      ;;
+  esac
+  case "${3:-}" in
+    --approve|--update|--override)
+      approval_update=1
+      ;;
+  esac
+fi
 
 if [[ "$suite" == "all" || "$suite" == "property" || "$suite" == "safety" ]]; then
   if [[ $# -lt 3 ]]; then
@@ -48,6 +63,45 @@ run_gtest() {
   fi
 
   "$binary" "${args[@]}"
+}
+
+approve_received_files() {
+  local fixtures_dir="$repo_root/tests/Approval/fixtures"
+  local received_files=()
+  local file
+
+  shopt -s nullglob
+  received_files=("$fixtures_dir"/*.received.txt)
+  shopt -u nullglob
+
+  if [[ ${#received_files[@]} -eq 0 ]]; then
+    echo "error: no approval .received.txt files found" >&2
+    return 1
+  fi
+
+  for file in "${received_files[@]}"; do
+    local approved="${file/.received./.approved.}"
+    cp "$file" "$approved"
+    echo "approved ${approved#$repo_root/}"
+  done
+}
+
+run_approval() {
+  local binary="$1"
+  local test_filter="${2:-}"
+  local update="${3:-0}"
+
+  if [[ "$update" != 1 ]]; then
+    run_gtest "$binary" "$test_filter"
+    return
+  fi
+
+  if run_gtest "$binary" "$test_filter"; then
+    return
+  fi
+
+  approve_received_files
+  run_gtest "$binary" "$test_filter"
 }
 
 filter_fuzztest_seed_line() {
@@ -125,18 +179,18 @@ run_lua() {
 }
 
 unit_binary="$build_dir/tests/vimfy_unit_tests"
-expect_binary="$build_dir/tests/vimfy_expect_tests"
+approval_binary="$build_dir/tests/vimfy_approval_tests"
 property_binary="$build_dir/tests/vimfy_property_tests"
 safety_binary="$build_dir/tests/vimfy_safety_tests"
 
 case "$suite" in
   all)
     require_executable "$unit_binary" vimfy_unit_tests
-    require_executable "$expect_binary" vimfy_expect_tests
+    require_executable "$approval_binary" vimfy_approval_tests
     require_executable "$property_binary" vimfy_property_tests
     require_executable "$safety_binary" vimfy_safety_tests
     run_gtest "$unit_binary"
-    run_gtest "$expect_binary"
+    run_gtest "$approval_binary"
     run_generated "$property_binary" "" "$mode"
     run_generated "$safety_binary" "" "$mode"
     run_lua
@@ -145,9 +199,9 @@ case "$suite" in
     require_executable "$unit_binary" vimfy_unit_tests
     run_gtest "$unit_binary" "$filter"
     ;;
-  expect)
-    require_executable "$expect_binary" vimfy_expect_tests
-    run_gtest "$expect_binary" "$filter"
+  approval)
+    require_executable "$approval_binary" vimfy_approval_tests
+    run_approval "$approval_binary" "$filter" "$approval_update"
     ;;
   property)
     require_executable "$property_binary" vimfy_property_tests
@@ -161,8 +215,9 @@ case "$suite" in
     run_lua "$filter"
     ;;
   *)
-    echo "usage: scripts/vimfy_tests [all|unit|expect|property|safety|lua] [filter-or-file] [seed|explore|campaign]" >&2
+    echo "usage: scripts/vimfy_tests [all|unit|approval|property|safety|lua] [filter-or-file] [seed|explore|campaign|--approve]" >&2
     echo "  property/safety/all default to explore mode; CI passes seed for deterministic generated tests." >&2
+    echo "  approval accepts --approve before or after the optional filter to update snapshots and rerun." >&2
     exit 1
     ;;
 esac

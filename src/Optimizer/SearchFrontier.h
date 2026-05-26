@@ -34,10 +34,6 @@ inline bool enqueueRangeState(State&& state,
   return false;
 }
 
-}  // namespace Search
-
-namespace Search {
-
 template<class State, class PriorityQueue, class CostMap, class PendingByStart,
          class StartActive>
 inline bool enqueueImprovedTransformState(State&& state,

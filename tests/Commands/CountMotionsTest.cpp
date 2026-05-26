@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <vector>
 
 #include "Optimizer/NavOptimizer/BufferIndex.h"
 #include "Optimizer/NavOptimizer/CountableMovementPair.h"
@@ -16,6 +17,22 @@
 #include "Utils/TestUtils.h"
 
 using namespace std;
+
+namespace {
+
+bool containsPair(
+    const vector<CountableMovementPair>& pairs,
+    const char* forward,
+    const char* backward,
+    LandingType type) {
+  return any_of(pairs.begin(), pairs.end(), [&](const CountableMovementPair& pair) {
+    return pair.forward.seq.view() == forward &&
+           pair.backward.seq.view() == backward &&
+           pair.type == type;
+  });
+}
+
+}  // namespace
 
 // =============================================================================
 // BufferIndex Unit Tests
@@ -179,15 +196,9 @@ TEST_F(CountMotionsOptimizerTest, SmallCount_NotEmitted) {
 
   auto results = runOptimizer(wordLine, start, end, userSeq);
 
-  // Should find "w", not "1w"
-  bool has_1w = false;
-  for (const auto& r : results) {
-    if (r.getSequence() == "1w") {
-      has_1w = true;
-      break;
-    }
-  }
-  EXPECT_FALSE(has_1w) << "Should not emit 1w, just w";
+  EXPECT_FALSE(any_of(results.begin(), results.end(), [](const auto& result) {
+    return result.getSequence() == "1w";
+  })) << "Should not emit 1w, just w";
 }
 
 // =============================================================================
@@ -195,46 +206,22 @@ TEST_F(CountMotionsOptimizerTest, SmallCount_NotEmitted) {
 // =============================================================================
 
 TEST(CountableMovementPairTest, LineMotionsContainExpectedPairs) {
-  // Verify COUNT_SEARCHABLE_MOTIONS_LINE has correct structure
-  bool hasWordBegin = false;
-  bool hasWordEnd = false;
-  bool hasBigWordBegin = false;
-  bool hasBigWordEnd = false;
-
-  for (const auto& pair : COUNT_SEARCHABLE_MOTIONS_LINE) {
-    if (pair.forward.seq.view() == "w" && pair.backward.seq.view() == "b" && pair.type == LandingType::WordBegin) {
-      hasWordBegin = true;
-    }
-    if (pair.forward.seq.view() == "e" && pair.backward.seq.view() == "ge" && pair.type == LandingType::WordEnd) {
-      hasWordEnd = true;
-    }
-    if (pair.forward.seq.view() == "W" && pair.backward.seq.view() == "B" && pair.type == LandingType::BigWordBegin) {
-      hasBigWordBegin = true;
-    }
-    if (pair.forward.seq.view() == "E" && pair.backward.seq.view() == "gE" && pair.type == LandingType::BigWordEnd) {
-      hasBigWordEnd = true;
-    }
-  }
-
-  EXPECT_TRUE(hasWordBegin) << "Missing w/b WordBegin pair";
-  EXPECT_TRUE(hasWordEnd) << "Missing e/ge WordEnd pair";
-  EXPECT_TRUE(hasBigWordBegin) << "Missing W/B BigWordBegin pair";
-  EXPECT_TRUE(hasBigWordEnd) << "Missing E/gE BigWordEnd pair";
+  EXPECT_TRUE(containsPair(
+      COUNT_SEARCHABLE_MOTIONS_LINE, "w", "b", LandingType::WordBegin))
+      << "Missing w/b WordBegin pair";
+  EXPECT_TRUE(containsPair(
+      COUNT_SEARCHABLE_MOTIONS_LINE, "e", "ge", LandingType::WordEnd))
+      << "Missing e/ge WordEnd pair";
+  EXPECT_TRUE(containsPair(
+      COUNT_SEARCHABLE_MOTIONS_LINE, "W", "B", LandingType::BigWordBegin))
+      << "Missing W/B BigWordBegin pair";
+  EXPECT_TRUE(containsPair(
+      COUNT_SEARCHABLE_MOTIONS_LINE, "E", "gE", LandingType::BigWordEnd))
+      << "Missing E/gE BigWordEnd pair";
 }
 
-TEST(CountableMovementPairTest, GlobalMotionsContainParagraphAndSentence) {
-  bool hasParagraph = false;
-  bool hasSentence = false;
-
-  for (const auto& pair : COUNT_SEARCHABLE_MOTIONS_GLOBAL) {
-    if (pair.forward.seq.view() == "}" && pair.backward.seq.view() == "{" && pair.type == LandingType::Paragraph) {
-      hasParagraph = true;
-    }
-    if (pair.forward.seq.view() == ")" && pair.backward.seq.view() == "(" && pair.type == LandingType::Sentence) {
-      hasSentence = true;
-    }
-  }
-
-  EXPECT_TRUE(hasParagraph) << "Missing }/{  Paragraph pair";
-  EXPECT_TRUE(hasSentence) << "Missing )/( Sentence pair";
+TEST(CountableMovementPairTest, GlobalMotionsContainParagraph) {
+  EXPECT_TRUE(containsPair(
+      COUNT_SEARCHABLE_MOTIONS_GLOBAL, "}", "{", LandingType::Paragraph))
+      << "Missing }/{  Paragraph pair";
 }

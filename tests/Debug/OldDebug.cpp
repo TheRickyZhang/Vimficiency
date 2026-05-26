@@ -307,15 +307,6 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentence2ParenFailure) {
   CursorPos sim2paren = simulateMovements(CursorPos(3, 21), "2(", subBuffer);
   cerr << "simulateMovements((3,21), \"2(\") = (" << sim2paren.line << ", " << sim2paren.col << ")" << endl;
 
-  // BufferIndex sentence positions
-  cerr << "\n=== BufferIndex sentence positions ===" << endl;
-  BufferIndex subIdx(subBuffer);
-  cerr << "Sub buffer sentence starts:" << endl;
-  for (const auto& pos : subIdx.getPositions(LandingType::Sentence)) {
-    char c = pos.col < (int)subBuffer[pos.line].size() ? subBuffer[pos.line][pos.col] : '?';
-    cerr << "  (" << pos.line << ", " << pos.col << ") = '" << c << "'" << endl;
-  }
-
   cerr << "\n=== Analysis ===" << endl;
   bool match = (sim2paren.line == subResult2paren.row && sim2paren.col == subResult2paren.col);
   cerr << "2( matches Neovim sub-buffer: " << (match ? "YES" : "NO") << endl;
@@ -600,26 +591,6 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceSentenceIndexFailure) {
 
   CursorPos step3 = simulateMovements(step2, "b", subBuffer);
   cerr << "simulateMovements((" << step2.line << "," << step2.col << "), \"b\", subBuffer) = (" << step3.line << ", " << step3.col << ")" << endl;
-
-  cerr << "\n=== BufferIndex Sentence Positions ===" << endl;
-
-  cerr << "\n--- Full Buffer ---" << endl;
-  BufferIndex fullIdx(fullBuffer);
-  cerr << "Sentence starts in full buffer:" << endl;
-  for (const auto& pos : fullIdx.getPositions(LandingType::Sentence)) {
-    cerr << "  (" << pos.line << ", " << pos.col << ") = '"
-         << (pos.col < (int)fullBuffer[pos.line].size() ? fullBuffer[pos.line][pos.col] : '?')
-         << "'" << endl;
-  }
-
-  cerr << "\n--- Sub Buffer ---" << endl;
-  BufferIndex subIdx(subBuffer);
-  cerr << "Sentence starts in sub buffer:" << endl;
-  for (const auto& pos : subIdx.getPositions(LandingType::Sentence)) {
-    cerr << "  (" << pos.line << ", " << pos.col << ") = '"
-         << (pos.col < (int)subBuffer[pos.line].size() ? subBuffer[pos.line][pos.col] : '?')
-         << "'" << endl;
-  }
 
   cerr << "\n=== Neovim Sentence Motion Comparison ===" << endl;
 

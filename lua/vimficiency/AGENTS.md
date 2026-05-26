@@ -31,7 +31,7 @@ Subdirectories hold supporting modules for each domain:
 | `session/compute.lua` | Active-session capture normalization and optimizer invocation. |
 | `session/disk.lua` | Saved-result JSON encoding, validation, and disk operations. |
 | `session/playback.lua` | Converts stored results into replay sequence pools. |
-| `session/result_view.lua` | Pure formatting helpers (position string, body lines) shared by `finish` and auto-suggest. |
+| `session/result_view.lua` | Lua adapter for C++ result report formatting shared by `finish` and auto-suggest. |
 | `session/saved_view.lua` | Scratch-buffer view for saved result files. |
 | `session/store.lua` | Canonical session records + manual/recall indexing. |
 
@@ -64,6 +64,7 @@ Subdirectories hold supporting modules for each domain:
 | `ffi/session.lua` | Session/capture helpers exposed by C++. |
 | `ffi/optimizer.lua` | Optimizer analysis and optimizer-override encoding. |
 | `ffi/sequence.lua` | Sequence tokenization, formatting, and movement simulation. |
+| `ffi/display.lua` | C++ sequence-display and session-report formatter wrappers. |
 | `ffi/explore.lua` | Explore-state and recommendation wrappers. |
 
 ### `capture/` — observation and triggers

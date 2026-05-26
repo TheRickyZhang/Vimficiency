@@ -11,14 +11,14 @@ when the methodologies prove different things about the same feature.
 | Methodology | How it proves something | Runner | Default gate | Command |
 |-------------|-------------------------|--------|--------------|---------|
 | Unit/assert | Hand-written deterministic check of a fixed case | `vimfy_unit_tests` | Yes | `scripts/vimfy_tests unit` |
-| Expect | Curated output compared to a stored fixture after normalization | `vimfy_expect_tests` | Yes | `scripts/vimfy_tests expect` |
+| Approval | Curated C++ output compared to a reviewed snapshot fixture | `vimfy_approval_tests` | Yes | `scripts/vimfy_tests approval` |
 | Property | Semantic invariant over generated structured project inputs | `vimfy_property_tests` | CI: fixed seed | `scripts/vimfy_tests property` |
 | Safety | Safe failure or bounded behavior over adversarial inputs | `vimfy_safety_tests` | CI: fixed seed | `scripts/vimfy_tests safety` |
 | Lua integration | Real-Neovim plugin/FFI scenarios | `scripts/vimfy_tests lua` | Yes | `scripts/vimfy_tests lua` |
 | Benchmark | Timing and search-counter trends on fixed fixtures | `vimfy_benchmarks` | No | `./build/tests/vimfy_benchmarks` |
 | Debug/manual | Scratch repros, noisy traces, human-approval exploration | `vimfy_debug` or disabled tests | No | `./build/tests/vimfy_debug` |
 
-`scripts/vimfy_tests` is the fast local correctness gate: unit, expect,
+`scripts/vimfy_tests` is the fast local correctness gate: unit, approval,
 exploratory property, exploratory safety, and Lua integration. CI calls the same
 script with `seed` so generated tests are deterministic there. Property and
 safety tests both use Google FuzzTest declarations and domains, but the
@@ -44,8 +44,9 @@ unit/assert pins regressions; property checks the universal invariant).
   oracle conformance over generated motion/operator inputs, optimizer replay
   over generated edit/nav problems, structural invariants of parsed types,
   effort-model identities (`tests/Property/`).
-- **Expect** — user-facing report rendering and stable serialization
-  (`tests/Expect/`).
+- **Approval** — ApprovalTests.cpp snapshots for production C++ text formats
+  and diagnostics (`tests/Approval/`). Lua adapters can call those formatters
+  through FFI, but Neovim-owned UI behavior stays in Lua integration tests.
 - **Safety** — adversarial, malformed, external-boundary, and resource-stress
   inputs whose primary contract is safe failure or bounded behavior
   (`tests/Safety/`).
@@ -162,7 +163,7 @@ Fuzzing is a mode for searching either kind of property:
 |---------------|---------|----------|-------------|
 | `vimfy_tests` | Fast local correctness gate | `scripts/vimfy_tests` | `scripts/vimfy_tests` |
 | `vimfy_unit_tests` | Deterministic C++ correctness: unit, oracle, replay | `build/tests/vimfy_unit_tests` | `scripts/vimfy_tests unit` |
-| `vimfy_expect_tests` | Curated user-facing report fixtures | `build/tests/vimfy_expect_tests` | `scripts/vimfy_tests expect` |
+| `vimfy_approval_tests` | ApprovalTests.cpp C++ output snapshots | `build/tests/vimfy_approval_tests` | `scripts/vimfy_tests approval` |
 | `vimfy_property_tests` | Structured semantic properties | `build/tests/vimfy_property_tests` | `scripts/vimfy_tests property` |
 | `vimfy_safety_tests` | Adversarial-input safety properties | `build/tests/vimfy_safety_tests` | `scripts/vimfy_tests safety` |
 | `scripts/vimfy_tests lua` | Lua/Neovim integration | repo root | `scripts/vimfy_tests lua` |
@@ -201,8 +202,12 @@ scripts/vimfy_tests
 It is reasonable to run one test type during local iteration:
 
 ```bash
-# Expect fixtures
-scripts/vimfy_tests expect
+# Approval snapshots
+scripts/vimfy_tests approval
+
+# Accept approval snapshot changes, then rerun the same approval tests
+scripts/vimfy_tests approval --approve
+scripts/vimfy_tests approval "TreeDiffApproval.*" --approve
 
 # Oracle/conformance tests, where suite names have been migrated
 scripts/vimfy_tests unit "*OracleConformanceTest.*"
@@ -268,7 +273,7 @@ is "trusted internal caller only" until a fallible boundary has been introduced.
 
 ## Writing FuzzTest Properties
 
-Prefer direct FuzzTest domains for new non-oracle properties:
+Prefer direct FuzzTest domains for new or migrated non-oracle properties:
 
 ```cpp
 void MergeEqualsSequentialAppend(const vector<int>& a, const vector<int>& b) {
@@ -285,8 +290,8 @@ FUZZ_TEST(EffortGeneratedPropertyTest, MergeEqualsSequentialAppend)
 
 Use a `uint32_t` domain-driver parameter only when converting an existing
 generated loop or when the property relies on expensive state such as
-`NeovimOracle`. In that case the function should seed `RandomGen`, loop a fixed
-case count, and emit `SCOPED_TRACE` with the generated value and case index:
+`NeovimOracle`. In that case call `runSeedDriverCases(...)` so `RandomGen` is
+seeded and failures include the generated value plus inner case index:
 
 ```cpp
 class TransformOptimizerGeneratedPropertyTest {
@@ -322,7 +327,7 @@ tests/
 ├── Misc/                  # unit/assert: parser errors, cost math, config, helpers
 ├── Property/              # property: structured semantic generated-input invariants
 ├── Safety/                # safety: adversarial-input safe-failure and bounded-behavior checks
-├── Expect/                # expect: curated user-facing report fixtures
+├── Approval/              # approval: ApprovalTests.cpp C++ output snapshots
 ├── Benchmarks/            # benchmark: Google Benchmark binary sources
 ├── Debug/                 # debug: scratch/debug binary sources
 ├── lua/                   # lua integration: Lua/Neovim plugin tests
@@ -334,7 +339,7 @@ NeovimOracle infrastructure, and methodology-specific runners matter more here
 than colocating tests next to implementation files.
 
 Naming uses singular methodology directories: `Property/`, `Safety/`,
-`Expect/`. Files in those directories use `SubjectRole.cpp`, such as
+`Approval/`. Files in those directories use `SubjectRole.cpp`, such as
 `NavOptimizerProperty.cpp` or `ParserBoundarySafety.cpp`, so editor tabs and
 build output do not collide with production basenames.
 
@@ -342,7 +347,7 @@ build output do not collide with production basenames.
 
 **A test file's location is determined by its methodology.**
 
-- Methodology-named top-level directories (`Property/`, `Safety/`, `Expect/`,
+- Methodology-named top-level directories (`Property/`, `Safety/`, `Approval/`,
   `Benchmarks/`, `Debug/`, `lua/`) hold *only* that methodology's tests. No
   exceptions.
 - Feature-named top-level directories (`Commands/`, `Operator/`, the optimizer
@@ -370,7 +375,9 @@ placement rule.
   properties.
 - **Safety** — `tests/Safety/`. Adversarial, malformed, external-boundary, and
   resource-stress inputs that must fail safely or remain bounded.
-- **Expect** — `tests/Expect/`. User-facing report examples.
+- **Approval** — `tests/Approval/`. ApprovalTests.cpp snapshots for production
+  C++ text formats and diagnostics. Lua adapters to those formatters stay
+  covered by Lua integration tests.
 - **Lua integration** — `tests/lua/`.
 - **Benchmark** — `tests/Benchmarks/`.
 - **Debug/manual** — `tests/Debug/`, not the correctness suite.

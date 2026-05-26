@@ -42,7 +42,7 @@ splitOnce(std::string_view s, char c) {
 }
 
 const std::set<std::string_view, std::less<>>& knownKeys() {
-  static const std::set<std::string_view, std::less<>> kKeys = {
+  static const std::set<std::string_view, std::less<>> keys = {
 #define VF_KEY(type, name, withName, def, parser) #name,
       OPTIMIZER_BASE_FIELDS(VF_KEY)
       MOTION_CLASS_FIELDS(VF_KEY)
@@ -51,46 +51,46 @@ const std::set<std::string_view, std::less<>>& knownKeys() {
       COMPOSITION_OWN_FIELDS(VF_KEY)
 #undef VF_KEY
   };
-  return kKeys;
+  return keys;
 }
 
 const std::set<std::string_view, std::less<>>& baseKeys() {
-  static const std::set<std::string_view, std::less<>> kKeys = {
+  static const std::set<std::string_view, std::less<>> keys = {
 #define VF_KEY(type, name, withName, def, parser) #name,
       OPTIMIZER_BASE_FIELDS(VF_KEY)
 #undef VF_KEY
   };
-  return kKeys;
+  return keys;
 }
 
 const std::set<std::string_view, std::less<>>& navKeys() {
-  static const std::set<std::string_view, std::less<>> kKeys = {
+  static const std::set<std::string_view, std::less<>> keys = {
 #define VF_KEY(type, name, withName, def, parser) #name,
       OPTIMIZER_BASE_FIELDS(VF_KEY)
       NAV_FIELDS(VF_KEY)
 #undef VF_KEY
   };
-  return kKeys;
+  return keys;
 }
 
 const std::set<std::string_view, std::less<>>& transformKeys() {
-  static const std::set<std::string_view, std::less<>> kKeys = {
+  static const std::set<std::string_view, std::less<>> keys = {
 #define VF_KEY(type, name, withName, def, parser) #name,
       OPTIMIZER_BASE_FIELDS(VF_KEY)
       TRANSFORM_FIELDS(VF_KEY)
 #undef VF_KEY
   };
-  return kKeys;
+  return keys;
 }
 
 const std::set<std::string_view, std::less<>>& compositionKeys() {
-  static const std::set<std::string_view, std::less<>> kKeys = {
+  static const std::set<std::string_view, std::less<>> keys = {
 #define VF_KEY(type, name, withName, def, parser) #name,
       OPTIMIZER_BASE_FIELDS(VF_KEY)
       COMPOSITION_FIELDS(VF_KEY)
 #undef VF_KEY
   };
-  return kKeys;
+  return keys;
 }
 
 bool keyAllowedInScope(std::string_view scope, std::string_view key) {

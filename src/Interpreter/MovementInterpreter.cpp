@@ -76,9 +76,9 @@ std::expected<std::vector<ParsedMovement>, MovementParseError> parseMovements(st
 
     int cnt = 0;
     // 0 is a valid digit except for the first one
-    if (ParserChar::is_digit(c) && c != '0') {
+    if (isAsciiDigit(c) && c != '0') {
       constexpr int INT_MAX_VALUE = std::numeric_limits<int>::max();
-      while (i < sv.size() && ParserChar::is_digit(sv[i])) {
+      while (i < sv.size() && isAsciiDigit(sv[i])) {
         int digit = sv[i] - '0';
         if (cnt > (INT_MAX_VALUE - digit) / 10) {
           cnt = INT_MAX_VALUE;
