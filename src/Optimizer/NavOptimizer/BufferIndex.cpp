@@ -9,7 +9,6 @@ using namespace VimCore;
 BufferIndex::BufferIndex(const Lines& buffer) {
   if (buffer.empty()) return;
 
-  bool prevWasSentenceEnd = false;
   bool prevLineWasEmpty = true;  // Treat sentinel as empty for paragraph detection
 
   for (int line = 0; line < static_cast<int>(buffer.size()); ++line) {
@@ -26,11 +25,6 @@ BufferIndex::BufferIndex(const Lines& buffer) {
       get(LandingType::Paragraph).emplace_back(line, 0);
     }
     prevLineWasEmpty = lineEmpty;
-
-    if (ln.empty()) {
-      prevWasSentenceEnd = false;
-      continue;
-    }
 
     for (int col = 0; col < static_cast<int>(ln.size()); ++col) {
       char curr = ln[col];
@@ -56,7 +50,6 @@ BufferIndex::BufferIndex(const Lines& buffer) {
       }
 
       // Word/bigWord END: non-blank where next is blank or different type
-      bool nextIsBigWord = false;
       if (atLineEnd) {
         if (currClass.bigWord()) {
           get(LandingType::WordEnd).emplace_back(line, col);
@@ -64,7 +57,6 @@ BufferIndex::BufferIndex(const Lines& buffer) {
         }
       } else {
         CharMask nextClass(ln[col + 1]);
-        nextIsBigWord = nextClass.bigWord();
         if (endsWordBroad(currClass, nextClass)) {
           get(LandingType::WordEnd).emplace_back(line, col);
         }
@@ -72,24 +64,6 @@ BufferIndex::BufferIndex(const Lines& buffer) {
           get(LandingType::BigWordEnd).emplace_back(line, col);
         }
       }
-
-      // Sentence: first non-blank after sentence-ending punctuation + whitespace
-      if (prevWasSentenceEnd && !currClass.blank()) {
-        get(LandingType::Sentence).emplace_back(line, col);
-        prevWasSentenceEnd = false;
-      }
-
-      if (currClass.sentenceEnd() && (atLineEnd || !nextIsBigWord)) {
-        prevWasSentenceEnd = true;
-      } else if (!currClass.blank()) {
-        prevWasSentenceEnd = false;
-      }
-    }
-
-    // End of line with sentence-ending punct could lead to sentence start on next line
-    if (!ln.empty() &&
-        CharMask(ln.back()).sentenceEnd()) {
-      prevWasSentenceEnd = true;
     }
   }
 

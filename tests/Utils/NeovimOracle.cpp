@@ -137,15 +137,15 @@ struct NeovimOracle::Impl {
     }
     if (nvim_pid > 0) {
       // Poll for graceful exit; fall back to SIGTERM if it doesn't quit in time.
-      constexpr int kGraceMs = 200;
-      constexpr int kStepUs = 2000;
+      constexpr int GRACE_MS = 200;
+      constexpr int STEP_US = 2000;
       bool reaped = false;
-      for (int waited = 0; waited < kGraceMs * 1000; waited += kStepUs) {
+      for (int waited = 0; waited < GRACE_MS * 1000; waited += STEP_US) {
         if (waitpid(nvim_pid, nullptr, WNOHANG) == nvim_pid) {
           reaped = true;
           break;
         }
-        usleep(kStepUs);
+        usleep(STEP_US);
       }
       if (!reaped) {
         kill(nvim_pid, SIGTERM);

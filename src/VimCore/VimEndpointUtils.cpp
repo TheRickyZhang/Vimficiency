@@ -44,17 +44,17 @@ struct WordScan {
   bool lineBounded = false;
 };
 
-static constexpr WordScan<true, EdgeType::NextEdge> kScanNextBegin{
+static constexpr WordScan<true, EdgeType::NextEdge> SCAN_NEXT_BEGIN{
     false, false};
-static constexpr WordScan<true, EdgeType::WordEdge> kScanNextEnd{
+static constexpr WordScan<true, EdgeType::WordEdge> SCAN_NEXT_END{
     true, false};
-static constexpr WordScan<true, EdgeType::GapEdge> kScanNextGap{
+static constexpr WordScan<true, EdgeType::GapEdge> SCAN_NEXT_GAP{
     false, false};
-static constexpr WordScan<false, EdgeType::WordEdge> kScanPreviousBegin{
+static constexpr WordScan<false, EdgeType::WordEdge> SCAN_PREVIOUS_BEGIN{
     true, false};
-static constexpr WordScan<false, EdgeType::NextEdge> kScanPreviousEnd{
+static constexpr WordScan<false, EdgeType::NextEdge> SCAN_PREVIOUS_END{
     true, false};
-static constexpr WordScan<false, EdgeType::GapEdge> kScanPreviousGap{
+static constexpr WordScan<false, EdgeType::GapEdge> SCAN_PREVIOUS_GAP{
     false, false};
 
 template<typename Scan>
@@ -197,16 +197,16 @@ CursorPos wordMotionEndpoint(CursorPos cursor,
   switch (target) {
     case WordMotionTarget::NextBegin:
       return boundedWordEndpoint(
-          cursor, lines, isBigWord, kScanNextBegin, boundary);
+          cursor, lines, isBigWord, SCAN_NEXT_BEGIN, boundary);
     case WordMotionTarget::NextEnd:
       return boundedWordEndpoint(
-          cursor, lines, isBigWord, kScanNextEnd, boundary);
+          cursor, lines, isBigWord, SCAN_NEXT_END, boundary);
     case WordMotionTarget::PreviousBegin:
       return boundedWordEndpoint(
-          cursor, lines, isBigWord, kScanPreviousBegin, boundary);
+          cursor, lines, isBigWord, SCAN_PREVIOUS_BEGIN, boundary);
     case WordMotionTarget::PreviousEnd:
       return boundedWordEndpoint(
-          cursor, lines, isBigWord, kScanPreviousEnd, boundary);
+          cursor, lines, isBigWord, SCAN_PREVIOUS_END, boundary);
   }
   __builtin_unreachable();
 }
@@ -221,7 +221,7 @@ CharRange wordOperatorRange(CursorPos cursor,
   switch (target) {
     case WordOperatorTarget::DeleteToNextWord:
       endpoint = boundedWordEndpoint(
-          cursor, lines, isBigWord, kScanNextGap, boundary);
+          cursor, lines, isBigWord, SCAN_NEXT_GAP, boundary);
       if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor) {
         return CharRange(POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);
       }
@@ -234,7 +234,7 @@ CharRange wordOperatorRange(CursorPos cursor,
 
     case WordOperatorTarget::DeleteToWordEnd:
       endpoint = boundedWordEndpoint(
-          cursor, lines, isBigWord, kScanNextEnd, boundary);
+          cursor, lines, isBigWord, SCAN_NEXT_END, boundary);
       if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor) {
         return CharRange(POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);
       }
@@ -242,7 +242,7 @@ CharRange wordOperatorRange(CursorPos cursor,
 
     case WordOperatorTarget::DeleteBackToWordBegin: {
       endpoint = boundedWordEndpoint(
-          cursor, lines, isBigWord, kScanPreviousBegin, boundary);
+          cursor, lines, isBigWord, SCAN_PREVIOUS_BEGIN, boundary);
       if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor) {
         return CharRange(POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);
       }
@@ -259,7 +259,7 @@ CharRange wordOperatorRange(CursorPos cursor,
         return CharRange(POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);
       }
       endpoint = boundedWordEndpoint(
-          cursor, lines, isBigWord, kScanPreviousEnd, boundary);
+          cursor, lines, isBigWord, SCAN_PREVIOUS_END, boundary);
       if (endpoint == POSITION_OUTSIDE_BOUNDARY || endpoint == cursor) {
         return CharRange(POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);
       }
@@ -288,20 +288,20 @@ CharRange wordTextObjectRange(CursorPos cursor,
 
   if (isInner) {
     start = wordTextObjectEndpoint(
-        cursor, lines, isBigWord, noSkip(kScanPreviousBegin), boundary);
+        cursor, lines, isBigWord, noSkip(SCAN_PREVIOUS_BEGIN), boundary);
     end = onePastInclusiveWordEndpoint(
         wordTextObjectEndpoint(
-            cursor, lines, isBigWord, noSkip(kScanNextEnd), boundary),
+            cursor, lines, isBigWord, noSkip(SCAN_NEXT_END), boundary),
         lines);
     return finalizeWordTextObjectRange(CharRange(start, end), lines, boundary);
   }
 
   if (cursorOnWhitespace) {
     start = wordTextObjectEndpoint(
-        cursor, lines, isBigWord, lineBounded(kScanPreviousGap),
+        cursor, lines, isBigWord, lineBounded(SCAN_PREVIOUS_GAP),
         boundary);
     CursorPos wordEnd = wordTextObjectEndpoint(
-        cursor, lines, isBigWord, noSkip(kScanNextEnd), boundary);
+        cursor, lines, isBigWord, noSkip(SCAN_NEXT_END), boundary);
     end = onePastInclusiveWordEndpoint(wordEnd, lines);
     if (wordEnd != POSITION_OUTSIDE_BOUNDARY &&
         CharMask::isBlank(lines.get(wordEnd))) {
@@ -311,7 +311,7 @@ CharRange wordTextObjectRange(CursorPos cursor,
   }
 
   CursorPos rawWordEnd = rawWordEndpoint(
-      cursor, lines, isBigWord, noSkip(kScanNextEnd));
+      cursor, lines, isBigWord, noSkip(SCAN_NEXT_END));
   bool hasTrailingWhitespace = false;
   if (rawWordEnd != POSITION_OUTSIDE_BOUNDARY) {
     int nextCol = rawWordEnd.col + 1;
@@ -323,21 +323,21 @@ CharRange wordTextObjectRange(CursorPos cursor,
 
   if (hasTrailingWhitespace) {
     start = wordTextObjectEndpoint(
-        cursor, lines, isBigWord, noSkip(kScanPreviousBegin), boundary);
+        cursor, lines, isBigWord, noSkip(SCAN_PREVIOUS_BEGIN), boundary);
     end = onePastInclusiveWordEndpoint(
         wordTextObjectEndpoint(
-            cursor, lines, isBigWord, lineBounded(kScanNextGap), boundary),
+            cursor, lines, isBigWord, lineBounded(SCAN_NEXT_GAP), boundary),
         lines);
   } else {
     CursorPos gapStart = wordTextObjectEndpoint(
-        cursor, lines, isBigWord, lineBounded(kScanPreviousGap),
+        cursor, lines, isBigWord, lineBounded(SCAN_PREVIOUS_GAP),
         boundary);
     if (gapStart != POSITION_OUTSIDE_BOUNDARY &&
         gapStart.line == cursor.line && gapStart.col > 0) {
       start = gapStart;
     } else {
       CursorPos wordStart = wordTextObjectEndpoint(
-          cursor, lines, isBigWord, noSkip(kScanPreviousBegin), boundary);
+          cursor, lines, isBigWord, noSkip(SCAN_PREVIOUS_BEGIN), boundary);
       if (wordStart != POSITION_OUTSIDE_BOUNDARY &&
           wordStart.line == cursor.line && wordStart.col > 0 &&
           CharMask::isBlank(lines[wordStart.line][wordStart.col - 1])) {
@@ -348,7 +348,7 @@ CharRange wordTextObjectRange(CursorPos cursor,
     }
     end = onePastInclusiveWordEndpoint(
         wordTextObjectEndpoint(
-            cursor, lines, isBigWord, noSkip(kScanNextEnd), boundary),
+            cursor, lines, isBigWord, noSkip(SCAN_NEXT_END), boundary),
         lines);
   }
 

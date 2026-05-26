@@ -105,7 +105,7 @@ Several maps for different purposes:
 | `ALL_MOTIONS` | All supported vim motions for parsing/validation |
 | `EXPLORABLE_MOTIONS` | Motions directly usable in optimizer search (excludes f/F/t/T which need target char) |
 
-Count-search motion pair specs (`w/b`, `e/ge`, paragraph/sentence categories) are owned by NavOptimizer (`Optimizer/NavOptimizer/CountableMovementPair.h`), not Keyboard.
+Count-search motion pair specs (`w/b`, `e/ge`, paragraph categories) are owned by NavOptimizer (`Optimizer/NavOptimizer/CountableMovementPair.h`), not Keyboard. Counted sentence motions are stateful scans in NavExplorer, not `BufferIndex` categories.
 
 ### EditToKeys (`ToKeys/EditToKeys.h`)
 

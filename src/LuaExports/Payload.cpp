@@ -110,13 +110,13 @@ Result<vector<KeyTrackingEvent>> decodeKeyTrackingEvents(string_view encoded) {
   vector<KeyTrackingEvent> events;
   size_t start = 0;
   while (start < encoded.size()) {
-    size_t end = encoded.find(kEventRecordSep, start);
+    size_t end = encoded.find(EVENT_RECORD_SEP, start);
     if (end == string_view::npos) {
       end = encoded.size();
     }
     const string_view record = encoded.substr(start, end - start);
     if (!record.empty()) {
-      const size_t sep = record.find(kEventFieldSep);
+      const size_t sep = record.find(EVENT_FIELD_SEP);
       if (sep == string_view::npos) {
         return helpers::unexpectedError(
             ExportErrorKind::InvalidPayload,

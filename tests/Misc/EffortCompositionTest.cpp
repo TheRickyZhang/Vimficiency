@@ -16,7 +16,7 @@
 using namespace std;
 
 namespace {
-constexpr double kEffortTolerance = 1e-9;
+constexpr double EFFORT_TOLERANCE = 1e-9;
 }
 
 class EffortCompositionTest : public ::testing::Test {
@@ -53,7 +53,7 @@ protected:
     double naiveEffort = naive.getEffort(qwerty);
     double mergedEffort = merged.getEffort(qwerty);
 
-    EXPECT_NEAR(naiveEffort, mergedEffort, kEffortTolerance)
+    EXPECT_NEAR(naiveEffort, mergedEffort, EFFORT_TOLERANCE)
         << "Merged effort should equal naive sequential effort";
     EXPECT_EQ(naive.getStrokes(), merged.getStrokes())
         << "Stroke counts should match";
@@ -92,10 +92,10 @@ protected:
     naive.append(cKeys, qwerty);
 
     EXPECT_NEAR(
-        naive.getEffort(qwerty), ab_c.getEffort(qwerty), kEffortTolerance)
+        naive.getEffort(qwerty), ab_c.getEffort(qwerty), EFFORT_TOLERANCE)
         << "(a+b)+c should match naive";
     EXPECT_NEAR(
-        naive.getEffort(qwerty), a_bc.getEffort(qwerty), kEffortTolerance)
+        naive.getEffort(qwerty), a_bc.getEffort(qwerty), EFFORT_TOLERANCE)
         << "a+(b+c) should match naive";
     EXPECT_EQ(naive.getStrokes(), ab_c.getStrokes());
     EXPECT_EQ(naive.getStrokes(), a_bc.getStrokes());
@@ -226,9 +226,9 @@ TEST_F(EffortCompositionTest, Associativity) {
   naive.append(cKeys, qwerty);
 
   double naiveEffort = naive.getEffort(qwerty);
-  EXPECT_NEAR(naiveEffort, ab_c.getEffort(qwerty), kEffortTolerance)
+  EXPECT_NEAR(naiveEffort, ab_c.getEffort(qwerty), EFFORT_TOLERANCE)
       << "(a+b)+c should match naive";
-  EXPECT_NEAR(naiveEffort, a_bc.getEffort(qwerty), kEffortTolerance)
+  EXPECT_NEAR(naiveEffort, a_bc.getEffort(qwerty), EFFORT_TOLERANCE)
       << "a+(b+c) should match naive";
 }
 
@@ -251,7 +251,7 @@ TEST_F(EffortCompositionTest, AppendAfterMerge) {
   naive.append(cKeys, qwerty);
 
   EXPECT_NEAR(
-      naive.getEffort(qwerty), merged.getEffort(qwerty), kEffortTolerance);
+      naive.getEffort(qwerty), merged.getEffort(qwerty), EFFORT_TOLERANCE);
 }
 
 // =============================================================================
@@ -285,5 +285,5 @@ TEST_F(EffortCompositionTest, UniformConfig) {
 
   RunningEffort merged = RunningEffort::merge(a, b);
   EXPECT_NEAR(
-      naive.getEffort(uniform), merged.getEffort(uniform), kEffortTolerance);
+      naive.getEffort(uniform), merged.getEffort(uniform), EFFORT_TOLERANCE);
 }

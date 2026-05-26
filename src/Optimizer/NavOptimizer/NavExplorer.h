@@ -511,7 +511,7 @@ private:
     CursorPos pos = base.getPos();
     constexpr KSId motionId = Forward ? ForwardKS : BackwardKS;
 
-    if constexpr (LT == LandingType::Paragraph || LT == LandingType::Sentence) {
+    if constexpr (LT == LandingType::Paragraph) {
       if (hasHiddenContextOppositeScan<Forward>(pos)) return;
     }
 

@@ -12,7 +12,7 @@ local macro_patterns = {
 
 local targets = {
   unit = "vimfy_unit_tests",
-  expect = "vimfy_expect_tests",
+  approval = "vimfy_approval_tests",
   property = "vimfy_property_tests",
   safety = "vimfy_safety_tests",
   debug = "vimfy_debug",
@@ -64,8 +64,8 @@ function M.test_kind_for_file(path)
   if file:find("/tests/Safety/", 1, true) then
     return "safety"
   end
-  if file:find("/tests/Expect/", 1, true) then
-    return "expect"
+  if file:find("/tests/Approval/", 1, true) then
+    return "approval"
   end
   if file:find("/tests/Debug/", 1, true) then
     return "debug"

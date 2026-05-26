@@ -9,7 +9,7 @@ using namespace std;
 namespace {
 
 char randomLetter() {
-  return RandomGen::pick(CharPools::LETTERS);
+  return RandomGen::pick(RANDOM_LETTERS);
 }
 
 string randomPatternWord(int len) {
@@ -55,7 +55,7 @@ string randomWord(int len) {
   string result;
   result.resize_and_overwrite(len, [](char* s, size_t n) {
     for (size_t i = 0; i < n; i++) {
-      s[i] = RandomGen::pick(CharPools::LETTERS);
+      s[i] = RandomGen::pick(RANDOM_LETTERS);
     }
     return n;
   });
@@ -67,9 +67,9 @@ string randomHighSpaceLine(int len) {
   line.resize_and_overwrite(len, [](char* s, int n) {
     for (int i = 0; i < n; i++) {
       s[i] = RandomGen::pick<string_view>({
-          {50, CharPools::SPACE},
-          {30, CharPools::LETTERS},
-          {20, CharPools::SYMBOLS},
+          {50, RANDOM_SPACE},
+          {30, RANDOM_LETTERS},
+          {20, RANDOM_SYMBOLS},
       });
     }
     return n;
@@ -82,9 +82,9 @@ string randomProseLine(int len) {
   line.resize_and_overwrite(len, [](char* s, int n) {
     for (int i = 0; i < n; i++) {
       s[i] = RandomGen::pick<string_view>({
-          {80, CharPools::LETTERS},
-          {16, CharPools::SPACE},
-          {4, CharPools::SYMBOLS},
+          {80, RANDOM_LETTERS},
+          {16, RANDOM_SPACE},
+          {4, RANDOM_SYMBOLS},
       });
     }
     return n;
@@ -97,9 +97,9 @@ string randomLine(int len) {
   line.resize_and_overwrite(len, [](char* s, int n) {
     for (int i = 0; i < n; i++) {
       s[i] = RandomGen::pick<string_view>({
-          {60, CharPools::LETTERS},
-          {16, CharPools::SPACE},
-          {24, CharPools::SYMBOLS},
+          {60, RANDOM_LETTERS},
+          {16, RANDOM_SPACE},
+          {24, RANDOM_SYMBOLS},
       });
     }
     return n;
@@ -168,7 +168,7 @@ Lines randomCodeBuffer(int numLines, int avgLineLen) {
   result.reserve(numLines);
 
   int currentIndent = 0;
-  constexpr int kIndentSize = 2;
+  constexpr int INDENT_SIZE = 2;
 
   for (int i = 0; i < numLines; i++) {
     if (RandomGen::chance(1, 10)) {
@@ -181,8 +181,8 @@ Lines randomCodeBuffer(int numLines, int avgLineLen) {
       int commentLen = RandomGen::range(10, avgLineLen);
       for (int j = 0; j < commentLen; j++) {
         comment += RandomGen::pick<string_view>({
-            {4, CharPools::LETTERS},
-            {1, CharPools::SPACE},
+            {4, RANDOM_LETTERS},
+            {1, RANDOM_SPACE},
         });
       }
       result.push_back(comment);
@@ -194,18 +194,18 @@ Lines randomCodeBuffer(int numLines, int avgLineLen) {
     int contentLen = RandomGen::range(avgLineLen / 2, avgLineLen * 3 / 2);
     for (int j = 0; j < contentLen; j++) {
       line += RandomGen::pick<string_view>({
-          {3, CharPools::LETTERS},
-          {1, CharPools::SYMBOLS},
-          {1, CharPools::SPACE},
+          {3, RANDOM_LETTERS},
+          {1, RANDOM_SYMBOLS},
+          {1, RANDOM_SPACE},
       });
     }
 
     int endPattern = RandomGen::range(0, 19);
     if (endPattern < 3) {
       line += RandomGen::chance(1, 2) ? " {" : " (";
-      currentIndent = min(currentIndent + kIndentSize, 8);
+      currentIndent = min(currentIndent + INDENT_SIZE, 8);
     } else if (endPattern < 5 && currentIndent > 0) {
-      currentIndent = max(currentIndent - kIndentSize, 0);
+      currentIndent = max(currentIndent - INDENT_SIZE, 0);
       line = string(currentIndent, ' ');
       line += RandomGen::chance(1, 2) ? "}" : ")";
       if (RandomGen::chance(1, 2)) line += ";";

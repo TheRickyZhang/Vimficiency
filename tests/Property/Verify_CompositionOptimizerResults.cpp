@@ -125,14 +125,14 @@ class CompositionOptimizerGeneratedPropertyTest {
               << " initialPos=" << test.initialPos
               << " goal=" << test.goal
               << " goalPos=" << test.goalPos;
-      OptimizerResultChecks::expectTopResultsReplay(
+      expectTopResultsReplay(
           oracle_, compResult.getResults(), test.initial, test.initialPos,
-          test.goal, kMaxResultsToReplay, context.str(), test.goalPos);
+          test.goal, MAX_RESULTS_TO_REPLAY, context.str(), test.goalPos);
     });
   }
 
  private:
-  static constexpr size_t kMaxResultsToReplay = 3;
+  static constexpr size_t MAX_RESULTS_TO_REPLAY = 3;
 
   Config config_ = Config::uniform();
   CompositionOptimizer opt_{config_};

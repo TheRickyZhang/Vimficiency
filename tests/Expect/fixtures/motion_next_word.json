@@ -1,9 +1,0 @@
-{
-  "name": "motion next word",
-  "lines": ["foo bar baz"],
-  "goal_lines": ["foo bar baz"],
-  "start": [0, 0],
-  "goal": [0, 4],
-  "user_seq": "llll",
-  "max_recommendations": 3
-}

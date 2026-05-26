@@ -16,8 +16,6 @@
 #include "Utils/NeovimOracle.h"
 #include "Utils/OracleReplay.h"
 
-namespace OptimizerResultChecks {
-
 inline void expectTopResultsReplay(
     NeovimOracle& oracle,
     const std::vector<Result>& results,
@@ -44,5 +42,3 @@ inline void expectTopResultsReplay(
         goal, goalPos, goalMode, resultContext));
   }
 }
-
-}  // namespace OptimizerResultChecks

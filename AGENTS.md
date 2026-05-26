@@ -69,8 +69,12 @@ Lua (User concepts):
 - Cross-buffer jumps
 - Custom user mappings
 
-## Important Debug Principles
-Always use tests/Debug to investigate complex issues through direct, side-by-side comparison using NeovimOracle, finding the exact point our state differs from expectation.
+## Important Principles
+- Always use tests/Debug to investigate complex issues through direct, side-by-side comparison using NeovimOracle, finding the exact point our state differs from expectation.
+- Don't use static casts if they aren't needed!
+- Don't overuse namespaces. We should naturally bring them up as the code grows, not when we only have a few functions / classes.
+- Make sure to route unicode printing through PrettyPrint
+- Before introducing new variables, consider if there are similar existing ones!
 
 ## Invariants
 - All positions in C++ are 0-indexed
@@ -92,7 +96,7 @@ cmake --build build -j
 | Binary | Purpose | Example |
 |--------|---------|---------|
 | `vimfy_unit_tests` | Unit tests | `./build/tests/vimfy_unit_tests --gtest_brief=1` |
-| `vimfy_expect_tests` | Expect fixture tests | `./build/tests/vimfy_expect_tests --gtest_brief=1` |
+| `vimfy_approval_tests` | Approval snapshot tests | `./build/tests/vimfy_approval_tests --gtest_brief=1` |
 | `vimfy_property_tests` | Structured property tests | `scripts/vimfy_tests property` |
 | `vimfy_safety_tests` | Safety tests | `scripts/vimfy_tests safety` |
 | `vimfy_benchmarks` | Performance benchmarks | `./build/tests/vimfy_benchmarks` |

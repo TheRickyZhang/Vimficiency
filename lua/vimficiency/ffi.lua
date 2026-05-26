@@ -19,6 +19,7 @@ merge(require("vimficiency.ffi.config"))
 merge(require("vimficiency.ffi.session"))
 merge(require("vimficiency.ffi.optimizer"))
 merge(require("vimficiency.ffi.sequence"))
+merge(require("vimficiency.ffi.display"))
 merge(require("vimficiency.ffi.explore"))
 
 return M

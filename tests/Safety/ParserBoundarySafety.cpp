@@ -1,12 +1,11 @@
-// Safety property: parser-facing boundaries must handle arbitrary bytes by
-// rejecting cleanly or returning data that is valid to inspect. Movement/edit
-// parsers return string_view tokens borrowed from the input; snapshot parsing
-// returns an owned Snapshot whose fields must all be readable.
+// Safety property: parser-facing boundaries reject arbitrary bytes cleanly or
+// return readable data. Movement/edit tokens must borrow from the input.
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <fuzztest/fuzztest.h>
 #include <gtest/gtest.h>
@@ -19,21 +18,18 @@ using namespace std;
 
 namespace {
 
-// `.WithSeeds(...)` below gives deterministic smoke inputs. Longer FuzzTest
-// campaigns still generate from the domain and treat those seeds as corpus
-// starting points.
-// Separate FUZZ_TESTs are intentional here: fuzzing varies input bytes, while
-// each parser has a different API surface and success invariant.
-
-bool viewIsInside(string_view child, string_view parent) {
-  auto childBegin = reinterpret_cast<uintptr_t>(child.data());
-  auto childEnd = childBegin + child.size();
-  auto parentBegin = reinterpret_cast<uintptr_t>(parent.data());
-  auto parentEnd = parentBegin + parent.size();
-  return childBegin >= parentBegin && childEnd <= parentEnd;
+pair<uintptr_t, uintptr_t> addressRange(string_view view) {
+  const uintptr_t begin = reinterpret_cast<uintptr_t>(view.data());
+  return {begin, begin + view.size()};
 }
 
-size_t snapshotFieldFingerprint(const Snapshot& snapshot) {
+bool viewIsInside(string_view view, string_view parent) {
+  const auto [begin, end] = addressRange(view);
+  const auto [parentBegin, parentEnd] = addressRange(parent);
+  return begin >= parentBegin && end <= parentEnd;
+}
+
+size_t snapshotFingerprint(const Snapshot& snapshot) {
   size_t value = snapshot.bufname.size() ^ snapshot.filetype.size();
   value ^= static_cast<size_t>(snapshot.row);
   value ^= static_cast<size_t>(snapshot.col);
@@ -47,13 +43,14 @@ size_t snapshotFieldFingerprint(const Snapshot& snapshot) {
   return value;
 }
 
-template <typename ParseFn, typename FormatErrorFn, typename TokenFn, typename TouchFn>
-void expectRejectsOrReturnsBorrowedTokens(
+template <typename ParseFn, typename FormatErrorFn, typename TokenTextFn,
+          typename TouchFn>
+void expectBorrowedTokensOrError(
     string sequence,
     ParseFn parse,
     FormatErrorFn formatError,
-    TokenFn tokenText,
-    TouchFn touchParsedToken) {
+    TokenTextFn tokenText,
+    TouchFn touchToken) {
   const string_view view(sequence);
   const auto parsed = parse(view);
   if (!parsed) {
@@ -63,16 +60,16 @@ void expectRejectsOrReturnsBorrowedTokens(
   }
 
   for (const auto& token : *parsed) {
-    touchParsedToken(token);
-    string_view text = tokenText(token);
+    touchToken(token);
+    const string_view text = tokenText(token);
     if (text.empty()) continue;
 
     EXPECT_TRUE(viewIsInside(text, view));
   }
 }
 
-void MovementParserRejectsInvalidInputOrReturnsBorrowedTokens(string sequence) {
-  expectRejectsOrReturnsBorrowedTokens(
+void MovementTokensBorrowInput(string sequence) {
+  expectBorrowedTokensOrError(
       std::move(sequence),
       [](string_view input) { return parseMovements(input); },
       [](const auto& error) { return formatMovementParseError(error); },
@@ -80,8 +77,8 @@ void MovementParserRejectsInvalidInputOrReturnsBorrowedTokens(string sequence) {
       [](const ParsedMovement& movement) { (void)movement.effectiveCount(); });
 }
 
-void EditParserRejectsInvalidInputOrReturnsBorrowedTokens(string sequence) {
-  expectRejectsOrReturnsBorrowedTokens(
+void EditTokensBorrowInput(string sequence) {
+  expectBorrowedTokensOrError(
       std::move(sequence),
       [](string_view input) { return Edit::parseEdits(input); },
       [](const auto& error) { return Edit::formatEditParseError(error); },
@@ -89,24 +86,21 @@ void EditParserRejectsInvalidInputOrReturnsBorrowedTokens(string sequence) {
       [](const ParsedEdit& edit) { (void)edit.effectiveCount(); });
 }
 
-void SnapshotParserRejectsInvalidInputOrReturnsReadableSnapshot(string bytes) {
+void SnapshotsAreReadable(string bytes) {
   const auto parsed = parseSnapshot(bytes);
   if (!parsed) {
     EXPECT_FALSE(formatSnapshotParseError(parsed.error()).empty());
     return;
   }
 
-  // The parser accepts arbitrary bytes only if it can construct a complete
-  // Snapshot. Read every field so sanitizer runs catch bad ownership or
-  // uninitialized-field regressions.
-  [[maybe_unused]] size_t fingerprint = snapshotFieldFingerprint(*parsed);
+  [[maybe_unused]] const size_t fingerprint = snapshotFingerprint(*parsed);
 }
 
 }  // namespace
 
 FUZZ_TEST(
     ParserBoundarySafetyTest,
-    MovementParserRejectsInvalidInputOrReturnsBorrowedTokens)
+    MovementTokensBorrowInput)
     .WithDomains(fuzztest::String().WithMaxSize(256))
     .WithSeeds({
         "",
@@ -122,7 +116,7 @@ FUZZ_TEST(
         "2;",
         "<C-d>",
 
-        // Malformed, partial, or oversized command shapes.
+        // Malformed commands.
         "f",
         "2f",
         "<",
@@ -134,7 +128,7 @@ FUZZ_TEST(
 
 FUZZ_TEST(
     ParserBoundarySafetyTest,
-    EditParserRejectsInvalidInputOrReturnsBorrowedTokens)
+    EditTokensBorrowInput)
     .WithDomains(fuzztest::String().WithMaxSize(256))
     .WithSeeds({
         "",
@@ -148,7 +142,7 @@ FUZZ_TEST(
         "vwd",
         "<Esc>",
 
-        // Malformed, partial, or oversized edit shapes.
+        // Malformed edits.
         "d",
         "c",
         "r",
@@ -161,7 +155,7 @@ FUZZ_TEST(
 
 FUZZ_TEST(
     ParserBoundarySafetyTest,
-    SnapshotParserRejectsInvalidInputOrReturnsReadableSnapshot)
+    SnapshotsAreReadable)
     .WithDomains(fuzztest::String().WithMaxSize(1024))
     .WithSeeds({
         "",
@@ -169,7 +163,7 @@ FUZZ_TEST(
         "\x80",
         "\xffsnapshot",
 
-        // Accepted snapshots and near-misses for each required section.
+        // Accepted snapshots and near-misses.
         "vimficiency 1\nfile.cpp\nbuffer\n0 0\n0 0 24 0\nline",
         "vimficiency 1\nfile.cpp\nbuffer\n0 0\n0 0 24 0\nline1\nline2",
         "vimficiency",

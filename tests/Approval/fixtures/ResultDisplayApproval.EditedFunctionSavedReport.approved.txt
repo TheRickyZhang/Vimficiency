@@ -1,0 +1,18 @@
+=== rename_int_n_to_m ===
+
+Position: (1, 6) -> (2, 10)
+
+User sequence: j (cost: 12.35)
+               ciw n <Esc>
+
+Recommendations:
+  1. j (cost: 4.25)
+     ciw m <Esc>
+  2. 2j fn (cost: 7.50)
+     dw
+
+Buffer context:
+  int main() {
+>   int n = 1;
+<   return n;
+  }
