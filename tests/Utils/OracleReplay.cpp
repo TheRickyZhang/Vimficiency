@@ -1,7 +1,10 @@
 #include "OracleReplay.h"
 
 #include <exception>
+#include <sstream>
 #include <string>
+
+#include "Utils/PrettyText.h"
 
 using namespace std;
 
@@ -18,6 +21,16 @@ const char* modeName(Mode mode) {
 
 string contextText(string_view context) {
   return context.empty() ? "" : " (" + string(context) + ")";
+}
+
+string prettyLines(const Lines& lines) {
+  ostringstream out;
+  out << lines.size() << " lines";
+  for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+    out << "\n    [" << i << "] len=" << lines[i].size()
+        << " \"" << VF::PrettyText(lines[i]) << "\"";
+  }
+  return out.str();
 }
 
 }  // namespace
@@ -48,9 +61,9 @@ namespace OracleReplay {
   auto failure = ::testing::AssertionFailure()
       << "Replay mismatch" << contextText(context)
       << " seq='" << seq << "' from " << initialPos
-      << "\n  Initial: " << initial
-      << "\n  Goal:    " << goal
-      << "\n  Got:     " << nvim.lines;
+      << "\n  Initial:\n" << prettyLines(initial)
+      << "\n  Goal:\n" << prettyLines(goal)
+      << "\n  Got:\n" << prettyLines(nvim.lines);
 
   if (goalPos) {
     failure << "\n  Goal cursor: " << *goalPos

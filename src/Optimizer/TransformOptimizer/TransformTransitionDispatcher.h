@@ -1,6 +1,7 @@
 #pragma once
 
 #include <concepts>
+#include <optional>
 #include <queue>
 #include <unordered_map>
 #include <vector>
@@ -22,6 +23,7 @@
 #include "Types/LineRange.h"
 #include "Types/Lines.h"
 #include "Boundary/TransformBoundary.h"
+#include "VimCore/VimEditUtils.h"
 
 struct TransformStateComparator {
   bool operator()(const TransformState& a, const TransformState& b) const {
@@ -46,24 +48,6 @@ inline double weightedHeuristicCost(const Lines& lines, int leftColOffset, int r
   }
   total += (static_cast<int>(lines.size()) - 1) * 2;
   return distanceWeight * static_cast<double>(total);
-}
-
-inline TransformEditorState applyDeletionTransition(const TransformEditorState& base, const CharRange& range,
-                                         std::string_view baseCmd) {
-  bool isBackwardWordDelete = (baseCmd == "db" || baseCmd == "dB");
-  return isBackwardWordDelete
-      ? TransformSimulator::afterBackwardWordDeletion(base, range)
-      : TransformSimulator::afterDeletion(base, range);
-}
-
-inline TransformEditorState applyDeletionTransition(const TransformEditorState& base, const CharLineRange& range,
-                                         std::string_view) {
-  return TransformSimulator::afterCharLineDeletion(base, range);
-}
-
-inline TransformEditorState applyDeletionTransition(const TransformEditorState& base, const LineCharRange& range,
-                                         std::string_view) {
-  return TransformSimulator::afterLineCharDeletion(base, range);
 }
 
 // Forward declarations for concept signatures — avoids pulling in TransformOptimizer.h.
@@ -176,31 +160,68 @@ struct TransformTransitionDispatcher {
                               rightColOffset, distanceWeight)));
   }
 
-  template<class RangeT>
-  void deleteRange(const RangeT& range, const SequenceBinding& sourceCmd) {
-    TransformEditorState afterDeletion =
-        applyDeletionTransition(baseState.getEditorState(), range, sourceCmd.base.seq.view());
-    if (!finishTransition(afterDeletion, sourceCmd)) return;
-    if constexpr (PureDeletion) {
-      continueWithEdit(std::move(afterDeletion), sourceCmd, 0.0);
-    } else {
-      emitGoalStates(mode.onDeletionGoal(afterDeletion, baseState, range, sourceCmd));
+  void emitChangeGoalForResolved(const TransformEditorState& afterDeletion,
+                                 const VimCore::ResolvedDeleteRange& resolved,
+                                 const SequenceBinding& sourceCmd) {
+    if constexpr (!PureDeletion) {
+      switch (resolved.kind) {
+        case VimCore::ResolvedDeleteRangeKind::Characterwise:
+          emitGoalStates(mode.onDeletionGoal(
+              afterDeletion, baseState, resolved.charRange, sourceCmd));
+          return;
+        case VimCore::ResolvedDeleteRangeKind::CharLine:
+          emitGoalStates(mode.onDeletionGoal(
+              afterDeletion, baseState, resolved.charLineRange, sourceCmd));
+          return;
+        case VimCore::ResolvedDeleteRangeKind::LineChar:
+          emitGoalStates(mode.onDeletionGoal(
+              afterDeletion, baseState, resolved.lineCharRange, sourceCmd));
+          return;
+        case VimCore::ResolvedDeleteRangeKind::Linewise:
+          emitGoalStates(mode.onLinewiseGoal(
+              afterDeletion, baseState, resolved.lineRange, sourceCmd));
+          return;
+      }
     }
   }
 
-  void deleteLinewise(LineRange range, const SequenceBinding& sourceCmd) {
-    if constexpr (PureDeletion) {
-      if (!allowLinewisePureDeletion) return;
+  void deleteResolved(const ResolvedEditAction& action,
+                      const SequenceBinding& sourceCmd) {
+    const VimCore::ResolvedDeleteRange& deleteEffect = action.deleteEffect;
+    if (!action.deleteEffectValid) {
+      if constexpr (PureDeletion) return;
     }
-    TransformEditorState afterDeletion =
-        afterLinewiseDeletionForCommand(
-            baseState.getEditorState(), range, transformBoundary.hasLinesBelow(),
-            sourceCmd.base.seq.view());
-    if (!finishLinewiseTransition(afterDeletion, sourceCmd)) return;
     if constexpr (PureDeletion) {
-      continueWithEdit(std::move(afterDeletion), sourceCmd, 0.0);
+      if (deleteEffect.kind == VimCore::ResolvedDeleteRangeKind::Linewise &&
+          !allowLinewisePureDeletion) {
+        return;
+      }
+    }
+    std::optional<TransformEditorState> afterDeletion;
+    bool deleteReachedGoal = false;
+    if (action.deleteEffectValid) {
+      afterDeletion = TransformSimulator::afterResolvedDeletion(
+          baseState.getEditorState(), deleteEffect, lineDeleteContext());
+      deleteReachedGoal = finishTransition(*afterDeletion, sourceCmd);
+    }
+    if constexpr (PureDeletion) {
+      if (!deleteReachedGoal) return;
+      continueWithEdit(std::move(*afterDeletion), sourceCmd, 0.0);
     } else {
-      emitGoalStates(mode.onLinewiseGoal(afterDeletion, baseState, range, sourceCmd));
+      const VimCore::ResolvedDeleteRange& changeEffect =
+          action.effectForChange();
+      if (action.changeEffectValid) {
+        TransformEditorState afterChangeDeletion =
+            TransformSimulator::afterResolvedChangeDeletion(
+                baseState.getEditorState(), changeEffect, lineDeleteContext());
+        if (canEmitGoalFrom(afterChangeDeletion)) {
+          emitChangeGoalForResolved(afterChangeDeletion, changeEffect, sourceCmd);
+          return;
+        }
+      }
+      if (action.changeEffect) return;
+      if (!deleteReachedGoal) return;
+      emitChangeGoalForResolved(*afterDeletion, deleteEffect, sourceCmd);
     }
   }
 
@@ -210,8 +231,8 @@ struct TransformTransitionDispatcher {
     }
     TransformEditorState afterDeletion =
         TransformSimulator::afterMultiLinewiseDeletion(
-            baseState.getEditorState(), range, transformBoundary.hasLinesBelow());
-    if (!finishLinewiseTransition(afterDeletion, sourceCmd)) return;
+            baseState.getEditorState(), range, lineDeleteContext());
+    if (!finishTransition(afterDeletion, sourceCmd)) return;
     if constexpr (PureDeletion) {
       continueWithEdit(std::move(afterDeletion), sourceCmd, 0.0);
     } else {
@@ -250,8 +271,11 @@ private:
 
   bool finishTransition(TransformEditorState& next, const SequenceBinding& sourceCmd) {
     const Lines& nextLines = next.getLines();
+    bool lineOutOfBounds = next.getPos().line < 0 ||
+                           next.getPos().line >= static_cast<int>(nextLines.size());
     if (!protectedTextPreserved(next)) return false;
-    if (mode.isGoalReached(nextLines)) return true;
+    if (stateReachedGoal(next)) return !lineOutOfBounds;
+    if (lineOutOfBounds) return false;
     if (cursorOutsideEditableRegion(next)) return false;
 
     continueWithEdit(
@@ -261,22 +285,28 @@ private:
     return false;
   }
 
-  bool finishLinewiseTransition(TransformEditorState& next, const SequenceBinding& sourceCmd) {
-    const Lines& nextLines = next.getLines();
-    bool lineOutOfBounds = next.getPos().line < 0 ||
-                           next.getPos().line >= static_cast<int>(nextLines.size());
-    if (!protectedTextPreserved(next)) return false;
-    if (mode.isGoalReached(nextLines)) {
-      return !lineOutOfBounds || PureDeletion;
-    }
-    if (lineOutOfBounds) return false;
-    if (cursorOutsideEditableRegion(next)) return false;
+  bool canEmitGoalFrom(const TransformEditorState& state) const {
+    const Lines& lines = state.getLines();
+    bool lineOutOfBounds = state.getPos().line < 0 ||
+                           state.getPos().line >= static_cast<int>(lines.size());
+    return protectedTextPreserved(state) &&
+           stateReachedGoal(state) &&
+           !lineOutOfBounds;
+  }
 
-    continueWithEdit(
-        std::move(next),
-        sourceCmd,
-        weightedHeuristicCost(nextLines, leftColOffset, rightColOffset, distanceWeight));
-    return false;
+  bool stateReachedGoal(const TransformEditorState& state) const {
+    if constexpr (PureDeletion) {
+      return mode.isGoalReached(state.getLines());
+    } else {
+      return mode.isGoalReached(state);
+    }
+  }
+
+  VimCore::LineDeleteContext lineDeleteContext() const {
+    return {
+        .hasLinesAbove = transformBoundary.hasLinesAbove(),
+        .hasLinesBelow = transformBoundary.hasLinesBelow(),
+    };
   }
 
   bool cursorOutsideEditableRegion(const TransformEditorState& state) const {

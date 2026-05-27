@@ -16,6 +16,7 @@
 #include "Optimizer/TransformOptimizer/TransformExplorer.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
+#include "Optimizer/TransformOptimizer/TransformPostExplorerEmissions.h"
 #include "Types/Mode.h"
 #include "Types/CursorPos.h"
 #include "TransformOptimizer/EmbeddedRegionTestUtils.h"
@@ -24,6 +25,7 @@
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
 #include "Types/Lines.h"
+#include "VimCore/VimEndpointUtils.h"
 
 using namespace std;
 
@@ -66,6 +68,30 @@ CursorPos toFullBufferPos(CursorPos localPos, CursorPos regionBegin) {
     localPos.col += regionBegin.col;
   }
   return localPos;
+}
+
+void expectResolvedBackwardWordDeleteMatchesOracle(
+    NeovimOracle& oracle, const Lines& source, CursorPos start,
+    string_view command, bool bigWord) {
+  VimCore::WordBoundaryContext boundary;
+  CharRange rawRange = VimCore::wordOperatorRange(
+      start, source, VimCore::WordOperatorTarget::DeleteBackToWordBegin,
+      bigWord, boundary);
+  ASSERT_NE(rawRange.begin, POSITION_OUTSIDE_BOUNDARY);
+  ASSERT_NE(rawRange.end, POSITION_OUTSIDE_BOUNDARY);
+
+  auto resolved = VimCore::resolveBackwardExclusiveWordDeleteRange(
+      rawRange.begin, start, source, boundary.contentStartCol(start.line));
+  TransformEditorState state(source, start);
+  TransformEditorState after =
+      TransformSimulator::afterResolvedDeletion(state, resolved);
+
+  SimulationResult expected =
+      oracle.simulate(source, start.line, start.col, string(command));
+  EXPECT_EQ(after.getLines(), expected.lines) << "command=" << command;
+  EXPECT_EQ(after.getPos(), CursorPos(expected.row, expected.col))
+      << "command=" << command;
+  EXPECT_EQ(after.getMode(), expected.mode) << "command=" << command;
 }
 
 }  // namespace
@@ -111,6 +137,192 @@ TEST(TransformOptimizerRegression, BoundaryAwareReplayPrefixKeepsXApplicable) {
   EXPECT_EQ(mode, Mode::Normal);
 }
 
+TEST(TransformOptimizerRegression, EmptySourceChangeDoesNotEmitEmptySequence) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  const Lines source = {""};
+  const Lines goal = {";"};
+  TransformBoundary boundary(source, CursorPos(0, 0), source.endPos());
+
+  TransformResult result = optimizer.optimizeTransform(
+      source, goal, boundary,
+      TransformOptimizerParams{}
+          .withMaxResults(10)
+          .withMaxResultsPerStartPos(3));
+
+  auto bucket = result.resultsAt(0, 0);
+  ASSERT_FALSE(bucket.empty());
+  EXPECT_FALSE(bucket.front().getSequence().empty());
+  for (const Result& candidate : bucket) {
+    EXPECT_TRUE(OracleReplay::matches(
+        oracle, source, CursorPos(0, 0),
+        candidate.getSequence().str(), goal,
+        nullopt, Mode::Normal, "empty source change"))
+        << "sequence=" << candidate.getSequence().str();
+  }
+}
+
+TEST(TransformOptimizerRegression, VisualDeleteFallbackRejectsExclusiveNextLineStart) {
+  Config config = Config::uniform();
+  Lines effective = {"~YYY===", " "};
+
+  auto visual = TransformPostExplorer::tryVisualDelete(
+      effective, 1, 1, TransformOptimizerParams{}, config);
+
+  EXPECT_FALSE(visual.has_value());
+}
+
+TEST(TransformOptimizerRegression, BackwardWordChangeFromEmptyLineMatchesVim) {
+  Lines lines = {"~~~~", ""};
+  CursorPos pos(1, 0);
+  Mode mode = Mode::Normal;
+  string lastEdit;
+  ParsedEdit cb("cb");
+
+  Edit::applyEdit(lines, pos, mode, cb, &lastEdit);
+
+  NeovimOracle oracle;
+  SimulationResult expected = oracle.simulate({"~~~~", ""}, 1, 0, "cb");
+  EXPECT_EQ(lines, expected.lines);
+  EXPECT_EQ(pos, CursorPos(expected.row, expected.col));
+  EXPECT_EQ(mode, Mode::Insert);
+}
+
+TEST(TransformOptimizerRegression, BackwardWordChangeReplayPreservesTrailingEmptyLine) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  const Lines source = {"~~~~", ""};
+  const Lines goal = {"&", "\\"};
+  TransformBoundary boundary(source, CursorPos(0, 0), source.endPos());
+
+  TransformResult result = optimizer.optimizeTransform(
+      source, goal, boundary,
+      TransformOptimizerParams{}
+          .withMaxResults(40)
+          .withMaxResultsPerStartPos(3));
+
+  auto bucket = result.resultsAt(1, 0);
+  ASSERT_FALSE(bucket.empty());
+  for (const Result& candidate : bucket) {
+    EXPECT_TRUE(OracleReplay::matches(
+        oracle, source, CursorPos(1, 0),
+        candidate.getSequence().str(), goal,
+        nullopt, Mode::Normal, "cb empty-line change"))
+        << "sequence=" << candidate.getSequence().str();
+  }
+}
+
+TEST(TransformOptimizerRegression, ForwardSentenceDeleteStopsAtBlankBoundary) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  const Lines source = {"++", "", " !    "};
+  TransformBoundary boundary(source, CursorPos(0, 0), source.endPos());
+
+  TransformResult result = optimizer.optimizePureDeletion(
+      source, boundary,
+      TransformOptimizerParams{}
+          .withMaxResults(40)
+          .withMaxResultsPerStartPos(3));
+
+  auto bucket = result.resultsAt(0, 0);
+  ASSERT_FALSE(bucket.empty());
+  for (const Result& candidate : bucket) {
+    EXPECT_TRUE(OracleReplay::matches(
+        oracle, source, CursorPos(0, 0),
+        candidate.getSequence().str(), Lines{""},
+        nullopt, Mode::Normal, "d) blank sentence boundary"))
+        << "sequence=" << candidate.getSequence().str();
+  }
+}
+
+TEST(TransformOptimizerRegression, EmbeddedSentenceDeleteAcrossSuffixLineIsPruned) {
+  Config config = Config::uniform();
+  EffortBank bank(config);
+
+  const Lines fullBuffer = {"  yo", "   ", " 8 M~"};
+  const Lines editRegion = {" yo", "   ", " 8 M"};
+  TransformBoundary boundary(fullBuffer, CursorPos(0, 1), CursorPos(2, 4));
+  Lines effective = boundary.withBoundary(editRegion);
+  ASSERT_EQ(effective, fullBuffer);
+
+  TransformOptimizerParams params;
+  TransformExplorer explorer(
+      boundary, params, config, bank,
+      boundary.leftColOffset(), boundary.rightColOffset());
+
+  bool sawDParen = false;
+  explorer.exploreSentenceEdits<true>(
+      Edit::FORWARD_SENTENCE_EDITS, CursorPos(0, 1), effective,
+      [&](const ResolvedEditAction&, const SequenceBinding& cmd) {
+        if (cmd.base.seq.view() != "d)") return;
+        sawDParen = true;
+      });
+
+  EXPECT_FALSE(sawDParen);
+}
+
+TEST(TransformOptimizerRegression, EmbeddedDgeWithBlankPrefixIsInvalid) {
+  Config config = Config::uniform();
+  EffortBank bank(config);
+
+  const Lines fullBuffer = {" Q", "\""};
+  const Lines editRegion = {"Q", "\""};
+  TransformBoundary boundary(fullBuffer, CursorPos(0, 1), CursorPos(1, 1));
+  Lines effective = boundary.withBoundary(editRegion);
+  ASSERT_EQ(effective, fullBuffer);
+
+  TransformOptimizerParams params;
+  TransformExplorer explorer(
+      boundary, params, config, bank,
+      boundary.leftColOffset(), boundary.rightColOffset());
+
+  bool sawDge = false;
+  explorer.exploreWordEdits(
+      Edit::BACKWARD_WORD_EDITS, CursorPos(1, 0), effective,
+      [&](const ResolvedEditAction& action, const SequenceBinding& cmd) {
+        if (cmd.base.seq.view() != "dge") return;
+        sawDge = true;
+        EXPECT_FALSE(action.deleteEffectValid);
+      });
+
+  EXPECT_TRUE(sawDge);
+}
+
+TEST(TransformOptimizerRegression, OneLineClearedShellRequiresBoundaryCursor) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  const Lines fullBuffer = {"<~ ~", "~ w", " XH  ~~"};
+  const Lines editRegion = {"~ ~", "~ w", " XH "};
+  const Lines goalLines = {"", "     ", ""};
+  const Lines expectedFull = {"<", "     ", " ~~"};
+  TransformBoundary boundary(fullBuffer, CursorPos(0, 1), CursorPos(2, 4));
+
+  TransformResult result = optimizer.optimizeTransform(
+      editRegion, goalLines, boundary,
+      TransformOptimizerParams{}
+          .withMaxResults(80)
+          .withMaxResultsPerStartPos(3));
+
+  auto bucket = result.resultsAt(2, 2);
+  ASSERT_FALSE(bucket.empty());
+  size_t checked = min<size_t>(3, bucket.size());
+  for (size_t i = 0; i < checked; i++) {
+    EXPECT_TRUE(OracleReplay::matches(
+        oracle, fullBuffer, CursorPos(2, 2),
+        bucket[i].getSequence().str(), expectedFull,
+        nullopt, Mode::Normal, "one-line cleared shell cursor"))
+        << "sequence=" << bucket[i].getSequence().str();
+  }
+}
+
 TEST(TransformOptimizerRegression, CountedDwWithLinesBelowBoundaryMatchesLocalSemantics) {
   const ParsedEdit fourDw("dw", 4);
 
@@ -141,6 +353,19 @@ TEST(TransformOptimizerRegression, CountedDwWithLinesBelowBoundaryMatchesLocalSe
   EXPECT_EQ(modeWithBoundary, modeLocal);
 }
 
+TEST(TransformOptimizerRegression, ForwardSentenceGapAtBottomBoundaryIsPruned) {
+  Lines effectiveLines = {
+      "Xdd,",
+      ",e .edd",
+      "cac.  ",
+  };
+
+  CursorPos endpoint = VimCore::sentenceOperatorEndpoint(
+      CursorPos(2, 4), effectiveLines, true, 0, true);
+
+  EXPECT_EQ(endpoint, POSITION_OUTSIDE_BOUNDARY);
+}
+
 TEST(TransformOptimizerRegression, BackwardParagraphExplorerEmitsDLeftBrace) {
   Config config = Config::uniform();
   Lines lines = {"abc", "", "def"};
@@ -156,15 +381,17 @@ TEST(TransformOptimizerRegression, BackwardParagraphExplorerEmitsDLeftBrace) {
 
   explorer.exploreParagraphEdits<false>(
       Edit::BACKWARD_PARAGRAPH_EDITS, CursorPos(2, 0), lines,
-      [&](const auto&, const SequenceBinding& cmd) {
+      [&](const ResolvedEditAction& action, const SequenceBinding& cmd) {
+        const VimCore::ResolvedDeleteRange& resolved = action.deleteEffect;
         if (cmd.base.seq.view() == "d{") {
-          sawUnexpectedCharwiseDLeftBrace = true;
-        }
-      },
-      [&](LineRange range, const SequenceBinding& cmd) {
-        if (cmd.base.seq.view() == "d{" &&
-            range.beginLine == 1 && range.endLine == 2) {
-          sawLinewiseDLeftBrace = true;
+          if (resolved.kind != VimCore::ResolvedDeleteRangeKind::Linewise) {
+            sawUnexpectedCharwiseDLeftBrace = true;
+          } else {
+            LineRange range = resolved.lineRange;
+            if (range.beginLine == 1 && range.endLine == 2) {
+              sawLinewiseDLeftBrace = true;
+            }
+          }
         }
       });
 
@@ -297,6 +524,114 @@ TEST(TransformOptimizerRegression, EmbeddedChangePrunesBoundaryEscapingContinuat
         bucket[i].getSequence().str(), expectedFull,
         nullopt, Mode::Normal, "embedded change boundary preservation"))
         << "sequence=" << bucket[i].getSequence().str();
+  }
+}
+
+TEST(TransformOptimizerRegression, LinewiseChangeDoesNotTypeIntoHiddenContext) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  const Lines fullBuffer = {
+      "afaddcd,cbfa",
+      " d. c,b,",
+      ".b ,",
+      " ,bfb.cf",
+  };
+  const Lines editRegion = {
+      " d. c,b,",
+      ".b ,",
+      " ,bfb.cf",
+  };
+  const Lines goalLines = {".b ,"};
+  const Lines expectedFull = {
+      "afaddcd,cbfa",
+      ".b ,",
+  };
+  TransformBoundary boundary(fullBuffer, CursorPos(1, 0), CursorPos(3, 8));
+
+  TransformResult result = optimizer.optimizeTransform(
+      editRegion, goalLines, boundary,
+      TransformOptimizerParams{}
+          .withMaxResults(50)
+          .withMaxResultsPerStartPos(3),
+      1, 0, CursorPos(1, 3));
+
+  auto bucket = result.resultsAt(1, 1);
+  ASSERT_FALSE(bucket.empty());
+  for (const Result& candidate : bucket) {
+    EXPECT_TRUE(OracleReplay::matches(
+        oracle, fullBuffer, CursorPos(1, 1),
+        candidate.getSequence().str(), expectedFull,
+        nullopt, Mode::Normal, "linewise change hidden context"))
+        << "sequence=" << candidate.getSequence().str();
+  }
+}
+
+TEST(TransformOptimizerRegression, TailParagraphDeletePreservesCursorColumn) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  const Lines source = {
+      "dfdee",
+      " ac,",
+      "b  a.a",
+  };
+  TransformBoundary boundary(source, CursorPos(0, 0), source.endPos());
+
+  TransformResult result = optimizer.optimizePureDeletion(
+      source, boundary,
+      TransformOptimizerParams{}
+          .withMaxResults(80)
+          .withMaxResultsPerStartPos(3));
+
+  auto bucket = result.resultsAt(1, 1);
+  ASSERT_FALSE(bucket.empty());
+  for (const Result& candidate : bucket) {
+    EXPECT_TRUE(OracleReplay::matches(
+        oracle, source, CursorPos(1, 1),
+        candidate.getSequence().str(), Lines{""},
+        nullopt, Mode::Normal, "tail paragraph delete cursor column"))
+        << "sequence=" << candidate.getSequence().str();
+  }
+}
+
+TEST(TransformOptimizerRegression, BackwardWordResolvedDeleteMatchesVimCursorPolicy) {
+  NeovimOracle oracle;
+
+  expectResolvedBackwardWordDeleteMatchesOracle(
+      oracle, Lines{"abc", "   "}, CursorPos(1, 0), "db", false);
+  expectResolvedBackwardWordDeleteMatchesOracle(
+      oracle, Lines{"x", "   "}, CursorPos(1, 0), "dB", true);
+}
+
+TEST(TransformOptimizerRegression, BlankBufferPureDeletionCandidatesReplayToGoal) {
+  Config config = Config::uniform();
+  TransformOptimizer optimizer(config);
+  NeovimOracle oracle;
+
+  const Lines source = {"   ", "", "  "};
+  TransformBoundary boundary(source, CursorPos(0, 0), source.endPos());
+  TransformResult result = optimizer.optimizePureDeletion(
+      source, boundary,
+      TransformOptimizerParams{}
+          .withMaxResults(120)
+          .withMaxResultsPerStartPos(5));
+
+  ASSERT_GT(result.resultCount(), 0u);
+  for (size_t i = 0; i < result.resultCount(); i++) {
+    const auto& bucket = result.getResults()[i];
+    if (bucket.empty()) continue;
+    CursorPos start = fromFlatIndex(static_cast<int>(i), source);
+    ASSERT_TRUE(start.isValid()) << "bucket=" << i;
+    for (const Result& candidate : bucket) {
+      EXPECT_TRUE(OracleReplay::matches(
+          oracle, source, start, candidate.getSequence().str(), Lines{""},
+          nullopt, Mode::Normal, "blank pure deletion"))
+          << "bucket=" << i << " start=" << start
+          << " sequence=" << candidate.getSequence().str();
+    }
   }
 }
 

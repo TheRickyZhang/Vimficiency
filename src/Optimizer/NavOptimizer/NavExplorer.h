@@ -138,6 +138,10 @@ private:
     }
   }
 
+  int caretTargetCol(const CursorPos& pos) const {
+    return VimCore::caretTargetColInLine(lines_[pos.line], pos.col);
+  }
+
   int firstNonBlankCol(int line) const {
     return VimCore::firstNonBlankColInLine(lines_[line]);
   }
@@ -325,7 +329,7 @@ private:
     if (pos.col > bounds.left)
       emitMotion(KSId::Zero, {pos.line, bounds.left}, onStatic);
 
-    int fnb = firstNonBlankCol(pos.line);
+    int fnb = caretTargetCol(pos);
     if (fnb >= bounds.left && fnb <= bounds.lastCol - bounds.right && fnb != pos.col)
       emitMotion(KSId::Caret, {pos.line, fnb}, onStatic);
 
@@ -640,7 +644,7 @@ private:
     if (pos.col > bounds.left)
       emitMotion(KSId::Zero, {pos.line, bounds.left}, onStatic);
 
-    int fnb = firstNonBlankCol(pos.line);
+    int fnb = caretTargetCol(pos);
     if (fnb >= bounds.left && fnb <= bounds.lastCol - bounds.right && fnb < pos.col)
       emitMotion(KSId::Caret, {pos.line, fnb}, onStatic);
   }
@@ -657,7 +661,7 @@ private:
     if (dollarCol > pos.col && dollarCol >= bounds.left)
       emitMotion(KSId::Dollar, {pos.line, dollarCol, TARGETCOL_EOL}, onStatic);
 
-    int fnb = firstNonBlankCol(pos.line);
+    int fnb = caretTargetCol(pos);
     if (fnb >= bounds.left && fnb <= bounds.lastCol - bounds.right && fnb > pos.col)
       emitMotion(KSId::Caret, {pos.line, fnb}, onStatic);
   }

@@ -107,7 +107,11 @@ void enumerateInsertions(const DiffState& diff, const Lines& lines, OnStrategy&&
     KeyedSequence escaped = buildTypedCommands(insertLines, "",
         prefix, suffix);
     CursorPos goalPos = typedCommandsExitCursor(insertPos, insertLines, suffix);
-    cb(Insertion{line, 0, lineEnd, "I", "I" + escaped.seq.str(), goalPos});
+    // `I` lands at first non-blank; on an all-whitespace line Vim instead
+    // moves past the indent (col == size), so `I` cannot prepend at col 0.
+    if (!VimCore::isBlankLine(lineText)) {
+      cb(Insertion{line, 0, lineEnd, "I", "I" + escaped.seq.str(), goalPos});
+    }
     cb(Insertion{line, insertPos.col, insertPos.col + 1,
                  "i", "i" + escaped.seq.str(), goalPos});
   } else if (insertPos.col == lineLen) {

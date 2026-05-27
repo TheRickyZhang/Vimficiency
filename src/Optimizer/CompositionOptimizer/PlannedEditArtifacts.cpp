@@ -228,6 +228,7 @@ TransformResult computeTransformResultForDiff(
     TransformResult result = transformOptimizer.optimizePureDeletion(
         diff.deletedLines(), diff.boundary, editParams,
         diff.beginPos.line, diff.beginPos.col, diff.beginPos);
+    result.restrictValidStartRegion(CharRange(diff.beginPos, diff.endPos));
     if (nodesExplored) *nodesExplored = result.getStats().nodesExplored();
     return result;
   }
@@ -238,6 +239,7 @@ TransformResult computeTransformResultForDiff(
   TransformResult result = transformOptimizer.optimizeTransform(
       diff.deletedLines(), diff.insertedLines(), diff.boundary, editParams,
       diff.beginPos.line, diff.beginPos.col, goalPos);
+  result.restrictValidStartRegion(CharRange(diff.beginPos, diff.endPos));
   if (nodesExplored) *nodesExplored = result.getStats().nodesExplored();
   return result;
 }
@@ -353,6 +355,9 @@ optional<JoinPlan> computeJoinPlanForDiff(
     if (matchRatio < 0.3) return nullopt;
   }
 
+  auto [entryBegin, entryEnd] = partition[0];
+  if (entryEnd - entryBegin <= 1) return nullopt;
+
   Sequence fullSeq;
   CursorPos lastGoalPos(0, 0);
 
@@ -413,10 +418,14 @@ optional<JoinPlan> computeJoinPlanForDiff(
     goalPos = CursorPos(diff.beginPos.line + targetLineCount - 1, lastGoalPos.col);
   }
 
+  CHECK(fullSeq.view().starts_with("J"),
+        "composition join plan must start with J");
+  double effort = getEffort(fullSeq.view(), config);
+
   return JoinPlan{
       .sequence = std::move(fullSeq),
       .goalPos = goalPos,
-      .effort = getEffort(fullSeq.view(), config),
+      .effort = effort,
       .entryLine = diff.beginPos.line,
   };
 }

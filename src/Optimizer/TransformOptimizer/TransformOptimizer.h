@@ -11,6 +11,7 @@
 #include "Optimizer/SearchStats.h"
 #include "Boundary/TransformBoundary.h"
 
+#include "Types/CharRange.h"
 #include "Types/Lines.h"
 
 
@@ -34,6 +35,7 @@ struct TransformResult : BaseOptimizerResult<std::vector<Result>> {
   const Result* resultAt(int bufferLine, int bufferCol) const {
     int idx = resultIndexAt(bufferLine, bufferCol);
     if (idx < 0) return nullptr;
+    if (!isValidStartIndex(idx)) return nullptr;
     const auto& bucket = results_[static_cast<size_t>(idx)];
     return bucket.empty() ? nullptr : &bucket[0];
   }
@@ -43,6 +45,7 @@ struct TransformResult : BaseOptimizerResult<std::vector<Result>> {
     int idx = resultIndexAt(bufferLine, bufferCol);
     if (idx < 0) return {};
     if (idx >= static_cast<int>(results_.size())) return {};
+    if (!isValidStartIndex(idx)) return {};
     const auto& bucket = results_[static_cast<size_t>(idx)];
     return {bucket.data(), bucket.size()};
   }
@@ -56,7 +59,8 @@ struct TransformResult : BaseOptimizerResult<std::vector<Result>> {
       int bufferLine, int bufferCol, std::size_t resultIndex = 0) const {
     if (!resultGoalPositions_.empty()) {
       int idx = resultIndexAt(bufferLine, bufferCol);
-      if (idx >= 0 && idx < static_cast<int>(resultGoalPositions_.size())) {
+      if (idx >= 0 && idx < static_cast<int>(resultGoalPositions_.size()) &&
+          isValidStartIndex(idx)) {
         const auto& bucket = resultGoalPositions_[static_cast<size_t>(idx)];
         if (resultIndex < bucket.size()) return bucket[resultIndex];
       }
@@ -65,6 +69,12 @@ struct TransformResult : BaseOptimizerResult<std::vector<Result>> {
   }
 
   bool hasResultGoals() const { return !resultGoalPositions_.empty(); }
+  bool isValidStartPosition(int bufferLine, int bufferCol) const {
+    int idx = resultIndexAt(bufferLine, bufferCol);
+    return idx >= 0 && isValidStartIndex(idx);
+  }
+
+  void restrictValidStartRegion(CharRange validStartRegion);
 
   // Flat result index for a buffer position, or -1 if out of range.
   int resultIndexAt(int bufferLine, int bufferCol) const {
@@ -83,8 +93,16 @@ private:
   int beginLine_ = 0;
   int beginCol_ = 0;
   std::vector<int> lineBaseIndex_;
+  std::vector<CursorPos> indexToBufferPos_;
+  std::vector<char> validStartByIndex_;
   std::vector<std::vector<CursorPos>> resultGoalPositions_;
   std::vector<CursorPos> startPositions_;
+
+  bool isValidStartIndex(int idx) const {
+    return validStartByIndex_.empty() ||
+           validStartByIndex_[static_cast<size_t>(idx)];
+  }
+  void rebuildStartPositions();
 
   friend std::ostream& operator<<(std::ostream& os, const TransformResult& transformResult);
 };

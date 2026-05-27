@@ -3,6 +3,7 @@
 #include <cassert>
 #include <iosfwd>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "Key.h"
@@ -15,6 +16,7 @@ class PhysicalKeys {
 public:
   PhysicalKeys() = default;
   PhysicalKeys(std::initializer_list<Key> init) : keys(init) {}
+  PhysicalKeys(std::vector<Key> init) : keys(std::move(init)) {}
   PhysicalKeys(Key k, size_t count) : keys(count, k) {}
   PhysicalKeys(std::span<const Key> s) : keys(s.begin(), s.end()) {}
   PhysicalKeys(std::initializer_list<std::span<const Key>> parts) {

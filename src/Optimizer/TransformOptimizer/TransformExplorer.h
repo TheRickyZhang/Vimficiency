@@ -1,9 +1,9 @@
 #pragma once
 
 #include <algorithm>
-
 #include "Boundary/TransformBoundary.h"
 #include "Effort/EffortBank.h"
+#include "GoalHandlerTypes.h"
 #include "TransformOptimizerParams.h"
 #include "EditToSpec.h"
 #include "Keyboard/Config.h"
@@ -51,10 +51,9 @@ public:
         leftColOffset_(leftColOffset),
         rightColOffset_(rightColOffset) {}
 
-  template<class State, class OnAnyDeletion, class OnLinewise, class OnJoin>
+  template<class State, class OnDeletion, class OnJoin>
   void exploreAllDeletions(const State& state,
-                           OnAnyDeletion&& onAnyDeletion,
-                           OnLinewise&& onLinewise,
+                           OnDeletion&& onDeletion,
                            OnJoin&& onJoin);
 
   template<class OnJoin>
@@ -81,25 +80,23 @@ public:
                                int minCountRepeat,
                                OnDeletion&& onDeletion);
 
-  template<class OnAnyDeletion, class OnLinewise>
+  template<class OnDeletion>
   void exploreWordEdits(
       const std::vector<Edit::WordEditSpec>& specs,
       const CursorPos& cursor, const Lines& lines,
-      OnAnyDeletion&& onAnyDeletion, OnLinewise&& onLinewise);
+      OnDeletion&& onDeletion);
 
-  template<bool Forward, class OnAnyDeletion, class OnLinewise>
+  template<bool Forward, class OnDeletion>
   void exploreParagraphEdits(
       const std::vector<Edit::ParagraphEditSpecNoDir>& specs,
       const CursorPos& cursor, const Lines& lines,
-      OnAnyDeletion&& onAnyDeletion,
-      OnLinewise&& onLinewise);
+      OnDeletion&& onDeletion);
 
-  template<bool Forward, class OnAnyDeletion, class OnLinewise>
+  template<bool Forward, class OnDeletion>
   void exploreSentenceEdits(
       const std::vector<Edit::SentenceEditSpecNoDir>& specs,
       const CursorPos& cursor, const Lines& lines,
-      OnAnyDeletion&& onAnyDeletion,
-      OnLinewise&& onLinewise);
+      OnDeletion&& onDeletion);
 
   template<class OnDeletion>
   void exploreTextObjectEdits(
@@ -112,10 +109,10 @@ public:
       const CursorPos& cursor, const Lines& lines,
       int contentStart, int contentEnd, OnDeletion&& onDeletion);
 
-  template<class OnLinewise>
+  template<class OnDeletion>
   void exploreFullLineEdits(
       const std::vector<Edit::FullLineEditSpec>& specs,
-      const CursorPos& cursor, const Lines& lines, OnLinewise&& onLinewise);
+      const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion);
 
   template<class OnDeletion>
   void exploreCharEdits(
@@ -126,6 +123,23 @@ public:
 private:
   const RunningEffort& effortFor(KSId id) const { return bank_[id]; }
   bool inBoundaryRegion(const CursorPos& pos, const Lines& lines) const;
+  bool resolvedRangePreservesBoundary(
+      const VimCore::ResolvedDeleteRange& resolved, const Lines& lines) const;
+
+  template<class OnDeletion>
+  void emitResolvedDeletion(const VimCore::ResolvedDeleteRange& resolved,
+                            const Lines& lines,
+                            const SequenceBinding& cmd,
+                            OnDeletion&& onDeletion) const;
+
+  template<class OnDeletion>
+  void emitResolvedEditAction(
+      const VimCore::ResolvedDeleteRange& deleteEffect,
+      const VimCore::ResolvedDeleteRange& changeEffect,
+      const Lines& lines,
+      const SequenceBinding& cmd,
+      OnDeletion&& onDeletion) const;
+
   VimCore::WordBoundaryContext wordBoundaryContext() const {
     VimCore::WordBoundaryContext boundary;
     boundary.leftColOffset = leftColOffset_;
@@ -168,45 +182,115 @@ RunningEffort buildCountedEffort(const Config& config, int count,
   return effort;
 }
 
-template<class OnAnyDeletion, class OnLinewise>
-void emitResolvedDeletion(const VimCore::ResolvedDeleteRange& resolved,
-                          const SequenceBinding& cmd,
-                          OnAnyDeletion&& onAnyDeletion,
-                          OnLinewise&& onLinewise) {
+}  // namespace TransformExplorerDetail
+
+inline bool TransformExplorer::resolvedRangePreservesBoundary(
+    const VimCore::ResolvedDeleteRange& resolved, const Lines& lines) const {
+  if (lines.empty()) return false;
+
+  auto endPastSuffix = [&](CursorPos end) {
+    if (!boundary_.hasSuffix()) return false;
+    if (end.line < lines.lastLine()) return false;
+    if (end.line > lines.lastLine()) return true;
+    int suffixStart = static_cast<int>(lines[end.line].size()) - rightColOffset_;
+    return end.col > suffixStart;
+  };
+
   switch (resolved.kind) {
     case VimCore::ResolvedDeleteRangeKind::Characterwise:
-      onAnyDeletion(resolved.charRange, cmd);
-      return;
+      {
+        CharRange range = resolved.charRange;
+        range.normalize();
+        if (boundary_.hasPrefix() && range.begin.line == 0 &&
+            range.begin.col < leftColOffset_) {
+          return false;
+        }
+        return !endPastSuffix(range.end);
+      }
     case VimCore::ResolvedDeleteRangeKind::CharLine:
-      onAnyDeletion(resolved.charLineRange, cmd);
-      return;
+      if (boundary_.hasPrefix() && resolved.charLineRange.begin.line == 0 &&
+          resolved.charLineRange.begin.col < leftColOffset_) {
+        return false;
+      }
+      return !(boundary_.hasSuffix() &&
+               resolved.charLineRange.endLine > lines.lastLine());
     case VimCore::ResolvedDeleteRangeKind::LineChar:
-      onAnyDeletion(resolved.lineCharRange, cmd);
-      return;
+      if (boundary_.hasPrefix() && resolved.lineCharRange.beginLine == 0) {
+        return false;
+      }
+      return !endPastSuffix(resolved.lineCharRange.end);
     case VimCore::ResolvedDeleteRangeKind::Linewise:
-      onLinewise(resolved.lineRange, cmd);
-      return;
+      {
+        LineRange range = resolved.lineRange;
+        range.normalize();
+        if (boundary_.hasPrefix() && range.beginLine == 0) return false;
+        return !(boundary_.hasSuffix() && range.endLine > lines.lastLine());
+      }
   }
+  return false;
 }
 
-}  // namespace TransformExplorerDetail
+template<class OnDeletion>
+void TransformExplorer::emitResolvedDeletion(
+    const VimCore::ResolvedDeleteRange& resolved,
+    const Lines& lines,
+    const SequenceBinding& cmd,
+    OnDeletion&& onDeletion) const {
+  onDeletion(
+      ResolvedEditAction(resolved, resolvedRangePreservesBoundary(resolved, lines)),
+      cmd);
+}
+
+template<class OnDeletion>
+void TransformExplorer::emitResolvedEditAction(
+    const VimCore::ResolvedDeleteRange& deleteEffect,
+    const VimCore::ResolvedDeleteRange& changeEffect,
+    const Lines& lines,
+    const SequenceBinding& cmd,
+    OnDeletion&& onDeletion) const {
+  onDeletion(
+      ResolvedEditAction(
+          deleteEffect, changeEffect,
+          resolvedRangePreservesBoundary(deleteEffect, lines),
+          resolvedRangePreservesBoundary(changeEffect, lines)),
+      cmd);
+}
 
 template<class OnDeletion>
 void TransformExplorer::exploreTextObjectEdits(
     const std::vector<Edit::TextObjectEditSpec>& specs,
     const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion) {
   for (const auto& spec : specs) {
-    CharRange range = VimCore::wordTextObjectRange(
-        cursor, lines,
+    VimCore::WordTextObjectKind kind =
         spec.isInner ? VimCore::WordTextObjectKind::Inner
-                     : VimCore::WordTextObjectKind::Around,
+                     : VimCore::WordTextObjectKind::Around;
+    CharRange deleteRange = VimCore::wordTextObjectRange(
+        cursor, lines,
+        kind,
         spec.isBig, wordBoundaryContext());
+    CharRange changeRange = VimCore::wordTextObjectChangeRange(
+        cursor, lines, kind, spec.isBig, wordBoundaryContext());
 
-    if (range.begin == POSITION_OUTSIDE_BOUNDARY || range.end == POSITION_OUTSIDE_BOUNDARY) {
+    bool deleteValid = deleteRange.begin != POSITION_OUTSIDE_BOUNDARY &&
+                       deleteRange.end != POSITION_OUTSIDE_BOUNDARY;
+    bool changeValid = changeRange.begin != POSITION_OUTSIDE_BOUNDARY &&
+                       changeRange.end != POSITION_OUTSIDE_BOUNDARY;
+    if (!deleteValid && !changeValid) {
       continue;
     }
 
-    onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
+    VimCore::ResolvedDeleteRange deleteEffect =
+        VimCore::ResolvedDeleteRange::characterwise(
+            deleteValid ? deleteRange : CharRange(cursor, cursor));
+    VimCore::ResolvedDeleteRange changeEffect =
+        VimCore::ResolvedDeleteRange::characterwise(
+            changeValid ? changeRange : CharRange(cursor, cursor));
+    onDeletion(
+        ResolvedEditAction(
+            deleteEffect, changeEffect,
+            deleteValid && resolvedRangePreservesBoundary(deleteEffect, lines),
+            changeValid && resolvedRangePreservesBoundary(changeEffect, lines)),
+        SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
   }
 }
 
@@ -229,7 +313,11 @@ void TransformExplorer::exploreHalfLineEdits(
       int endCol = lineContentEnd - 1;
       if (endCol < cursor.col) continue;
       CharRange range(cursor, CursorPos(cursor.line, endCol + 1));
-      onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
+      emitResolvedDeletion(
+          VimCore::ResolvedDeleteRange::characterwise(range),
+          lines,
+          SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)),
+          onDeletion);
     } else if (spec.ksId == KSId::d0) {
       if (cursor.line == 0 && boundary_.hasPrefix()) continue;
 
@@ -237,24 +325,33 @@ void TransformExplorer::exploreHalfLineEdits(
       if (cursor.col <= lineContentStart) continue;
       CharRange range(CursorPos(cursor.line, lineContentStart),
                       CursorPos(cursor.line, cursor.col));
-      onDeletion(range, SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
+      emitResolvedDeletion(
+          VimCore::ResolvedDeleteRange::characterwise(range),
+          lines,
+          SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)),
+          onDeletion);
     } else {
       assert(false && "Unexpected half-line edit command");
     }
   }
 }
 
-template<class OnLinewise>
+template<class OnDeletion>
 void TransformExplorer::exploreFullLineEdits(
     const std::vector<Edit::FullLineEditSpec>& specs,
-    const CursorPos& cursor, const Lines& lines, OnLinewise&& onLinewise) {
+    const CursorPos& cursor, const Lines& lines, OnDeletion&& onDeletion) {
   if ((cursor.line == 0 && boundary_.hasPrefix()) ||
       (cursor.line == lines.lastLine() && boundary_.hasSuffix())) {
     return;
   }
   for (const auto& spec : specs) {
-    onLinewise(LineRange(cursor.line, cursor.line + 1),
-               SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)));
+    emitResolvedDeletion(
+        VimCore::ResolvedDeleteRange::linewise(
+            LineRange(cursor.line, cursor.line + 1),
+            VimCore::LinewiseDeleteCursorPolicy::LinewiseCommand),
+        lines,
+        SequenceBinding(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId)),
+        onDeletion);
   }
 }
 
@@ -263,23 +360,30 @@ void TransformExplorer::exploreCharEdits(
     const CursorPos& cursor, const Lines& lines, int contentStart, int contentEnd,
     int, OnDeletion&& onDeletion) {
   if (contentStart <= cursor.col && cursor.col < contentEnd) {
-    onDeletion(CharRange(cursor, CursorPos(cursor.line, cursor.col + 1)),
-               SequenceBinding(KeyedSequence::x, effortFor(KSId::x)));
+    emitResolvedDeletion(
+        VimCore::ResolvedDeleteRange::characterwise(
+            CharRange(cursor, CursorPos(cursor.line, cursor.col + 1))),
+        lines,
+        SequenceBinding(KeyedSequence::x, effortFor(KSId::x)),
+        onDeletion);
   }
 
   if (cursor.col > contentStart && cursor.col <= contentEnd) {
     CursorPos before(cursor.line, cursor.col - 1);
-    onDeletion(CharRange(before, CursorPos(before.line, before.col + 1)),
-               SequenceBinding(KeyedSequence::X, effortFor(KSId::X)));
+    emitResolvedDeletion(
+        VimCore::ResolvedDeleteRange::characterwise(
+            CharRange(before, CursorPos(before.line, before.col + 1))),
+        lines,
+        SequenceBinding(KeyedSequence::X, effortFor(KSId::X)),
+        onDeletion);
   }
 }
 
-template<bool Forward, class OnAnyDeletion, class OnLinewise>
+template<bool Forward, class OnDeletion>
 void TransformExplorer::exploreParagraphEdits(
     const std::vector<Edit::ParagraphEditSpecNoDir>& specs,
     const CursorPos& cursor, const Lines& lines,
-    OnAnyDeletion&& onAnyDeletion,
-    OnLinewise&& onLinewise) {
+    OnDeletion&& onDeletion) {
   int lastLine = lines.lastLine();
   bool hasLinesOutside = Forward ? boundary_.hasLinesBelow() : boundary_.hasLinesAbove();
   int endpointLine = VimCore::motionParagraphEndpoint<Forward, LineEdgeType::NextEdge>(
@@ -304,28 +408,27 @@ void TransformExplorer::exploreParagraphEdits(
       }
       if (end <= cursor) continue;
 
-      auto resolved = VimCore::resolveExclusiveDeleteRange(
-          CharRange(cursor, end), lines, true);
-      TransformExplorerDetail::emitResolvedDeletion(
-          resolved, cmd, onAnyDeletion, onLinewise);
+      CharRange rawRange(cursor, end);
+      auto resolved = VimCore::resolveExclusiveDeleteRange(rawRange, lines, true);
+      auto changeResolved = VimCore::resolveExclusiveChangeRange(rawRange, lines);
+      emitResolvedEditAction(resolved, changeResolved, lines, cmd, onDeletion);
     } else {
       CursorPos begin(endpointLine, 0);
       if (begin >= cursor) continue;
 
-      auto resolved = VimCore::resolveExclusiveDeleteRange(
-          CharRange(begin, cursor), lines, true);
-      TransformExplorerDetail::emitResolvedDeletion(
-          resolved, cmd, onAnyDeletion, onLinewise);
+      CharRange rawRange(begin, cursor);
+      auto resolved = VimCore::resolveExclusiveDeleteRange(rawRange, lines, true);
+      auto changeResolved = VimCore::resolveExclusiveChangeRange(rawRange, lines);
+      emitResolvedEditAction(resolved, changeResolved, lines, cmd, onDeletion);
     }
   }
 }
 
-template<bool Forward, class OnAnyDeletion, class OnLinewise>
+template<bool Forward, class OnDeletion>
 void TransformExplorer::exploreSentenceEdits(
     const std::vector<Edit::SentenceEditSpecNoDir>& specs,
     const CursorPos& cursor, const Lines& lines,
-    OnAnyDeletion&& onAnyDeletion,
-    OnLinewise&& onLinewise) {
+    OnDeletion&& onDeletion) {
   int lastLine = lines.lastLine();
   int boundaryOffset = Forward ? rightColOffset_ : leftColOffset_;
   bool hasLinesOutside = Forward ? boundary_.hasLinesBelow() : boundary_.hasLinesAbove();
@@ -334,41 +437,29 @@ void TransformExplorer::exploreSentenceEdits(
 
   if (endpoint == POSITION_OUTSIDE_BOUNDARY) return;
 
-  VimCore::WordBoundaryContext boundary = wordBoundaryContext();
-  if constexpr (Forward) {
-    if (boundary_.hasSuffix() && boundary.inSuffixRegion(endpoint, lines)) {
-      return;
-    }
-  } else {
-    if (boundary_.hasPrefix() && endpoint.line == 0
-        && endpoint.col < boundary.contentStartCol(0)) {
-      return;
-    }
-  }
-
   for (const auto& spec : specs) {
     SequenceBinding cmd(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId));
     if constexpr (Forward) {
       if (endpoint <= cursor) continue;
       CharRange rawRange(cursor, endpoint);
       auto resolved = VimCore::resolveExclusiveDeleteRange(rawRange, lines, true);
-      TransformExplorerDetail::emitResolvedDeletion(
-          resolved, cmd, onAnyDeletion, onLinewise);
+      auto changeResolved = VimCore::resolveExclusiveChangeRange(rawRange, lines);
+      emitResolvedEditAction(resolved, changeResolved, lines, cmd, onDeletion);
     } else {
       if (endpoint >= cursor) continue;
       CharRange rawRange(endpoint, cursor);
       auto resolved = VimCore::resolveExclusiveDeleteRange(rawRange, lines, true);
-      TransformExplorerDetail::emitResolvedDeletion(
-          resolved, cmd, onAnyDeletion, onLinewise);
+      auto changeResolved = VimCore::resolveExclusiveChangeRange(rawRange, lines);
+      emitResolvedEditAction(resolved, changeResolved, lines, cmd, onDeletion);
     }
   }
 }
 
-template<class OnAnyDeletion, class OnLinewise>
+template<class OnDeletion>
 void TransformExplorer::exploreWordEdits(
     const std::vector<Edit::WordEditSpec>& specs,
     const CursorPos& cursor, const Lines& lines,
-    OnAnyDeletion&& onAnyDeletion, OnLinewise&& onLinewise) {
+    OnDeletion&& onDeletion) {
   VimCore::WordBoundaryContext boundary = wordBoundaryContext();
   for (const auto& spec : specs) {
     CharRange range = VimCore::wordOperatorRange(
@@ -378,14 +469,11 @@ void TransformExplorer::exploreWordEdits(
       continue;
     }
     SequenceBinding cmd(KeyedSequence::byId(spec.ksId), effortFor(spec.ksId));
-    if (spec.target == VimCore::WordOperatorTarget::DeleteBackToWordBegin) {
-      auto resolved = VimCore::resolveBackwardExclusiveWordDeleteRange(
-          range.begin, cursor, lines, boundary.contentStartCol(cursor.line));
-      TransformExplorerDetail::emitResolvedDeletion(
-          resolved, cmd, onAnyDeletion, onLinewise);
-      continue;
-    }
-    onAnyDeletion(range, cmd);
+    auto resolved = VimCore::resolveWordOperatorMotion(
+        spec.target, range, cursor, lines, boundary.leftColOffset);
+    auto changeResolved = VimCore::resolveWordOperatorChangeMotion(
+        spec.target, range, cursor, lines, boundary.leftColOffset);
+    emitResolvedEditAction(resolved, changeResolved, lines, cmd, onDeletion);
   }
 }
 
@@ -496,8 +584,12 @@ void TransformExplorer::exploreCountedWordEdits(
     }
     if (lastCount >= minCountRepeat) {
       RunningEffort countedEffort = countedEffortFor(spec, lastCount);
-      onDeletion(CharRange(cursor, lastEnd),
-                 SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
+      emitResolvedDeletion(
+          VimCore::ResolvedDeleteRange::characterwise(
+              CharRange(cursor, lastEnd)),
+          lines,
+          SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount),
+          onDeletion);
     }
   }
 
@@ -519,18 +611,22 @@ void TransformExplorer::exploreCountedWordEdits(
       prev = range.begin;
     }
     if (lastCount >= minCountRepeat) {
-      CharRange range;
-      if (spec.target == VimCore::WordOperatorTarget::DeleteBackToWordBegin) {
-        int contentStartCol = boundary.contentStartCol(cursor.line);
-        if (cursor.col <= contentStartCol) continue;
-        range = VimCore::buildBackwardExclusiveCharRange(
-            lastBegin, cursor, lines, contentStartCol);
-      } else {
-        range = CharRange(lastBegin, VimCore::onePastOnSameLine(lines, cursor));
-      }
       RunningEffort countedEffort = countedEffortFor(spec, lastCount);
-      onDeletion(range,
-                 SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount));
+      int cursorContentStart = boundary.contentStartCol(cursor.line);
+      if (spec.target == VimCore::WordOperatorTarget::DeleteBackToWordBegin &&
+          cursor.col <= cursorContentStart) {
+        continue;
+      }
+      auto resolved = VimCore::resolveWordOperatorMotion(
+          spec.target, CharRange(lastBegin, cursor), cursor, lines,
+          boundary.leftColOffset);
+      auto changeResolved = VimCore::resolveWordOperatorChangeMotion(
+          spec.target, CharRange(lastBegin, cursor), cursor, lines,
+          boundary.leftColOffset);
+      emitResolvedEditAction(
+          resolved, changeResolved, lines,
+          SequenceBinding(KeyedSequence::byId(spec.ksId), countedEffort, lastCount),
+          onDeletion);
     }
   }
 }
@@ -551,7 +647,11 @@ void TransformExplorer::exploreCountedCharEdits(
   RunningEffort effort =
       TransformExplorerDetail::buildCountedEffort<CountClass::EditChar>(
           config_, count, KSId::x, count);
-  onDeletion(range, SequenceBinding(KeyedSequence::x, effort, count));
+  emitResolvedDeletion(
+      VimCore::ResolvedDeleteRange::characterwise(range),
+      lines,
+      SequenceBinding(KeyedSequence::x, effort, count),
+      onDeletion);
 }
 
 template<class OnJoin>
@@ -563,11 +663,10 @@ void TransformExplorer::exploreJoinCommands(
   onJoin(false, SequenceBinding(KeyedSequence::gJ, effortFor(KSId::gJ)));
 }
 
-template<class State, class OnAnyDeletion, class OnLinewise, class OnJoin>
+template<class State, class OnDeletion, class OnJoin>
 void TransformExplorer::exploreAllDeletions(
     const State& state,
-    OnAnyDeletion&& onAnyDeletion,
-    OnLinewise&& onLinewise,
+    OnDeletion&& onDeletion,
     OnJoin&& onJoin) {
   const Lines& lines = state.getLines();
   CursorPos cursor = state.getPos();
@@ -578,31 +677,29 @@ void TransformExplorer::exploreAllDeletions(
   if (editContentLen <= 0) {
     assert(lines[cursor.line].empty());
 
-    exploreFullLineEdits(Edit::EMPTYLINE_FULL_LINE_EDITS, cursor, lines, onLinewise);
+    exploreFullLineEdits(Edit::EMPTYLINE_FULL_LINE_EDITS, cursor, lines, onDeletion);
     exploreWordEdits(
-        Edit::EMPTYLINE_FORWARD_WORD_EDITS, cursor, lines, onAnyDeletion,
-        onLinewise);
+        Edit::EMPTYLINE_FORWARD_WORD_EDITS, cursor, lines, onDeletion);
     exploreWordEdits(
-        Edit::EMPTYLINE_BACKWARD_WORD_EDITS, cursor, lines, onAnyDeletion,
-        onLinewise);
+        Edit::EMPTYLINE_BACKWARD_WORD_EDITS, cursor, lines, onDeletion);
     exploreJoinCommands(cursor, lines, onJoin);
     return;
   }
 
-  exploreWordEdits(Edit::FORWARD_WORD_EDITS, cursor, lines, onAnyDeletion, onLinewise);
-  exploreWordEdits(Edit::BACKWARD_WORD_EDITS, cursor, lines, onAnyDeletion, onLinewise);
-  exploreTextObjectEdits(Edit::TEXT_OBJECT_EDITS, cursor, lines, onAnyDeletion);
-  exploreHalfLineEdits(Edit::HALF_LINE_EDITS, cursor, lines, contentBegin, contentEnd, onAnyDeletion);
-  exploreFullLineEdits(Edit::FULL_LINE_EDITS, cursor, lines, onLinewise);
-  exploreCharEdits(cursor, lines, contentBegin, contentEnd, editContentLen, onAnyDeletion);
+  exploreWordEdits(Edit::FORWARD_WORD_EDITS, cursor, lines, onDeletion);
+  exploreWordEdits(Edit::BACKWARD_WORD_EDITS, cursor, lines, onDeletion);
+  exploreTextObjectEdits(Edit::TEXT_OBJECT_EDITS, cursor, lines, onDeletion);
+  exploreHalfLineEdits(Edit::HALF_LINE_EDITS, cursor, lines, contentBegin, contentEnd, onDeletion);
+  exploreFullLineEdits(Edit::FULL_LINE_EDITS, cursor, lines, onDeletion);
+  exploreCharEdits(cursor, lines, contentBegin, contentEnd, editContentLen, onDeletion);
   exploreParagraphEdits<true>(
-      Edit::FORWARD_PARAGRAPH_EDITS, cursor, lines, onAnyDeletion, onLinewise);
+      Edit::FORWARD_PARAGRAPH_EDITS, cursor, lines, onDeletion);
   exploreParagraphEdits<false>(
-      Edit::BACKWARD_PARAGRAPH_EDITS, cursor, lines, onAnyDeletion, onLinewise);
+      Edit::BACKWARD_PARAGRAPH_EDITS, cursor, lines, onDeletion);
   exploreSentenceEdits<true>(
-      Edit::FORWARD_SENTENCE_EDITS, cursor, lines, onAnyDeletion, onLinewise);
+      Edit::FORWARD_SENTENCE_EDITS, cursor, lines, onDeletion);
   exploreSentenceEdits<false>(
-      Edit::BACKWARD_SENTENCE_EDITS, cursor, lines, onAnyDeletion, onLinewise);
+      Edit::BACKWARD_SENTENCE_EDITS, cursor, lines, onDeletion);
   exploreJoinCommands(cursor, lines, onJoin);
 }
 
@@ -616,7 +713,7 @@ void TransformExplorer::exploreAllDeletions(
 // Caller is responsible for the boundary-region guards (suffix/prefix
 // motion-only branches in the optimizer) and any pre/post-emission
 // bookkeeping (cost map, dispatch tracking).
-template<class State, class OnDeletion, class OnLinewise, class OnJoin,
+template<class State, class OnDeletion, class OnJoin,
          class OnCountedLinewise, class OnCountedJoin>
 void sweepExplorerStructurals(
     TransformExplorer& explorer,
@@ -627,11 +724,10 @@ void sweepExplorerStructurals(
     int rightColOffset,
     int minPrefixCount,
     OnDeletion&& onDeletion,
-    OnLinewise&& onLinewise,
     OnJoin&& onJoin,
     OnCountedLinewise&& onCountedLinewise,
     OnCountedJoin&& onCountedJoin) {
-  explorer.exploreAllDeletions(state, onDeletion, onLinewise, onJoin);
+  explorer.exploreAllDeletions(state, onDeletion, onJoin);
   explorer.exploreCountedLineEdits(cursor, effectiveLines, minPrefixCount, onCountedLinewise);
   explorer.exploreCountedJoinCommands(cursor, effectiveLines, minPrefixCount, onCountedJoin);
   explorer.exploreCountedWordEdits(cursor, effectiveLines, minPrefixCount, onDeletion);

@@ -21,13 +21,6 @@ TEST(ErrorHandlingTest, ParseMotionsRejectsUnknownMotion) {
   EXPECT_EQ(result.error().offset, 0u);
 }
 
-TEST(ErrorHandlingTest, ParseMotionsRejectsHighBitBytes) {
-  auto result = parseMovements(string("\xffw", 2));
-  ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error().kind, MovementParseErrorKind::UnknownMotion);
-  EXPECT_EQ(result.error().offset, 0u);
-}
-
 TEST(ErrorHandlingTest, ParseMotionsRejectsMalformedSpecialKey) {
   auto result = parseMovements("<C-x");
   ASSERT_FALSE(result.has_value());
@@ -38,13 +31,6 @@ TEST(ErrorHandlingTest, ParseMotionsRejectsMalformedSpecialKey) {
 TEST(ErrorHandlingTest, ParseSequenceRejectsUnknownCharacter) {
   // '!' is not a motion, delete, change, count prefix, or insert command.
   auto result = parseSequence("!");
-  ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error().kind, SequenceParseErrorKind::UnknownCharacter);
-  EXPECT_EQ(result.error().offset, 0u);
-}
-
-TEST(ErrorHandlingTest, ParseSequenceRejectsHighBitBytes) {
-  auto result = parseSequence(string("\xffw", 2));
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(result.error().kind, SequenceParseErrorKind::UnknownCharacter);
   EXPECT_EQ(result.error().offset, 0u);

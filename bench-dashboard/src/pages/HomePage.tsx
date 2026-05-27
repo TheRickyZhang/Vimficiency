@@ -1,7 +1,8 @@
 import { Link } from '@tanstack/react-router';
 import { homeRoute, type OptimizerSlug } from '../router';
 import { parseName, toNanoseconds, timeSeries, loadBenchmarkData } from '../utils/data';
-import { bestUnit } from '../utils/format';
+import { bestUnit, fmtTime } from '../utils/format';
+import { TEST_SUITES, summarizeTestSuite, type TestSuiteSummary } from '../utils/testSuites';
 import { BenchmarkChart } from '../components/BenchmarkChart';
 
 interface Change {
@@ -18,7 +19,7 @@ const ALERT_RATIO = 1.5;
 
 const OPTIMIZER_LABELS: Partial<Record<OptimizerSlug, string>> = {
   edit: 'TransformOptimizer',
-  motion: 'NavOptimize',
+  motion: 'NavOptimizer',
   composition: 'CompositionOptimizer',
 };
 
@@ -59,6 +60,17 @@ export function HomePage() {
     .slice(0, MAX_ITEMS);
 
   const testOptimizer = optimizers.find((o) => o.slug === 'tests');
+  const testSummaries = testOptimizer
+    ? TEST_SUITES.map((suite) => summarizeTestSuite(testOptimizer.data, suite.slug) ?? {
+      slug: suite.slug,
+      label: suite.label,
+      title: suite.title,
+      latestDuration: null,
+      avgSuiteDuration: null,
+      trend: null,
+      suiteCount: 0,
+    })
+    : [];
   const testSeries = (() => {
     if (!testOptimizer) return null;
     const runs = loadBenchmarkData(testOptimizer.data);
@@ -72,7 +84,7 @@ export function HomePage() {
       <h1>Vimficiency Benchmarks</h1>
       <p className="text-[#666] text-[1.1rem] mb-10">Performance tracking across commits</p>
 
-      <h2>Optimizers</h2>
+      <h2>Optimizer Benchmarks</h2>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
         {(['edit', 'motion', 'composition'] as const).map((slug) => (
           <Link
@@ -88,6 +100,26 @@ export function HomePage() {
           </Link>
         ))}
       </div>
+
+      {testSummaries.length > 0 && (
+        <div className="mt-10">
+          <h2>Tests</h2>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
+            {testSummaries.map((summary) => (
+              <TestSuiteCard key={summary.slug} summary={summary} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {testSeries && (
+        <div className="mt-10 max-w-[60%] mx-auto max-md:max-w-full">
+          <h2>Total C++ Test Duration</h2>
+          <div style={{ height: 250 }}>
+            <BenchmarkChart series={testSeries} unit={bestUnit(testSeries.map((p) => p.val))} />
+          </div>
+        </div>
+      )}
 
       <div className="mt-10">
         <div className="grid grid-cols-2 gap-6">
@@ -117,16 +149,38 @@ export function HomePage() {
           </div>
         </div>
       </div>
-
-      {testSeries && (
-        <div className="mt-10 max-w-[60%] mx-auto">
-          <h2>Test Duration</h2>
-          <div style={{ height: 250 }}>
-            <BenchmarkChart series={testSeries} unit={bestUnit(testSeries.map((p) => p.val))} />
-          </div>
-        </div>
-      )}
     </>
+  );
+}
+
+function TestSuiteCard({ summary }: { summary: TestSuiteSummary }) {
+  const trendColor = summary.trend !== null
+    ? (summary.trend > 5 ? 'text-bad' : summary.trend < -5 ? 'text-good' : 'text-muted')
+    : undefined;
+
+  return (
+    <Link
+      to="/$optimizer/$testSuite"
+      params={{ optimizer: 'tests', testSuite: summary.slug }}
+      search={{ cat: undefined, bench: undefined }}
+      className="block card card-hover p-5 no-underline text-inherit"
+    >
+      <div className="font-bold text-[1.1rem] mb-2">{summary.title}</div>
+      <div className="text-2xl font-extrabold text-[#333]">
+        {summary.latestDuration !== null ? fmtTime(summary.latestDuration) : 'No data'}
+      </div>
+      <div className="text-[0.9rem] text-muted mt-1">
+        {summary.avgSuiteDuration !== null
+          ? `avg suite ${fmtTime(summary.avgSuiteDuration)}`
+          : 'no suite data'}
+        {summary.suiteCount > 0 && (
+          <> &middot; {summary.suiteCount} suite{summary.suiteCount !== 1 ? 's' : ''}</>
+        )}
+        {summary.trend !== null && (
+          <> &middot; <span className={`font-semibold ${trendColor}`}>{summary.trend > 0 ? '+' : ''}{summary.trend.toFixed(1)}%</span></>
+        )}
+      </div>
+    </Link>
   );
 }
 

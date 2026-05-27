@@ -198,6 +198,19 @@ struct Lines final : std::vector<Line> {
     return count;
   }
 
+  // Same indexing model as totalPositions(): empty lines contribute col 0.
+  CursorPos cursorFromFlatIndexClamped(int flatIndex) const {
+    int remaining = std::clamp(flatIndex, 0, totalPositions() - 1);
+    for (int line = 0; line < static_cast<int>(size()); line++) {
+      int lineSize = data()[line].effectiveSize();
+      if (remaining < lineSize) {
+        return CursorPos(line, data()[line].empty() ? 0 : remaining);
+      }
+      remaining -= lineSize;
+    }
+    return lastPos();
+  }
+
   static bool sameLineLengths(const Lines& x, const Lines& y) {
     if (x.size() != y.size()) {
       return false;

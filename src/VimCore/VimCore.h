@@ -29,6 +29,10 @@ bool isParagraphSeparatorLine(std::string_view s);
 // Return column of first non-blank character (or 0 if all blank)
 int firstNonBlankColInLine(std::string_view s);
 
+// Target for `^`: first non-blank if one exists; otherwise Vim keeps the
+// cursor where it is on a whitespace-only line.
+int caretTargetColInLine(std::string_view s, int currentCol);
+
 // =============================================================================
 // 2. CursorPos Stepping
 // =============================================================================

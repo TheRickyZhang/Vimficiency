@@ -189,6 +189,15 @@ static CharRange finalizeWordTextObjectRange(CharRange range,
   return range;
 }
 
+static CursorPos includeFollowingEmptyLineAfterTrailingGap(
+    CursorPos end, const Lines& lines) {
+  if (end == POSITION_OUTSIDE_BOUNDARY) return end;
+  if (end.line >= lines.lastLine()) return end;
+  if (end.col != static_cast<int>(lines[end.line].size())) return end;
+  if (!lines[end.line + 1].empty()) return end;
+  return CursorPos(end.line + 1, 0);
+}
+
 CursorPos wordMotionEndpoint(CursorPos cursor,
                              const Lines& lines,
                              WordMotionTarget target,
@@ -269,15 +278,26 @@ CharRange wordOperatorRange(CursorPos cursor,
   __builtin_unreachable();
 }
 
-CharRange wordTextObjectRange(CursorPos cursor,
-                              const Lines& lines,
-                              WordTextObjectKind kind,
-                              bool isBigWord,
-                              WordBoundaryContext boundary) {
+static CharRange wordTextObjectRangeImpl(CursorPos cursor,
+                                         const Lines& lines,
+                                         WordTextObjectKind kind,
+                                         bool isBigWord,
+                                         WordBoundaryContext boundary,
+                                         bool includeTrailingEmptyLine) {
   bool isInner = kind == WordTextObjectKind::Inner;
   bool cursorOnWhitespace = CharMask::isBlank(lines.get(cursor));
   CursorPos start;
   CursorPos end;
+
+  if (lines[cursor.line].empty()) {
+    if (cursor.line == lines.lastLine() &&
+        cursor.line > 0 &&
+        !boundary.hasLinesBelow) {
+      return finalizeWordTextObjectRange(
+          CharRange(CursorPos(cursor.line - 1, 0), cursor), lines, boundary);
+    }
+    return CharRange(cursor, cursor);
+  }
 
   if (isInner && cursorOnWhitespace) {
     return finalizeWordTextObjectRange(
@@ -297,17 +317,70 @@ CharRange wordTextObjectRange(CursorPos cursor,
   }
 
   if (cursorOnWhitespace) {
-    start = wordTextObjectEndpoint(
-        cursor, lines, isBigWord, lineBounded(SCAN_PREVIOUS_GAP),
-        boundary);
-    CursorPos wordEnd = wordTextObjectEndpoint(
-        cursor, lines, isBigWord, noSkip(SCAN_NEXT_END), boundary);
-    end = onePastInclusiveWordEndpoint(wordEnd, lines);
-    if (wordEnd != POSITION_OUTSIDE_BOUNDARY &&
-        CharMask::isBlank(lines.get(wordEnd))) {
+    CharRange whitespace = applyWhitespaceRunBoundary(
+        computeWhitespaceRun(cursor, lines), lines, boundary);
+    if (!whitespace.isValid()) {
+      return CharRange(POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);
+    }
+
+    if (whitespace.end.col < static_cast<int>(lines[whitespace.end.line].size())) {
+      CursorPos wordEnd = wordTextObjectEndpoint(
+          whitespace.end, lines, isBigWord, noSkip(SCAN_NEXT_END), boundary);
+      end = onePastInclusiveWordEndpoint(wordEnd, lines);
+    } else if (whitespace.end.line < lines.lastLine()) {
+      int nextLine = whitespace.end.line + 1;
+      if (isParagraphSeparatorLine(lines[nextLine])) {
+        end = CursorPos(nextLine, 0);
+      } else if (isBlankLine(lines[nextLine])) {
+        end = POSITION_OUTSIDE_BOUNDARY;
+      } else {
+        CursorPos wordStart(
+            nextLine, firstNonBlankColInLine(lines[nextLine]));
+        CursorPos rawWordEnd = rawWordEndpoint(
+            wordStart, lines, isBigWord, noSkip(SCAN_NEXT_END));
+        bool hasTrailingWhitespace = false;
+        bool trailingWhitespaceReachesLineEnd = false;
+        if (rawWordEnd != POSITION_OUTSIDE_BOUNDARY) {
+          int nextCol = rawWordEnd.col + 1;
+          if (nextCol < static_cast<int>(lines[rawWordEnd.line].size())) {
+            hasTrailingWhitespace =
+                CharMask::isWhitespace(lines[rawWordEnd.line][nextCol]);
+            trailingWhitespaceReachesLineEnd = hasTrailingWhitespace;
+            for (int col = nextCol + 1;
+                 trailingWhitespaceReachesLineEnd &&
+                 col < static_cast<int>(lines[rawWordEnd.line].size());
+                 col++) {
+              trailingWhitespaceReachesLineEnd =
+                  CharMask::isWhitespace(lines[rawWordEnd.line][col]);
+            }
+          }
+        }
+        if (hasTrailingWhitespace &&
+            trailingWhitespaceReachesLineEnd &&
+            includeTrailingEmptyLine &&
+            isBlankLine(lines[whitespace.begin.line])) {
+          end = onePastInclusiveWordEndpoint(
+              wordTextObjectEndpoint(
+                  wordStart, lines, isBigWord, lineBounded(SCAN_NEXT_GAP),
+                  boundary),
+              lines);
+          if (includeTrailingEmptyLine) {
+            end = includeFollowingEmptyLineAfterTrailingGap(end, lines);
+          }
+        } else {
+          CursorPos wordEnd = wordTextObjectEndpoint(
+              wordStart, lines, isBigWord, noSkip(SCAN_NEXT_END), boundary);
+          end = onePastInclusiveWordEndpoint(wordEnd, lines);
+        }
+      }
+    } else {
       end = POSITION_OUTSIDE_BOUNDARY;
     }
-    return finalizeWordTextObjectRange(CharRange(start, end), lines, boundary);
+    if (end == POSITION_OUTSIDE_BOUNDARY) {
+      return CharRange(POSITION_OUTSIDE_BOUNDARY, POSITION_OUTSIDE_BOUNDARY);
+    }
+    return finalizeWordTextObjectRange(
+        CharRange(whitespace.begin, end), lines, boundary);
   }
 
   CursorPos rawWordEnd = rawWordEndpoint(
@@ -353,6 +426,26 @@ CharRange wordTextObjectRange(CursorPos cursor,
   }
 
   return finalizeWordTextObjectRange(CharRange(start, end), lines, boundary);
+}
+
+CharRange wordTextObjectRange(CursorPos cursor,
+                              const Lines& lines,
+                              WordTextObjectKind kind,
+                              bool isBigWord,
+                              WordBoundaryContext boundary) {
+  return wordTextObjectRangeImpl(
+      cursor, lines, kind, isBigWord, boundary,
+      /*includeTrailingEmptyLine=*/true);
+}
+
+CharRange wordTextObjectChangeRange(CursorPos cursor,
+                                    const Lines& lines,
+                                    WordTextObjectKind kind,
+                                    bool isBigWord,
+                                    WordBoundaryContext boundary) {
+  return wordTextObjectRangeImpl(
+      cursor, lines, kind, isBigWord, boundary,
+      /*includeTrailingEmptyLine=*/false);
 }
 
 static bool crossesColumnBoundary(CharRange range, const Lines& lines,
@@ -793,8 +886,19 @@ CursorPos firstSentenceStartAfterBlankRun(const Lines& lines, int line) {
   while (line < n && isBlankLine(lines[line])) {
     line++;
   }
-  if (line >= n) return CursorPos(n - 1, 0);
+  if (line >= n) return POSITION_OUTSIDE_BOUNDARY;
   return CursorPos(line, firstNonBlankColInLine(lines[line]));
+}
+
+// Vim's `d)` extends past EOF when forward sentence motion lands on the
+// last character of the buffer (unterminated tail). Detect that to convert
+// a motion endpoint into the operator endpoint.
+bool motionEndsAtLastBufferChar(CursorPos motionEnd, const Lines& lines) {
+  int lastLine = lines.lastLine();
+  if (motionEnd.line != lastLine) return false;
+  int len = static_cast<int>(lines[lastLine].size());
+  if (len == 0) return false;
+  return motionEnd.col == len - 1;
 }
 
 CursorPos currentSentenceStart(CursorPos cursor, const Lines& lines) {
@@ -855,6 +959,7 @@ std::optional<SentenceExtent> sentenceExtentAtOrAfter(CursorPos cursor,
   int col = scanStart.col;
   if (isBlankLine(lines[line])) {
     scanStart = firstSentenceStartAfterBlankRun(lines, line);
+    if (scanStart == POSITION_OUTSIDE_BOUNDARY) return std::nullopt;
     line = scanStart.line;
     col = scanStart.col;
   }
@@ -864,6 +969,11 @@ std::optional<SentenceExtent> sentenceExtentAtOrAfter(CursorPos cursor,
   int k = col;
 
   while (true) {
+    if (isParagraphSeparatorLine(lines[l])) {
+      return SentenceExtent{
+          start, CursorPos(l, 0), CursorPos(l, 0), CursorPos(l, 0)};
+    }
+
     if (isSentenceEndAt(lines, l, k)) {
       int endLine = l;
       int endCol = k;
@@ -893,20 +1003,12 @@ std::optional<SentenceExtent> sentenceExtentAtOrAfter(CursorPos cursor,
       CursorPos gapEndInclusive(l, k);
       bool gapReachedEof = false;
 
+      // A blank line is a paragraph/sentence boundary in Vim; the trailing
+      // gap stops at the start of that line and does not span past it.
       while (true) {
         if (l >= static_cast<int>(lines.size())) break;
-        if (isBlankLine(lines[l])) {
-          gapEndInclusive = CursorPos(l, 0);
-          l++;
-          k = 0;
-          continue;
-        }
+        if (isParagraphSeparatorLine(lines[l])) break;
         int len = static_cast<int>(lines[l].size());
-        if (len == 0) {
-          l++;
-          k = 0;
-          continue;
-        }
         k = std::clamp(k, 0, len - 1);
         char c = lines[l][k];
         if (c == ' ' || c == '\t') {
@@ -951,7 +1053,7 @@ static bool sentenceEndpointOutsideBoundary(CursorPos result, const Lines& lines
       return true;
     }
     if (boundaryOffset > 0 && result.line == lastLine &&
-        result.col >= static_cast<int>(lines[lastLine].size()) - boundaryOffset) {
+        result.col > static_cast<int>(lines[lastLine].size()) - boundaryOffset) {
       return true;
     }
   } else {
@@ -965,6 +1067,13 @@ static bool sentenceEndpointOutsideBoundary(CursorPos result, const Lines& lines
   return false;
 }
 
+static bool onlyWhitespaceToLineEnd(const Line& line, int col) {
+  for (; col < static_cast<int>(line.size()); col++) {
+    if (!CharMask::isWhitespace(line[col])) return false;
+  }
+  return true;
+}
+
 static bool sentenceOperatorEndpointOutsideBoundary(
     CursorPos result, const Lines& lines, bool forward, int boundaryOffset,
     bool hasLinesOutside) {
@@ -972,6 +1081,11 @@ static bool sentenceOperatorEndpointOutsideBoundary(
   if (forward) {
     if (hasLinesOutside && result.line == lastLine &&
         result.col >= lines[lastLine].effectiveSize()) {
+      return true;
+    }
+    if (hasLinesOutside && result.line == lastLine &&
+        result.col < static_cast<int>(lines[lastLine].size()) &&
+        onlyWhitespaceToLineEnd(lines[lastLine], result.col)) {
       return true;
     }
     if (result.line > lastLine) {
@@ -1019,10 +1133,18 @@ static CursorPos sentenceOperatorEndpointCore(CursorPos cursor, const Lines& lin
 
   if (forward) {
     if (isBlankLine(lines[clamped.line])) {
-      CursorPos start = firstSentenceStartAfterBlankRun(lines, clamped.line);
-      auto extent = sentenceExtentAtOrAfter(start, lines);
-      return extent ? extent->operatorEndpoint
-                    : CursorPos(static_cast<int>(lines.size()), 0);
+      // Cursor-on-blank: motion-vs-operator endpoints only differ for the
+      // same-line trailing-whitespace-after-terminator case, which can't
+      // happen here. Use the motion endpoint directly, lifting it to one
+      // past end-of-line when Vim's `d)` consumes the unterminated tail.
+      CursorPos motionEnd = clamped;
+      motionSentenceNext(motionEnd, lines);
+      if (motionEndsAtLastBufferChar(motionEnd, lines)) {
+        return CursorPos(
+            motionEnd.line,
+            static_cast<int>(lines[motionEnd.line].size()));
+      }
+      return motionEnd;
     }
     if (auto gapEndpoint = sentenceGapEndpoint(clamped, lines)) {
       return *gapEndpoint;

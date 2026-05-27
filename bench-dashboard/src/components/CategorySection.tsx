@@ -15,6 +15,9 @@ interface Props {
   optimizer: string;
   repoUrl: string;
   initialBench?: string | null;
+  showExplore?: boolean;
+  categoryActionLabel?: string;
+  onCategoryAction?: (category: string) => void;
   onBenchOpened?: () => void;
 }
 
@@ -24,7 +27,18 @@ function defaultMetrics(charts: { series: { val: number }[] }[]): Set<Metric> {
   return new Set<Metric>([hasMultiPoint ? 'relative' : 'wallclock']);
 }
 
-export function CategorySection({ category, benchNames, data, optimizer, repoUrl, initialBench, onBenchOpened }: Props) {
+export function CategorySection({
+  category,
+  benchNames,
+  data,
+  optimizer,
+  repoUrl,
+  initialBench,
+  showExplore = true,
+  categoryActionLabel,
+  onCategoryAction,
+  onBenchOpened,
+}: Props) {
   const [modal, setModal] = useState<{ title: string; idx: number } | null>(null);
 
   const charts = benchNames.map((benchName) => {
@@ -53,7 +67,18 @@ export function CategorySection({ category, benchNames, data, optimizer, repoUrl
     <div>
       <div className="flex justify-between items-center mb-3">
         <h2 className="mb-0">{category}</h2>
-        <MetricToggles activeMetrics={activeMetrics} onChange={setActiveMetrics} />
+        <div className="flex items-center gap-3">
+          {categoryActionLabel && onCategoryAction && (
+            <button
+              type="button"
+              className="explore-btn"
+              onClick={() => onCategoryAction(category)}
+            >
+              {categoryActionLabel}
+            </button>
+          )}
+          <MetricToggles activeMetrics={activeMetrics} onChange={setActiveMetrics} />
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-4 mb-10 max-md:grid-cols-1">
         {charts.map((c, i) => (
@@ -62,16 +87,18 @@ export function CategorySection({ category, benchNames, data, optimizer, repoUrl
           }}>
             <div className="flex justify-between items-center mb-2">
               <h4 className="m-0 text-base font-bold text-[#333]">{c.detail}</h4>
-              <Link
-                to="/$optimizer/explore"
-                params={{ optimizer }}
-                search={{ case: category + '/' + c.detail }}
-                onClick={(e) => e.stopPropagation()}
-                title="Explore search space"
-                className="explore-btn"
-              >
-                Explore
-              </Link>
+              {showExplore && (
+                <Link
+                  to="/$optimizer/explore"
+                  params={{ optimizer }}
+                  search={{ case: category + '/' + c.detail }}
+                  onClick={(e) => e.stopPropagation()}
+                  title="Explore search space"
+                  className="explore-btn"
+                >
+                  Explore
+                </Link>
+              )}
             </div>
             <div className="relative h-[200px]">
               <BenchmarkChart series={c.series} unit={c.unit} activeMetrics={activeMetrics} />
@@ -85,7 +112,7 @@ export function CategorySection({ category, benchNames, data, optimizer, repoUrl
           series={modalData.series}
           unit={modalData.unit}
           onClose={() => setModal(null)}
-          exploreLink={{ optimizer, case: category + '/' + modalData.detail }}
+          exploreLink={showExplore ? { optimizer, case: category + '/' + modalData.detail } : undefined}
           activeMetrics={activeMetrics}
           onMetricsChange={setActiveMetrics}
         />

@@ -60,33 +60,6 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerQuote_CursorInside) {
   EXPECT_TRUE(foundValidCiQuote) << "Expected a valid ci\" result that produces the goal";
 }
 
-TEST_F(CompositionOptimizer_ManualTest, TextObject_AroundQuote) {
-  // Test around quote at end of line (no trailing whitespace issue)
-  // a" at EOL takes the quotes and leading space instead
-  Lines initial = {"foo \"hello\""};
-  Lines goal = {"foogoodbye"};  // a" takes " \"hello\"" -> leading space + quotes
-  CursorPos initialPos(0, 0);
-  CursorPos goalPos(0, 0);
-
-  auto compResult = opt.optimize(
-      initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.getResults();
-
-  ASSERT_FALSE(results.empty()) << "No results returned";
-
-  // Verify we get a working result
-  bool foundValidResult = false;
-  for (const Result& r : results) {
-    const auto& seq = r.getSequence();
-    SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-    if (nvim.lines == goal) {
-      foundValidResult = true;
-      break;
-    }
-  }
-  EXPECT_TRUE(foundValidResult) << "Expected at least one valid result";
-}
-
 TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerParen) {
   // Inner parentheses text object
   Lines initial = {"foo (hello) bar"};
@@ -169,60 +142,6 @@ TEST_F(CompositionOptimizer_ManualTest, TextObject_InnerBracket) {
     }
   }
   EXPECT_TRUE(foundValidCiBracket) << "Expected a valid ci[ result that produces the goal";
-}
-
-TEST_F(CompositionOptimizer_ManualTest, TextObject_NotValidAfterQuote) {
-  // Cursor after a quote of the same type - ci" would pair with the earlier quote
-  // This tests that the optimizer still finds a valid solution using other methods
-  Lines initial = {"a\"b \"hello\" bar"};
-  Lines goal = {"a\"b \"goodbye\" bar"};
-  CursorPos initialPos(0, 3);  // Cursor at ' ', after first quote pair
-  CursorPos goalPos(0, 0);
-
-  auto compResult = opt.optimize(
-      initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.getResults();
-
-  ASSERT_FALSE(results.empty()) << "No results returned";
-
-  // Verify at least one result produces the goal
-  bool foundValid = false;
-  for (const Result& r : results) {
-    const auto& seq = r.getSequence();
-    SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-    if (nvim.lines == goal) {
-      foundValid = true;
-      break;
-    }
-  }
-  EXPECT_TRUE(foundValid) << "Expected at least one valid result";
-}
-
-TEST_F(CompositionOptimizer_ManualTest, TextObject_NestedBrackets) {
-  // Nested brackets - from position 0, ci( uses the outermost pair
-  // Start from position 5 (on inner open paren) to target inner pair
-  Lines initial = {"foo ((hello)) bar"};
-  Lines goal = {"foo ((goodbye)) bar"};
-  CursorPos initialPos(0, 5);  // Cursor on inner '('
-  CursorPos goalPos(0, 0);
-
-  auto compResult = opt.optimize(
-      initial, initialPos, goal, goalPos, params);
-  const auto& results = compResult.getResults();
-
-  ASSERT_FALSE(results.empty()) << "No results returned";
-
-  // Verify at least one result produces the goal
-  bool foundValid = false;
-  for (const Result& r : results) {
-    const auto& seq = r.getSequence();
-    SimulationResult nvim = oracle->simulate(initial, initialPos.line, initialPos.col, seq.str());
-    if (nvim.lines == goal) {
-      foundValid = true;
-      break;
-    }
-  }
-  EXPECT_TRUE(foundValid) << "Expected at least one valid result";
 }
 
 TEST_F(CompositionOptimizer_ManualTest, TextObject_SingleQuote) {

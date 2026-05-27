@@ -57,6 +57,7 @@ struct ChangeGoalHandler {
                     const std::string& suf, const std::string& preSuf);
 
   bool isGoalReached(const Lines& lines) const;
+  bool isGoalReached(const TransformEditorState& state) const;
 
   SuffixCacheResult tryUseSuffixCache(const TransformState& s,
                                       std::vector<std::vector<Result>>& resultsByStart,
@@ -71,6 +72,8 @@ struct ChangeGoalHandler {
                       int bufferBeginLine, int bufferBeginCol, CursorPos goalPos,
                       TransformSearchStats stats,
                       std::vector<std::vector<CursorPos>>&& resultGoalPositions);
+
+  Result resultFromClearedGoal(const TransformState& base) const;
 
   // Goal emission methods — return states for the dispatcher to emit.
   // Only called in change mode (not pure deletion).

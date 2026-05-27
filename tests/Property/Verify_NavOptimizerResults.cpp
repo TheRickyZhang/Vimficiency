@@ -3,7 +3,7 @@
 // target without relying on motion semantics outside the boundary.
 
 #include <algorithm>
-#include <cstdint>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -14,71 +14,81 @@
 #include "Interpreter/MovementInterpreter.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
-#include "Property/PropertyTestUtils.h"
+#include "Property/PropertyDomains.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Types/NavContext.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/OracleReplay.h"
-#include "Utils/RandomBufferHelpers.h"
-#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
 namespace {
 
+int clampedIndex(int value, int size) {
+  return std::clamp(value, 0, size - 1);
+}
+
 struct EmbeddedMotionTest {
   Lines fullBuffer;
   Lines subBuffer;
   CursorPos subStart;
+  CursorPos subEnd;
   CursorPos fullStart;
   int subBufferStartLine = 0;
   NavBoundary boundary;
 };
 
+struct EmbeddedMotionSpec {
+  vector<string> fullBuffer;
+  int subBufferStartLine;
+  int subLineCount;
+  int subStartIndex;
+  int subEndIndex;
+};
+
+auto EmbeddedMotionSpecDomain() {
+  return fuzztest::StructOf<EmbeddedMotionSpec>(
+      PropertyDomains::LineVecDomain(1, 8, 0, 30),
+      fuzztest::InRange<int>(0, 7),
+      fuzztest::InRange<int>(1, 4),
+      fuzztest::InRange<int>(0, 240),
+      fuzztest::InRange<int>(0, 240));
+}
+
 class NavOptimizerGeneratedPropertyTest {
 public:
-  void SubBufferMotionCorrectness(uint32_t seed) {
-    runSeedDriverCases(seed, 50, [&] {
-      auto test = generateEmbeddedTest(8, 4);
+  void SubBufferMotionCorrectness(const EmbeddedMotionSpec& spec) {
+    auto test = buildEmbeddedTest(spec);
+    if (test.subStart == test.subEnd) return;
 
-      CursorPos subEnd = randomPos(test.subBuffer);
+    auto results =
+        runOnSubBuffer(test.subBuffer, test.subStart, test.subEnd, test.boundary);
+    ASSERT_FALSE(results.empty()) << "NavOptimizer returned no results"
+                                  << "\n" << formatSpec(spec);
 
-      auto results =
-          runOnSubBuffer(test.subBuffer, test.subStart, subEnd, test.boundary);
-      ASSERT_FALSE(results.empty()) << "NavOptimizer returned no results";
-
-      for (const auto& result : results) {
-        expectResultMatchesNeovim(test, subEnd, result);
-      }
-    });
+    for (const auto& result : results) {
+      expectResultMatchesNeovim(test, spec, result);
+    }
   }
 
 private:
   NavContext navContext_{};
   NeovimOracle oracle_{};
 
-  EmbeddedMotionTest generateEmbeddedTest(int fullLines, int subLines) {
+  EmbeddedMotionTest buildEmbeddedTest(const EmbeddedMotionSpec& spec) {
     EmbeddedMotionTest test;
-    const string chars = "abcd .,";
+    test.fullBuffer = Lines(spec.fullBuffer);
+    test.subBufferStartLine =
+        clampedIndex(spec.subBufferStartLine, static_cast<int>(test.fullBuffer.size()));
+    int endLine = min(
+        test.subBufferStartLine + spec.subLineCount - 1,
+        test.fullBuffer.lastLine());
 
-    for (int i = 0; i < fullLines; i++) {
-      int len = RandomGen::range(10, 30);
-      string line;
-      for (int j = 0; j < len; j++) {
-        line += RandomGen::pick(chars);
-      }
-      test.fullBuffer.push_back(line);
-    }
-
-    test.subBufferStartLine = RandomGen::range(0, max(0, fullLines - subLines));
-    int endLine = min(test.subBufferStartLine + subLines - 1, fullLines - 1);
-
-    for (int i = test.subBufferStartLine; i <= endLine; i++) {
-      test.subBuffer.push_back(test.fullBuffer[i]);
-    }
-
-    test.subStart = randomPos(test.subBuffer);
+    test.subBuffer =
+        test.fullBuffer.getLineRange(test.subBufferStartLine, endLine + 1);
+    test.subStart = test.subBuffer.cursorFromFlatIndexClamped(spec.subStartIndex);
+    test.subEnd = test.subBuffer.cursorFromFlatIndexClamped(spec.subEndIndex);
     test.fullStart = CursorPos(test.subBufferStartLine + test.subStart.line,
                                test.subStart.col);
 
@@ -87,6 +97,15 @@ private:
     test.boundary = NavBoundary(test.fullBuffer, firstPos, endPos);
 
     return test;
+  }
+
+  string formatSpec(const EmbeddedMotionSpec& spec) {
+    ostringstream out;
+    out << "rawSubBufferStartLine=" << spec.subBufferStartLine
+        << " rawSubLineCount=" << spec.subLineCount
+        << " rawSubStartIndex=" << spec.subStartIndex
+        << " rawSubEndIndex=" << spec.subEndIndex;
+    return out.str();
   }
 
   vector<LandingResult> runOnSubBuffer(const Lines& subBuffer, CursorPos start,
@@ -98,14 +117,15 @@ private:
   }
 
   void expectResultMatchesNeovim(const EmbeddedMotionTest& test,
-                                 CursorPos subEnd,
+                                 const EmbeddedMotionSpec& spec,
                                  const LandingResult& result) {
     const auto& seq = result.getSequence();
     SCOPED_TRACE(::testing::Message()
                  << "seq='" << seq << "'"
-                 << " subStart=" << test.subStart << " subEnd=" << subEnd
+                 << " subStart=" << test.subStart << " subEnd=" << test.subEnd
                  << " fullStart=" << test.fullStart
                  << " subBufferStartLine=" << test.subBufferStartLine
+                 << " " << formatSpec(spec)
                  << " hasLinesAbove=" << test.boundary.hasLinesAbove()
                  << " hasLinesBelow=" << test.boundary.hasLinesBelow()
                  << "\nfullBuffer=" << test.fullBuffer
@@ -113,7 +133,7 @@ private:
 
     CursorPos ourEnd =
         simulateMovements(test.subStart, seq.view(), test.subBuffer);
-    EXPECT_EQ(ourEnd, subEnd)
+    EXPECT_EQ(ourEnd, test.subEnd)
         << "NavOptimizer result did not reach requested goal";
 
     CursorPos expectedFullEnd(test.subBufferStartLine + ourEnd.line,
@@ -127,4 +147,4 @@ private:
 } // namespace
 
 FUZZ_TEST_F(NavOptimizerGeneratedPropertyTest, SubBufferMotionCorrectness)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));
+    .WithDomains(EmbeddedMotionSpecDomain());

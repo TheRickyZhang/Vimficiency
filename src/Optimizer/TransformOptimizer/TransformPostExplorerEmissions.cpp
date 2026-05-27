@@ -95,8 +95,9 @@ std::optional<VisualDeleteResult> tryVisualDelete(
 
   CursorPos beginPos(0, leftColOffset);
   int lastLine = effectiveLines.lastLine();
-  int lastCol = static_cast<int>(effectiveLines[lastLine].size()) - 1 - rightColOffset;
-  CursorPos lastPos(lastLine, std::max(0, lastCol));
+  int lastEditableEnd = static_cast<int>(effectiveLines[lastLine].size()) - rightColOffset;
+  if (lastEditableEnd <= 0) return std::nullopt;
+  CursorPos lastPos(lastLine, lastEditableEnd - 1);
 
   const bool sameCell = lastPos.line == beginPos.line && lastPos.col == beginPos.col;
   if (sameCell) return std::nullopt;

@@ -290,29 +290,44 @@ void enumerateDepth1DeletionStructurals(
     emitter.emit(*seq, bufferLanding(newState.getPos()), replacementInsertDistance);
   };
 
-  // Polymorphic over CharRange / CharLineRange / LineCharRange — TransformExplorer
-  // calls the same callback for all three with different range types.
-  auto onAnyDeletion = [&](auto&& range, const SequenceBinding& cmd) {
-    using R = std::decay_t<decltype(range)>;
-    if constexpr (std::is_same_v<R, CharRange>) {
-      applyAndEmitCharwise(TransformSimulator::afterDeletion(state, range), cmd);
-    } else if constexpr (std::is_same_v<R, CharLineRange>) {
-      applyAndEmitCharwise(TransformSimulator::afterCharLineDeletion(state, range), cmd);
-    } else if constexpr (std::is_same_v<R, LineCharRange>) {
-      applyAndEmitCharwise(TransformSimulator::afterLineCharDeletion(state, range), cmd);
+  auto onDeletion = [&](const ResolvedEditAction& action,
+                        const SequenceBinding& cmd) {
+    if (isReplacement ? !action.changeEffectValid : !action.deleteEffectValid) {
+      return;
     }
-  };
+    const VimCore::ResolvedDeleteRange& resolved =
+        isReplacement ? action.effectForChange() : action.deleteEffect;
+    VimCore::LineDeleteContext context{
+        .hasLinesAbove = boundary.hasLinesAbove(),
+        .hasLinesBelow = boundary.hasLinesBelow(),
+    };
+    TransformEditorState after = isReplacement
+        ? TransformSimulator::afterResolvedChangeDeletion(state, resolved, context)
+        : TransformSimulator::afterResolvedDeletion(state, resolved, context);
+    if (resolved.kind != VimCore::ResolvedDeleteRangeKind::Linewise) {
+      applyAndEmitCharwise(std::move(after), cmd);
+      return;
+    }
 
-  auto onLinewise = [&](const LineRange& range, const SequenceBinding& cmd) {
-    // For change-form conversion, deleteToChangeLine looks at the first
-    // deleted line's content to decide between `cc` and `0C`.
+    LineRange range = resolved.lineRange;
+    std::string_view firstLineContent =
+        (range.beginLine >= 0 && range.beginLine < static_cast<int>(effective.size()))
+            ? std::string_view(effective[range.beginLine])
+            : std::string_view{};
+    applyAndEmitLinewise(std::move(after), cmd, firstLineContent);
+  };
+  auto onCountedLinewise = [&](const LineRange& range, const SequenceBinding& cmd) {
     std::string_view firstLineContent =
         (range.beginLine >= 0 && range.beginLine < static_cast<int>(effective.size()))
             ? std::string_view(effective[range.beginLine])
             : std::string_view{};
     applyAndEmitLinewise(
-        afterLinewiseDeletionForCommand(
-            state, range, boundary.hasLinesBelow(), cmd.base.seq.view()),
+        TransformSimulator::afterMultiLinewiseDeletion(
+            state, range,
+            VimCore::LineDeleteContext{
+                .hasLinesAbove = boundary.hasLinesAbove(),
+                .hasLinesBelow = boundary.hasLinesBelow(),
+            }),
         cmd, firstLineContent);
   };
 
@@ -335,7 +350,7 @@ void enumerateDepth1DeletionStructurals(
       explorer, state, effective, localCursor,
       boundary.leftColOffset(), boundary.rightColOffset(),
       params.minPrefixCount,
-      onAnyDeletion, onLinewise, onJoin, onLinewise, onCountedJoin);
+      onDeletion, onJoin, onCountedLinewise, onCountedJoin);
 
   // Visual deletion is a multi-token structural macro. Frontier does not
   // surface it; the full TransformOptimizer batch still emits `v{motion}d`

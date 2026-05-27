@@ -85,8 +85,9 @@ keeping the bench/merge concerns decoupled.
 
 Main-only extras are conditional on `BRANCH=main` (a cheap optimization,
 not a correctness boundary): exploration data via `vimfy_explore`
-with `VIMF_TRACK_STATES=ON`, test-suite timing via `--gtest_output=json`,
-and the docs-site build. Branch pushes skip these to stay fast.
+with `VIMF_TRACK_STATES=ON`, C++ test-suite timing via
+`--gtest_output=json`, and the docs-site build. Branch pushes skip these to
+stay fast.
 
 Steps:
 
@@ -96,7 +97,7 @@ Steps:
    - `MotionOpt.*` → `motion_result.json`
    - `CompositionOpt.*` → `composition_result.json`
 3. Baseline comparison: look up the parent SHA's stored entry in `gh-pages/{edit,motion,composition}/data.json` via `scripts/bench-baseline-from-stored.ts`, feed it to `bench-compare.ts`. Skipped when the parent has no stored entry (first run on this machine, parent was rebased away, etc.) — informational, never gates the run.
-4. **Main only:** build and run `vimfy_explore` for exploration data; run the test suite and convert timing to bench format
+4. **Main only:** build and run `vimfy_explore` for exploration data; run unit, approval, property, and safety binaries and convert timing to bench format
 5. Build `bench-dashboard/` with `--base=/Vimficiency/`. **Main only:** also build `docs-site/`
 6. In the `gh-pages` worktree: ingest results, prune to 100 entries, ingest exploration (main only), copy dashboard/docs assets
 7. Commit + push to `origin gh-pages`. On push conflict (race with another local run) fetch + rebase once and retry
@@ -148,7 +149,17 @@ Google Benchmark outputs JSON → `scripts/bench-data.ts ingest` parses it and a
 
 ### Exploration data (`explore.json`)
 
-`vimfy_explore` outputs JSON → CI merges it into `{optimizer}/explore.json` on gh-pages. The dashboard fetches this JSON directly.
+`vimfy_explore` outputs JSON → the local deploy runner merges it into
+`{optimizer}/explore.json` on gh-pages. The dashboard fetches this JSON
+directly.
+
+### Test timing data (`tests/data.json`)
+
+On `main`, the local deploy runner records `--gtest_output=json` for
+`vimfy_unit_tests`, `vimfy_approval_tests`, `vimfy_property_tests`, and
+`vimfy_safety_tests`. `scripts/convert-gtest-timing.ts` combines those files
+into Google Benchmark-shaped data under the `Tests` suite, with total,
+per-binary, per-gtest-suite, and per-test-case timings.
 
 ### Migration from legacy format
 
@@ -217,11 +228,11 @@ bun run build
 bun run preview
 ```
 
-### Verifying the CI build locally
+### Verifying the dashboard build locally
 ```bash
 cd bench-dashboard && bun install --frozen-lockfile && bun run build
 ```
-This mirrors exactly what CI runs. If this succeeds, the CI dashboard step will too.
+This mirrors the dashboard build step used by the local deploy runner.
 
 ## gh-pages Branch Layout
 
@@ -233,7 +244,7 @@ gh-pages/
 ├── edit/
 │   ├── index.html          # SPA entry (copy of root index.html)
 │   ├── data.json           # Benchmark data (written by bench-data.ts ingest)
-│   ├── explore.json        # Exploration data (written by CI deploy step)
+│   ├── explore.json        # Exploration data (written by the local deploy runner)
 │   └── explore/
 │       └── index.html      # SPA entry (copy of root index.html)
 ├── motion/
@@ -242,12 +253,15 @@ gh-pages/
 │   ├── explore.json
 │   └── explore/
 │       └── index.html
-└── composition/
-    ├── index.html
-    ├── data.json
-    ├── explore.json
-        └── explore/
-            └── index.html
+├── composition/
+│   ├── index.html
+│   ├── data.json
+│   ├── explore.json
+│   └── explore/
+│       └── index.html
+├── tests/
+│   └── data.json           # C++ test timing data
+└── docs/
 ```
 
 ## Gitignore

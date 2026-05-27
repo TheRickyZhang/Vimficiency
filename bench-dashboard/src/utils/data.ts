@@ -35,7 +35,9 @@ export function parseName(fullName: string): ParsedName {
 }
 
 export function discoverCategories(data: BenchmarkRun[]): Record<string, string[]> {
-  const latest = data[data.length - 1]!;
+  const latest = data[data.length - 1];
+  if (!latest) return {};
+
   const cats: Record<string, string[]> = {};
   for (const b of latest.benches) {
     const cat = parseName(b.name).category;

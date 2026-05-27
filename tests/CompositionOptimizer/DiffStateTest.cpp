@@ -1,7 +1,7 @@
 // tests/CompositionOptimizer/DiffStateTest.cpp
 //
 // Tests for DiffState computation used in CompositionOptimizer.
-// Manual edge case tests + generated-property invariant validation.
+// Manual edge case tests. Generated invariant coverage lives in Property/.
 //
 // Run: ./build/tests/vimfy_unit_tests --gtest_filter="*DiffState*"
 

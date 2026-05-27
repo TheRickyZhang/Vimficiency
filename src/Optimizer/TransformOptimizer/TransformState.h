@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <memory>
 #include <ostream>
 #include <sstream>
@@ -159,23 +160,32 @@ struct TransformPathStep {
 
 // Pure editor mutations used by optimizer exploration and replay verification.
 class TransformSimulator {
-  static void applyDeletion(Lines& lines, const CharRange& range, CursorPos& pos) {
-    VimCore::deleteRangeAndUpdatePos(lines, range, pos, Mode::Normal);
+  static void applyDeletion(
+      Lines& lines, const CharRange& range, CursorPos& pos,
+      VimCore::LineDeleteContext context) {
+    VimCore::deleteRangeAndUpdatePos(lines, range, pos, Mode::Normal, context);
   }
 
-  static void applyDeletion(Lines& lines, const CharLineRange& range, CursorPos& pos) {
-    VimCore::deleteCharLineRangeAndUpdatePos(lines, range, pos, Mode::Normal);
+  static void applyDeletion(
+      Lines& lines, const CharLineRange& range, CursorPos& pos,
+      VimCore::LineDeleteContext context) {
+    VimCore::deleteCharLineRangeAndUpdatePos(
+        lines, range, pos, Mode::Normal, context);
   }
 
-  static void applyDeletion(Lines& lines, const LineCharRange& range, CursorPos& pos) {
-    VimCore::deleteLineCharRangeAndUpdatePos(lines, range, pos, Mode::Normal);
+  static void applyDeletion(
+      Lines& lines, const LineCharRange& range, CursorPos& pos,
+      VimCore::LineDeleteContext context) {
+    VimCore::deleteLineCharRangeAndUpdatePos(
+        lines, range, pos, Mode::Normal, context);
   }
 
   template<class RangeT>
   static TransformEditorState afterDeletionImpl(
-      const TransformEditorState& state, const RangeT& range) {
+      const TransformEditorState& state, const RangeT& range,
+      VimCore::LineDeleteContext context) {
     TransformEditorState newState = state;
-    applyDeletion(newState.lines_, range, newState.pos_);
+    applyDeletion(newState.lines_, range, newState.pos_, context);
     newState.refreshHash();
     return newState;
   }
@@ -189,59 +199,70 @@ public:
   }
 
   [[nodiscard]] static TransformEditorState afterDeletion(
-      const TransformEditorState& state, const CharRange& range) {
-    return afterDeletionImpl(state, range);
+      const TransformEditorState& state, const CharRange& range,
+      VimCore::LineDeleteContext context = {}) {
+    return afterDeletionImpl(state, range, context);
   }
 
   [[nodiscard]] static TransformEditorState afterCharLineDeletion(
-      const TransformEditorState& state, const CharLineRange& range) {
-    return afterDeletionImpl(state, range);
+      const TransformEditorState& state, const CharLineRange& range,
+      VimCore::LineDeleteContext context = {}) {
+    return afterDeletionImpl(state, range, context);
   }
 
   [[nodiscard]] static TransformEditorState afterLineCharDeletion(
-      const TransformEditorState& state, const LineCharRange& range) {
-    return afterDeletionImpl(state, range);
-  }
-
-  [[nodiscard]] static TransformEditorState afterBackwardWordDeletion(
-      const TransformEditorState& state, const CharRange& range) {
-    TransformEditorState newState = state;
-    CharRange normalized = range;
-    normalized.normalize();
-    int oldLineCount = static_cast<int>(newState.lines_.size());
-    CursorPos originalPos = newState.pos_;
-
-    VimCore::deleteRangeAndUpdatePos(newState.lines_, normalized, newState.pos_, Mode::Normal);
-
-    VimCore::adjustCursorAfterBackwardWordDelete(
-        normalized, oldLineCount, originalPos, newState.lines_, newState.pos_);
-
-    newState.refreshHash();
-    return newState;
+      const TransformEditorState& state, const LineCharRange& range,
+      VimCore::LineDeleteContext context = {}) {
+    return afterDeletionImpl(state, range, context);
   }
 
   [[nodiscard]] static TransformEditorState afterLinewiseDeletion(
-    const TransformEditorState& state, int line, bool hasLinesBelow = false) {
+    const TransformEditorState& state, int line,
+    VimCore::LineDeleteContext context = {}) {
     TransformEditorState newState = state;
     VimCore::deleteLineRangeAndUpdatePos(
-        newState.lines_, LineRange(line, line + 1), newState.pos_, hasLinesBelow);
+        newState.lines_, LineRange(line, line + 1), newState.pos_, context);
     newState.refreshHash();
     return newState;
   }
 
   [[nodiscard]] static TransformEditorState afterMultiLinewiseDeletion(
-      const TransformEditorState& state, LineRange range, bool hasLinesBelow = false) {
+      const TransformEditorState& state, LineRange range,
+      VimCore::LineDeleteContext context = {}) {
     TransformEditorState newState = state;
-    VimCore::deleteLineRangeAndUpdatePos(newState.lines_, range, newState.pos_, hasLinesBelow);
+    VimCore::deleteLineRangeAndUpdatePos(newState.lines_, range, newState.pos_, context);
     newState.refreshHash();
     return newState;
   }
 
   [[nodiscard]] static TransformEditorState afterOperatorLinewiseDeletion(
-      const TransformEditorState& state, LineRange range, bool hasLinesBelow = false) {
+      const TransformEditorState& state, LineRange range,
+      VimCore::LineDeleteContext context = {}) {
     TransformEditorState newState = state;
     VimCore::deleteOperatorLineRangeAndUpdatePos(
-        newState.lines_, range, newState.pos_, hasLinesBelow);
+        newState.lines_, range, newState.pos_, context);
+    newState.refreshHash();
+    return newState;
+  }
+
+  [[nodiscard]] static TransformEditorState afterResolvedDeletion(
+      const TransformEditorState& state,
+      const VimCore::ResolvedDeleteRange& resolved,
+      VimCore::LineDeleteContext context = {}) {
+    TransformEditorState newState = state;
+    VimCore::deleteResolvedRangeAndUpdatePos(
+        newState.lines_, resolved, newState.pos_, Mode::Normal, context);
+    newState.refreshHash();
+    return newState;
+  }
+
+  [[nodiscard]] static TransformEditorState afterResolvedChangeDeletion(
+      const TransformEditorState& state,
+      const VimCore::ResolvedDeleteRange& resolved,
+      VimCore::LineDeleteContext context = {}) {
+    TransformEditorState newState = state;
+    VimCore::deleteResolvedRangeAndUpdatePos(
+        newState.lines_, resolved, newState.pos_, Mode::Insert, context);
     newState.refreshHash();
     return newState;
   }
@@ -257,46 +278,12 @@ public:
   [[nodiscard]] static TransformEditorState afterMultiJoin(
       const TransformEditorState& state, int count, bool addSpace) {
     TransformEditorState newState = state;
-    for (int i = 0; i < count - 1; i++) {
-      VimCore::joinLines(newState.lines_, newState.pos_, addSpace);
-    }
+    VimCore::joinLineRange(
+        newState.lines_, newState.pos_, std::max(count, 2), addSpace);
     newState.refreshHash();
     return newState;
   }
 };
-
-inline bool usesExclusiveLinewiseCursor(std::string_view baseCmd) {
-  return baseCmd == "d}" || baseCmd == "d{" ||
-         baseCmd == "d)" || baseCmd == "d(";
-}
-
-inline bool usesOperatorLinewiseCursor(std::string_view baseCmd) {
-  return baseCmd == "db" || baseCmd == "dB";
-}
-
-inline TransformEditorState afterLinewiseDeletionForCommand(
-    const TransformEditorState& state, LineRange range, bool hasLinesBelow,
-    std::string_view baseCmd) {
-  TransformEditorState next = usesOperatorLinewiseCursor(baseCmd) ||
-          usesExclusiveLinewiseCursor(baseCmd)
-      ? TransformSimulator::afterOperatorLinewiseDeletion(state, range, hasLinesBelow)
-      : TransformSimulator::afterMultiLinewiseDeletion(state, range, hasLinesBelow);
-
-  if (usesExclusiveLinewiseCursor(baseCmd) && !hasLinesBelow &&
-      state.getPos().col > 0 &&
-      !VimCore::isBlankLine(state.getLines()[state.getPos().line]) &&
-      VimCore::hasOnlyBlankPrefix(
-          state.getLines()[state.getPos().line], state.getPos().col) &&
-      next.getPos().line >= 0 &&
-      next.getPos().line < static_cast<int>(next.getLines().size())) {
-    CursorPos adjusted = next.getPos();
-    adjusted.setCol(VimCore::firstNonBlankColInLine(
-        next.getLines()[next.getPos().line]));
-    next = TransformEditorState(next.getLines(), adjusted, next.getMode());
-  }
-
-  return next;
-}
 
 // =============================================================================
 // TransformState - A* search state for transform optimization

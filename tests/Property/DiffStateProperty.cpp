@@ -24,8 +24,8 @@ struct DiffCase {
 };
 
 DiffCase toDiffCase(const PropertyDomains::DiffCaseSpec& spec) {
-  Lines initial = PropertyDomains::toLines(spec.initial);
-  Lines goal = spec.identity ? initial : PropertyDomains::toLines(spec.goal);
+  Lines initial(spec.initial);
+  Lines goal = spec.identity ? initial : Lines(spec.goal);
   return DiffCase{.initial = std::move(initial), .goal = std::move(goal)};
 }
 

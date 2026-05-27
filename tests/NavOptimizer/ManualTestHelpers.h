@@ -7,14 +7,10 @@
 #include <vector>
 
 #include "Boundary/NavBoundary.h"
-#include "Effort/RunningEffort.h"
-#include "Interpreter/MovementInterpreter.h"
 #include "Keyboard/Config.h"
-#include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Optimizer/NavOptimizer/BufferIndex.h"
 #include "Optimizer/NavOptimizer/NavExplorer.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
-#include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Session/Snapshot.h"
 #include "Types/Lines.h"
 #include "Types/NavContext.h"

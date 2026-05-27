@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <optional>
 #include <queue>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -501,7 +502,8 @@ optimizeImpl(
 
     // ========== EDIT vs MOVEMENT TRANSITIONS ==========
     const TransformResult& transformResult = ctx.edits[editsCompleted].transformResult;
-    auto editAlternatives = transformResult.resultsAt(pos.line, pos.col);
+    std::span<const Result> editAlternatives =
+        transformResult.resultsAt(pos.line, pos.col);
     bool canUseTransformAlternatives = true;
     if (!editAlternatives.empty() && pos.targetCol != pos.col) {
       // Transform buckets are keyed by visible pos; linewise edits also depend
@@ -539,46 +541,46 @@ optimizeImpl(
           });
     }
 
-    // J plan: offered from any column on the entry line
+    // J plans always start with `J`, so activation is column-insensitive.
     const auto& joinPlan = ctx.edits[editsCompleted].joinPlan;
     if (joinPlan && pos.line == joinPlan->entryLine) {
-      debug("  J plan at line", pos.line, "seq:", "\"" + joinPlan->sequence.str() + "\"",
+      debug("  J plan at", pos, "seq:", "\"" + joinPlan->sequence.str() + "\"",
             "effort:", joinPlan->effort);
       enqueueEditTransition(
           current, joinPlan->sequence, joinPlan->goalPos, editsCompleted + 1);
     }
 
     if (editAlternatives.empty()) {
-      // J plans fire from their entry line even when the current cursor is
-      // already inside the diff span. Do this before the inside-range skip.
       if (joinPlan && pos.line != joinPlan->entryLine) {
-        const int jLine = joinPlan->entryLine;
+        int entryLine = joinPlan->entryLine;
         exploreMotionsToInterval(
-            current, pos, jLine, jLine, currentLines, /*maxResults=*/1,
+            current, pos, entryLine, entryLine, currentLines, /*maxResults=*/1,
             /*keepMultiplePerLanding=*/false,
             [&](const Lines& subset, int beginLine) -> CharInterval {
-              return wholeLineMotionInterval(subset, jLine - beginLine);
+              int localLine = entryLine - beginLine;
+              return CharInterval(CursorPos(localLine, 0),
+                                  CursorPos(localLine, subset[localLine].lastCol()));
             });
       }
 
-      if (nextEdit.contains(pos)) {
-        vector<CursorPos> starts = transformResult.startPositions();
-        std::sort(starts.begin(), starts.end(), [&](CursorPos a, CursorPos b) {
-          return ctx.costToGoal(pos, a) < ctx.costToGoal(pos, b);
-        });
+      vector<CursorPos> starts = transformResult.startPositions();
+      std::sort(starts.begin(), starts.end(), [&](CursorPos a, CursorPos b) {
+        return ctx.costToGoal(pos, a) < ctx.costToGoal(pos, b);
+      });
 
-        int searchedStarts = 0;
-        for (CursorPos start : starts) {
-          if (start == pos) continue;
-          exploreMotionsToInterval(
-              current, pos, start.line, start.line, currentLines,
-              /*maxResults=*/1, /*keepMultiplePerLanding=*/false,
-              [&](const Lines&, int beginLine) -> CharInterval {
-                CursorPos localStart(start.line - beginLine, start.col);
-                return CharInterval(localStart, localStart);
-              });
-          if (++searchedStarts >= 8) break;
-        }
+      int searchedStarts = 0;
+      for (CursorPos start : starts) {
+        if (start == pos) continue;
+        exploreMotionsToInterval(
+            current, pos, start.line, start.line, currentLines,
+            /*maxResults=*/1, /*keepMultiplePerLanding=*/false,
+            [&](const Lines&, int beginLine) -> CharInterval {
+              CursorPos localStart(start.line - beginLine, start.col);
+              return CharInterval(localStart, localStart);
+            });
+        if (++searchedStarts >= 8) break;
+      }
+      if (searchedStarts > 0) {
         continue;
       }
 

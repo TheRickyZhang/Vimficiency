@@ -57,6 +57,61 @@ local function find_result(results, seq)
   return nil
 end
 
+local function with_reset_config(fn)
+  ffi_lib.reset_config()
+  local ok, err = pcall(fn)
+  ffi_lib.reset_config()
+  if not ok then error(err) end
+end
+
+test("ffi.configure: count penalty overrides affect analyze costs", function()
+  with_reset_config(function()
+    local line = "one two three four five six"
+    local function analyze()
+      local results = ffi_lib.analyze(
+        { line }, { line },
+        0, #line - 1,
+        false, false,
+        0, 0,
+        0, 19,
+        "",
+        40, 20,
+        20
+      )
+      return results
+    end
+
+    local baseline = analyze()
+    local baseline_4w = find_result(baseline, "4w")
+    local baseline_4W = find_result(baseline, "4W")
+    assert_true(baseline_4w ~= nil or baseline_4W ~= nil,
+      "expected baseline to include 4w or 4W")
+
+    ffi_lib.configure({
+      count_penalty_overrides = {
+        MovementWord = { base = 60.0 },
+        MovementBigWord = { base = 60.0 },
+      },
+    })
+
+    local overridden = analyze()
+    if baseline_4w then
+      local candidate = find_result(overridden, "4w")
+      if candidate then
+        assert_true(candidate.cost > baseline_4w.cost + 40.0,
+          "4w should become much more expensive")
+      end
+    end
+    if baseline_4W then
+      local candidate = find_result(overridden, "4W")
+      if candidate then
+        assert_true(candidate.cost > baseline_4W.cost + 40.0,
+          "4W should become much more expensive")
+      end
+    end
+  end)
+end)
+
 test("ffi.analyze: preserves substitute payload and cost for exact 2->3 scenario", function()
   local initial_lines = {
     "int main() {",
