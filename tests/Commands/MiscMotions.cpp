@@ -1,4 +1,5 @@
 #include "Commands/MiscMotionsTestHelpers.h"
+#include "Utils/NeovimOracle.h"
 
 using namespace std;
 
@@ -77,6 +78,17 @@ TEST_F(MiscMotionsTest, HorizontalNoOpPreservesTargetColumn) {
   expectPos(simulateMovements({0, 4}, "jhk", lines), 0, 4);
 }
 
+TEST_F(MiscMotionsTest, CaretOnWhitespaceOnlyLineMovesToLastColumn) {
+  Lines lines = {"  "};
+  expectPos(simulateMovements({0, 0}, "^", lines), 0, 1);
+  expectPos(simulateMovements({0, 1}, "^", lines), 0, 1);
+}
+
+TEST_F(MiscMotionsTest, CountedBThenCaretOnWhitespaceOnlyLineMatchesVim) {
+  Lines lines = {"  "};
+  expectPos(simulateMovements({0, 1}, "6b2b^", lines), 0, 1);
+}
+
 TEST_F(MiscMotionsTest, GE_StopsOnEmptyLineBeforePreviousWordEnd) {
   Lines lines = {"abc def.", "", "  ghi jkl"};
   expectPos(simulateMovements({2, 2}, "b", lines), 1, 0);
@@ -85,6 +97,14 @@ TEST_F(MiscMotionsTest, GE_StopsOnEmptyLineBeforePreviousWordEnd) {
   expectPos(simulateMovements({2, 2}, "2ge", lines), 0, 7);
   expectPos(simulateMovements({2, 2}, "gE", lines), 1, 0);
   expectPos(simulateMovements({2, 2}, "2gE", lines), 0, 7);
+}
+
+TEST_F(MiscMotionsTest, WOverConsecutiveEmptyLinesMatchesNeovim) {
+  Lines lines = {"one", "", "", "two"};
+  NeovimOracle oracle;
+
+  SimulationResult expected = oracle.simulate(lines, 0, 0, "w");
+  expectPos(simulateMovements({0, 0}, "w", lines), expected.row, expected.col);
 }
 
 // =============================================================================

@@ -3,12 +3,11 @@
 #include "Types/CursorPos.h"
 #include "Types/Sequence.h"
 
-// A pre-computed plan to join source lines using the J command,
-// optionally followed by residual edits on the joined result.
-// Offered as an alternative path in the CompositionOptimizer A* search.
+// Composition-owned join escape hatch. The first action must be `J`; plans
+// whose useful work starts with a residual edit belong to TransformOptimizer.
 struct JoinPlan {
-  Sequence sequence;   // Full assembled sequence (J's + residuals + j's)
-  CursorPos goalPos;    // Cursor position after plan executes
-  double effort;       // Pre-computed effort
-  int entryLine;       // Cursor must be on this line (any column)
+  Sequence sequence;
+  CursorPos goalPos;
+  double effort;
+  int entryLine;
 };

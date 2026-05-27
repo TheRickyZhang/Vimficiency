@@ -5,8 +5,10 @@ import { loadBenchmarkData, discoverCategories } from './utils/data';
 import { RootLayout } from './components/RootLayout';
 import { HomePage } from './pages/HomePage';
 import { OptimizerPage } from './pages/OptimizerPage';
+import { TestSuitePage } from './pages/TestSuitePage';
 import { ExplorePage } from './pages/ExplorePage';
 import { ChunkDetailPage } from './pages/ChunkDetailPage';
+import { isTestSuiteSlug, loadTestSuiteBenchmarkData } from './utils/testSuites';
 
 const VALID_OPTIMIZERS = ['edit', 'motion', 'composition', 'tests'] as const;
 export type OptimizerSlug = (typeof VALID_OPTIMIZERS)[number];
@@ -71,14 +73,18 @@ export const optimizerIndexRoute = createRoute({
       const res = await fetch(`${base}${params.optimizer}/data.json?_=${Date.now()}`);
       if (!res.ok) return { data: null, categories: {}, optimizerName: 'Benchmarks', repoUrl: '' };
       const raw: BenchmarkData = await res.json();
-      const data = loadBenchmarkData(raw);
+      const data = params.optimizer === 'tests'
+        ? loadTestSuiteBenchmarkData(raw, 'unit')
+        : loadBenchmarkData(raw);
       const categories = discoverCategories(data);
       let optimizerName = 'Benchmarks';
       const firstName = data[data.length - 1]?.benches[0]?.name;
-      if (firstName) {
+      if (params.optimizer === 'tests') {
+        optimizerName = 'Unit Tests';
+      } else if (firstName) {
         optimizerName = firstName.split('/')[0] ?? 'Benchmarks';
       }
-      return { data, categories, optimizerName, repoUrl: raw.repoUrl };
+      return { data: data.length > 0 ? data : null, categories, optimizerName, repoUrl: raw.repoUrl };
     } catch {
       return { data: null, categories: {}, optimizerName: 'Benchmarks', repoUrl: '' };
     }
@@ -90,9 +96,47 @@ export const optimizerIndexRoute = createRoute({
   component: OptimizerPage,
 });
 
+export const testSuiteRoute = createRoute({
+  getParentRoute: () => optimizerLayoutRoute,
+  path: '$testSuite',
+  beforeLoad: ({ params }) => {
+    if (params.optimizer !== 'tests' || !isTestSuiteSlug(params.testSuite)) {
+      throw redirect({ to: '/' });
+    }
+  },
+  loader: async ({ params }): Promise<OptimizerLoaderData> => {
+    if (!isTestSuiteSlug(params.testSuite)) {
+      return { data: null, categories: {}, optimizerName: 'Tests', repoUrl: '' };
+    }
+
+    try {
+      const res = await fetch(`${base}tests/data.json?_=${Date.now()}`);
+      if (!res.ok) return { data: null, categories: {}, optimizerName: 'Tests', repoUrl: '' };
+      const raw: BenchmarkData = await res.json();
+      const data = loadTestSuiteBenchmarkData(raw, params.testSuite);
+      const categories = discoverCategories(data);
+      const firstName = data[data.length - 1]?.benches[0]?.name;
+      const optimizerName = firstName ? `${firstName.split('/')[0]} Tests` : 'Tests';
+      return { data: data.length > 0 ? data : null, categories, optimizerName, repoUrl: raw.repoUrl };
+    } catch {
+      return { data: null, categories: {}, optimizerName: 'Tests', repoUrl: '' };
+    }
+  },
+  validateSearch: (search: Record<string, unknown>) => ({
+    cat: (search['cat'] as string) || undefined,
+    bench: (search['bench'] as string) || undefined,
+  }),
+  component: TestSuitePage,
+});
+
 export const exploreRoute = createRoute({
   getParentRoute: () => optimizerLayoutRoute,
   path: '/explore',
+  beforeLoad: ({ params }) => {
+    if (params.optimizer === 'tests') {
+      throw redirect({ to: '/$optimizer', params: { optimizer: 'tests' }, search: { cat: undefined, bench: undefined } });
+    }
+  },
   loader: async ({ params }): Promise<ExplorationData | null> => {
     try {
       const res = await fetch(`${base}${params.optimizer}/explore.json?_=${Date.now()}`);
@@ -111,6 +155,11 @@ export const exploreRoute = createRoute({
 export const chunkDetailRoute = createRoute({
   getParentRoute: () => optimizerLayoutRoute,
   path: '/explore/chunk',
+  beforeLoad: ({ params }) => {
+    if (params.optimizer === 'tests') {
+      throw redirect({ to: '/$optimizer', params: { optimizer: 'tests' }, search: { cat: undefined, bench: undefined } });
+    }
+  },
   loader: async ({ params }): Promise<ExplorationData | null> => {
     try {
       const res = await fetch(`${base}${params.optimizer}/explore.json?_=${Date.now()}`);
@@ -129,7 +178,7 @@ export const chunkDetailRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
-  optimizerLayoutRoute.addChildren([optimizerIndexRoute, chunkDetailRoute, exploreRoute]),
+  optimizerLayoutRoute.addChildren([optimizerIndexRoute, chunkDetailRoute, exploreRoute, testSuiteRoute]),
 ]);
 
 export const router = createRouter({

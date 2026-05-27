@@ -2,8 +2,8 @@
 # Local benchmark runner. Mirrors what the deleted benchmark-run /
 # benchmark-store CI jobs used to do, but on this machine for consistent
 # hardware. Builds the pushed commit in a private cache, runs the three
-# suites with fixed seeds, ingests results into a local gh-pages clone, and
-# pushes. Main → root dashboard; non-main → branch/<safe-name>/ + PR comment.
+# suites with fixed seeds, ingests results into a local gh-pages worktree, and
+# pushes. Main and feature-branch pushes share the root benchmark timeline.
 #
 # Usage:
 #   scripts/bench-local-run.sh <pushed-sha> <branch-name>
@@ -36,6 +36,7 @@ REPO_URL_RAW="$(git -C "$REPO_ROOT" remote get-url origin)"
 REPO_URL="$(printf '%s' "$REPO_URL_RAW" | sed -e 's|^git@github.com:|https://github.com/|' -e 's|\.git$||')"
 REPO_NAME="${REPO_URL##*/}"
 SAFE_BRANCH=$(printf '%s' "$BRANCH" | sed 's|/|--|g; s|[^a-zA-Z0-9._-]||g')
+FUZZTEST_PRNG_SEED_FIXED="OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk"
 
 CACHE_DIR="${VIMFICIENCY_BENCH_CACHE:-$HOME/.cache/vimficiency-bench}"
 WORK_REPO="$CACHE_DIR/repo"
@@ -214,8 +215,17 @@ if $IS_MAIN; then
   done
 
   echo "[tests] running for timing"
-  ./build/tests/vimfy_unit_tests --gtest_brief=1 --gtest_output=json:test_timing.json
-  bun scripts/convert-gtest-timing.ts test_timing.json test_timing_bench.json
+  ./build/tests/vimfy_unit_tests --gtest_brief=1 --gtest_output=json:unit_timing.json
+  ./build/tests/vimfy_approval_tests --gtest_brief=1 --gtest_output=json:approval_timing.json
+  FUZZTEST_PRNG_SEED="$FUZZTEST_PRNG_SEED_FIXED" \
+    ./build/tests/vimfy_property_tests --gtest_brief=1 --gtest_output=json:property_timing.json
+  FUZZTEST_PRNG_SEED="$FUZZTEST_PRNG_SEED_FIXED" \
+    ./build/tests/vimfy_safety_tests --gtest_brief=1 --gtest_output=json:safety_timing.json
+  bun scripts/convert-gtest-timing.ts test_timing_bench.json \
+    Unit=unit_timing.json \
+    Approval=approval_timing.json \
+    Property=property_timing.json \
+    Safety=safety_timing.json
 fi
 
 # --- Dashboard build ---

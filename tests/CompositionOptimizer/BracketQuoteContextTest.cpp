@@ -15,23 +15,11 @@
 #include "Keyboard/Config.h"
 #include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
-#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
 namespace {
-constexpr string_view ALL_DELIMITERS = "\"'`([{";
-constexpr string_view FILLER_CHARS = "abcdefg ";
-
 bool isQuoteChar(char c) { return c == '"' || c == '\'' || c == '`'; }
-
-vector<char> delimsInLine(const string& line) {
-  vector<char> result;
-  for (char d : ALL_DELIMITERS) {
-    if (line.find(d) != string::npos) result.push_back(d);
-  }
-  return result;
-}
 } // namespace
 
 class TextObjectContextTest : public ::testing::Test {
@@ -132,82 +120,4 @@ TEST_F(TextObjectContextTest, PureInsertion_SkipsContext) {
   auto ctx = makeContext({"hello"}, {"hello world"});
   ASSERT_EQ(ctx.totalEdits(), 1);
   EXPECT_EQ(ctx.edits[0].bracketQuoteContext.line, -1);
-}
-
-// =============================================================================
-// Randomized Correctness Test
-// =============================================================================
-
-namespace {
-
-constexpr string_view ALL_CHARS = "\"'`()[]{}";
-
-string randomDelimiterLine(int len) {
-  string line;
-  line.reserve(len);
-  for (int i = 0; i < len; i++) {
-    line += RandomGen::pick<string_view>({
-        {70, FILLER_CHARS},
-        {30, ALL_CHARS},
-    });
-  }
-  return line;
-}
-
-bool randomEdit(const string& line, string& goalLine) {
-  int len = static_cast<int>(line.size());
-  if (len < 2) return false;
-
-  int a = RandomGen::range(0, len - 1);
-  int b = RandomGen::range(0, len - 1);
-  if (a == b) return false;
-
-  int begin = min(a, b), end = max(a, b);
-  string replacement;
-  for (int i = 0, n = RandomGen::range(1, 6); i < n; i++)
-    replacement += RandomGen::pick(FILLER_CHARS);
-
-  goalLine = line.substr(0, begin) + replacement + line.substr(end);
-  return goalLine != line;
-}
-
-} // namespace
-
-TEST_F(TextObjectContextTest, Random_FullyRandom) {
-  const int NUM_ITERATIONS = 20;
-  RandomGen::seed(42);
-  int validated = 0;
-
-  for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-    string line = randomDelimiterLine(RandomGen::range(8, 30));
-
-    string goalLine;
-    if (!randomEdit(line, goalLine)) continue;
-
-    Lines initial = {line};
-    Lines goal = {goalLine};
-
-    auto ctx = makeContext(initial, goal);
-    if (ctx.totalEdits() < 1) continue;
-
-    // Compute intermediate states for multi-edit validation
-    vector<Lines> states(ctx.totalEdits() + 1);
-    states[0] = initial;
-    for (int i = 0; i < ctx.totalEdits(); i++)
-      states[i + 1] = Myers::applyDiffState(ctx.edits[i].diffState, states[i]);
-
-    for (int e = 0; e < ctx.totalEdits(); e++) {
-      const auto& toCtx = ctx.edits[e].bracketQuoteContext;
-      if (toCtx.line < 0) continue;
-
-      const Lines& editInitial = states[e];
-      const Lines& editGoal = states[e + 1];
-
-      validated++;
-      for (char d : delimsInLine(editInitial[toCtx.line]))
-        validateMask(editInitial, editGoal, toCtx, ctx.edits[e].diffState, d);
-    }
-  }
-
-  EXPECT_GT(validated, NUM_ITERATIONS / 2) << "Too few valid test cases generated";
 }

@@ -7,9 +7,18 @@ interface Props {
   data: BenchmarkRun[];
   onSelect: (category: string) => void;
   onSelectBench: (category: string, benchName: string) => void;
+  categoryActionLabel?: string;
+  onCategoryAction?: (category: string) => void;
 }
 
-export function OverviewSection({ categories, data, onSelect, onSelectBench }: Props) {
+export function OverviewSection({
+  categories,
+  data,
+  onSelect,
+  onSelectBench,
+  categoryActionLabel,
+  onCategoryAction,
+}: Props) {
   const entries = Object.entries(categories);
   return (
     <div>
@@ -22,6 +31,8 @@ export function OverviewSection({ categories, data, onSelect, onSelectBench }: P
             benchNames={names}
             data={data}
             onClick={() => onSelect(cat)}
+            actionLabel={categoryActionLabel}
+            onAction={onCategoryAction ? () => onCategoryAction(cat) : undefined}
           />
         ))}
       </div>

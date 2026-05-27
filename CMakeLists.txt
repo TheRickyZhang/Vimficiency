@@ -59,10 +59,8 @@ option(VIMF_DEBUG "Enable debug output" ON)
 # default — enabling this adds per-state allocations on every popped node).
 option(VIMF_TRACK_STATES "Enable explored-state recording for vimfy_explore" OFF)
 
-# FuzzTest powers generated property tests and safety tests. In its default
-# unit-test mode it runs as normal gtest-compatible binaries; coverage-guided
-# campaigns are enabled separately with FUZZTEST_FUZZING_MODE.
-option(VIMF_ENABLE_FUZZTEST "Build FuzzTest-based property/safety tests" ON)
+# FuzzTest-backed property and safety tests are part of the normal test build.
+# Coverage-guided campaigns are enabled separately with FUZZTEST_FUZZING_MODE.
 
 # Legacy Vim compatibility mode (uses Vim defaults instead of Neovim defaults)
 # Key differences when enabled:

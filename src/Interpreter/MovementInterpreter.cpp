@@ -211,15 +211,7 @@ static void applyParsedMovementWithState(CursorPos& pos, Mode& mode,
     pos.col = len == 0 ? 0 : len - 1;
     pos.targetCol = TARGETCOL_EOL;
   } else if (motion == "^") {
-    int len = static_cast<int>(lines[pos.line].size());
-    int col = 0;
-    const string &line = lines[pos.line];
-    while (col < len && isspace(static_cast<unsigned char>(line[col])))
-      ++col;
-    // If all whitespace, clamp to last valid position (Neovim behavior)
-    if (col >= len && len > 0)
-      col = len - 1;
-    pos.setCol(col);
+    pos.setCol(VimCore::caretTargetColInLine(lines[pos.line], pos.col));
   } else if (motion == "gg") {
     // Special: set line. Counted gg is 1-based and clamps at EOF.
     pos.line = hasCount ? min(count - 1, n - 1) : 0;

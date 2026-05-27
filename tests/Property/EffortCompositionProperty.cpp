@@ -2,6 +2,7 @@
 // physical keys in order. Merge, associativity, and appendFrom are checked
 // against a naive sequential accumulator.
 
+#include <utility>
 #include <vector>
 
 #include <fuzztest/fuzztest.h>
@@ -10,7 +11,6 @@
 #include "Effort/RunningEffort.h"
 #include "Keyboard/Config.h"
 #include "Keyboard/PhysicalKeys.h"
-#include "Property/PropertyDomains.h"
 
 using namespace std;
 
@@ -18,29 +18,43 @@ namespace {
 
 constexpr double EFFORT_TOLERANCE = 1e-9;
 
+auto KeyDomain() {
+  return fuzztest::ElementOf(vector<Key>{
+#define X(name, str) Key::name,
+#include "Keyboard/XMacroKey.inc"
+#undef X
+  });
+}
+
+auto KeyVectorDomain(int minLen, int maxLen) {
+  return fuzztest::VectorOf(KeyDomain())
+      .WithMinSize(minLen)
+      .WithMaxSize(maxLen);
+}
+
 class EffortCompositionGeneratedPropertyTest {
  public:
   void MergeEqualsSequentialAppend(
-      const vector<int>& aIds, const vector<int>& bIds) {
+      vector<Key> aKeys, vector<Key> bKeys) {
     expectMergeEqualsNaive(
-        PropertyDomains::toPhysicalKeys(aIds),
-        PropertyDomains::toPhysicalKeys(bIds));
+        PhysicalKeys(std::move(aKeys)),
+        PhysicalKeys(std::move(bKeys)));
   }
 
   void AssociativityMatchesSequentialAppend(
-      const vector<int>& aIds,
-      const vector<int>& bIds,
-      const vector<int>& cIds) {
+      vector<Key> aKeys,
+      vector<Key> bKeys,
+      vector<Key> cKeys) {
     expectAssociativeMergeEqualsNaive(
-        PropertyDomains::toPhysicalKeys(aIds),
-        PropertyDomains::toPhysicalKeys(bIds),
-        PropertyDomains::toPhysicalKeys(cIds));
+        PhysicalKeys(std::move(aKeys)),
+        PhysicalKeys(std::move(bKeys)),
+        PhysicalKeys(std::move(cKeys)));
   }
 
   void AppendFromMatchesMergeAndSequentialAppend(
-      const vector<int>& aIds, const vector<int>& bIds) {
-    PhysicalKeys aKeys = PropertyDomains::toPhysicalKeys(aIds);
-    PhysicalKeys bKeys = PropertyDomains::toPhysicalKeys(bIds);
+      vector<Key> aRawKeys, vector<Key> bRawKeys) {
+    PhysicalKeys aKeys(std::move(aRawKeys));
+    PhysicalKeys bKeys(std::move(bRawKeys));
 
     RunningEffort a = buildEffort(aKeys);
     RunningEffort b = buildEffort(bKeys);
@@ -122,19 +136,19 @@ class EffortCompositionGeneratedPropertyTest {
 
 FUZZ_TEST_F(EffortCompositionGeneratedPropertyTest, MergeEqualsSequentialAppend)
     .WithDomains(
-        PropertyDomains::KeyIdsDomain(0, 16),
-        PropertyDomains::KeyIdsDomain(0, 16));
+        KeyVectorDomain(0, 16),
+        KeyVectorDomain(0, 16));
 
 FUZZ_TEST_F(
     EffortCompositionGeneratedPropertyTest, AssociativityMatchesSequentialAppend)
     .WithDomains(
-        PropertyDomains::KeyIdsDomain(0, 12),
-        PropertyDomains::KeyIdsDomain(0, 12),
-        PropertyDomains::KeyIdsDomain(0, 12));
+        KeyVectorDomain(0, 12),
+        KeyVectorDomain(0, 12),
+        KeyVectorDomain(0, 12));
 
 FUZZ_TEST_F(
     EffortCompositionGeneratedPropertyTest,
     AppendFromMatchesMergeAndSequentialAppend)
     .WithDomains(
-        PropertyDomains::KeyIdsDomain(0, 16),
-        PropertyDomains::KeyIdsDomain(0, 16));
+        KeyVectorDomain(0, 16),
+        KeyVectorDomain(0, 16));

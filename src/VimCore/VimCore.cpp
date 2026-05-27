@@ -34,6 +34,15 @@ int firstNonBlankColInLine(std::string_view s) {
   return 0;
 }
 
+int caretTargetColInLine(std::string_view s, int currentCol) {
+  for (int i = 0; i < static_cast<int>(s.size()); ++i) {
+    char c = s[i];
+    if (!CharMask::isWhitespace(c)) return i;
+  }
+  if (s.empty()) return 0;
+  return static_cast<int>(s.size()) - 1;
+}
+
 // =============================================================================
 // 2. CursorPos Stepping
 // =============================================================================
@@ -165,6 +174,11 @@ CursorPos motionWordCore(CursorPos pos,
       }
 
       c = CharMask(lines.get(pos));
+      // An empty line is its own word in Vim — `w` stops at the first empty
+      // line crossed, regardless of where the scan started.
+      if constexpr (Forward && Edge == EdgeType::NextEdge) {
+        if (c.newLine()) return pos;
+      }
       if constexpr (!Forward && Edge == EdgeType::WordEdge) {
         if (c.newLine()) return pos;
       }

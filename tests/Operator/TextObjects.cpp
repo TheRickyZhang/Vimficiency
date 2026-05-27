@@ -8,10 +8,12 @@
 
 #include <memory>
 
+#include "Interpreter/EditInterpreter.h"
 #include "Types/CharRange.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
+#include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
 
 using namespace std;
@@ -68,6 +70,51 @@ TEST_F(TextObjectsTest, Diw_OnTrailingWhitespaceBeforeNextLine) {
   EXPECT_EQ(result.lines, Lines({"abc", " def"}));
 }
 
+TEST_F(TextObjectsTest, Diw_FinalEmptyLineIncludesPreviousLine) {
+  Lines lines = {" ", ""};
+  CursorPos pos(1, 0);
+  auto oracleResult = oracle_->simulate(lines, pos.line, pos.col, "diw");
+
+  CharRange range = wordObjectRange(pos, lines, true, false);
+  ASSERT_TRUE(range.isValid());
+  VimCore::deleteRangeAndUpdatePos(lines, range, pos);
+
+  EXPECT_EQ(lines, oracleResult.lines);
+  EXPECT_EQ(pos, CursorPos(oracleResult.row, oracleResult.col));
+}
+
+TEST_F(TextObjectsTest, Ciw_FinalEmptyLineMatchesOracle) {
+  Lines lines = {" ", ""};
+  CursorPos pos(1, 0);
+  Mode mode = Mode::Normal;
+  string lastEdit;
+  auto oracleResult = oracle_->simulate(lines, pos.line, pos.col, "ciw--\x1b");
+
+  Edit::applyEdit(lines, pos, mode, ParsedEdit("ciw"), &lastEdit);
+  VimCore::insertText(lines, pos, "--");
+  Edit::applyEdit(lines, pos, mode, ParsedEdit("<Esc>"), &lastEdit);
+
+  EXPECT_EQ(lines, oracleResult.lines);
+  EXPECT_EQ(pos, CursorPos(oracleResult.row, oracleResult.col));
+  EXPECT_EQ(mode, oracleResult.mode);
+}
+
+TEST_F(TextObjectsTest, Caw_WhitespaceBeforeWordPreservesTrailingSpaces) {
+  Lines lines = {"    ", "  \";  ", ""};
+  CursorPos pos(0, 0);
+  Mode mode = Mode::Normal;
+  string lastEdit;
+  auto oracleResult = oracle_->simulate(lines, pos.line, pos.col, "cawX\x1b");
+
+  Edit::applyEdit(lines, pos, mode, ParsedEdit("caw"), &lastEdit);
+  VimCore::insertText(lines, pos, "X");
+  Edit::applyEdit(lines, pos, mode, ParsedEdit("<Esc>"), &lastEdit);
+
+  EXPECT_EQ(lines, oracleResult.lines);
+  EXPECT_EQ(pos, CursorPos(oracleResult.row, oracleResult.col));
+  EXPECT_EQ(mode, oracleResult.mode);
+}
+
 TEST_F(TextObjectsTest, Daw_WithTrailingWhitespace) {
   Lines lines = {"hello   world"};
   auto result = oracle_->simulate(lines, 0, 0, "daw");  // Cursor on 'h'
@@ -75,11 +122,76 @@ TEST_F(TextObjectsTest, Daw_WithTrailingWhitespace) {
   EXPECT_EQ(result.lines[0], "world");
 }
 
+TEST_F(TextObjectsTest, DaW_WordWithTrailingBlankKeepsEmptyLine) {
+  Lines lines = {">X n#   ", ""};
+  CursorPos pos(0, 4);
+  auto oracleResult = oracle_->simulate(lines, pos.line, pos.col, "daW");
+
+  CharRange range = wordObjectRange(pos, lines, false, true);
+  ASSERT_TRUE(range.isValid());
+  VimCore::deleteRangeAndUpdatePos(lines, range, pos);
+
+  EXPECT_EQ(lines, oracleResult.lines);
+  EXPECT_EQ(pos, CursorPos(oracleResult.row, oracleResult.col));
+}
+
 TEST_F(TextObjectsTest, Daw_WithNoTrailingWhitespace) {
   Lines lines = {"hello"};
   auto result = oracle_->simulate(lines, 0, 0, "daw");  // Cursor on 'h', no trailing
   // Should delete entire word
   EXPECT_EQ(result.lines[0], "");
+}
+
+TEST_F(TextObjectsTest, Daw_LeadingBlankLinesPreservesCursorColumn) {
+  Lines lines = {"  ", "", "Q~"};
+  CursorPos pos(0, 1);
+  auto oracleResult = oracle_->simulate(lines, pos.line, pos.col, "daw");
+
+  CharRange range = wordObjectRange(pos, lines, false, false);
+  ASSERT_TRUE(range.isValid());
+  VimCore::deleteRangeAndUpdatePos(lines, range, pos);
+
+  EXPECT_EQ(lines, oracleResult.lines);
+  EXPECT_EQ(pos, CursorPos(oracleResult.row, oracleResult.col));
+}
+
+TEST_F(TextObjectsTest, Daw_WhitespaceBeforeWordWithTrailingBlankMatchesOracle) {
+  Lines lines = {"    ", "  \";  ", ""};
+  CursorPos pos(0, 0);
+  auto oracleResult = oracle_->simulate(lines, pos.line, pos.col, "daw");
+
+  CharRange range = wordObjectRange(pos, lines, false, false);
+  ASSERT_TRUE(range.isValid());
+  VimCore::deleteRangeAndUpdatePos(lines, range, pos);
+
+  EXPECT_EQ(lines, oracleResult.lines);
+  EXPECT_EQ(pos, CursorPos(oracleResult.row, oracleResult.col));
+}
+
+TEST_F(TextObjectsTest, Daw_LineEndWhitespaceBeforeNextWordMatchesOracle) {
+  Lines lines = {"arstn ", "arstn arstn"};
+  CursorPos pos(0, 5);
+  auto oracleResult = oracle_->simulate(lines, pos.line, pos.col, "daw");
+
+  CharRange range = wordObjectRange(pos, lines, false, false);
+  ASSERT_TRUE(range.isValid());
+  VimCore::deleteRangeAndUpdatePos(lines, range, pos);
+
+  EXPECT_EQ(lines, oracleResult.lines);
+  EXPECT_EQ(pos, CursorPos(oracleResult.row, oracleResult.col));
+}
+
+TEST_F(TextObjectsTest, Daw_BlankLineBeforeInternalWordGapMatchesOracle) {
+  Lines lines = {"M \"3l", "   ", " 8 ~M"};
+  CursorPos pos(1, 1);
+  auto oracleResult = oracle_->simulate(lines, pos.line, pos.col, "daw");
+
+  CharRange range = wordObjectRange(pos, lines, false, false);
+  ASSERT_TRUE(range.isValid());
+  VimCore::deleteRangeAndUpdatePos(lines, range, pos);
+
+  EXPECT_EQ(lines, oracleResult.lines);
+  EXPECT_EQ(pos, CursorPos(oracleResult.row, oracleResult.col));
 }
 
 TEST_F(TextObjectsTest, Daw_LastWordWithLeadingWhitespace) {
@@ -250,6 +362,35 @@ TEST_F(TextObjectsTest, TextObjectRange_AroundWord) {
 
   // daw should NOT reach the boundaries (selects "def " at cols 4-7)
   EXPECT_NE(result.begin, POSITION_OUTSIDE_BOUNDARY);
+}
+
+TEST_F(TextObjectsTest, TextObjectRange_AroundWhitespaceStopsAtBlankLine) {
+  Lines lines = {"XY d ", "", "UUW"};
+
+  CharRange result = wordObjectRange(
+      CursorPos(0, 4), lines, false, false,
+      2, 3);
+
+  EXPECT_EQ(result.begin, CursorPos(0, 4));
+  EXPECT_EQ(result.end, CursorPos(1, 0));
+}
+
+TEST_F(TextObjectsTest, TextObjectRange_AroundFinalTrailingWhitespaceInvalid) {
+  Lines lines = {"a "};
+
+  CharRange result = wordObjectRange(CursorPos(0, 1), lines, false, false);
+
+  EXPECT_EQ(result.begin, POSITION_OUTSIDE_BOUNDARY);
+  EXPECT_EQ(result.end, POSITION_OUTSIDE_BOUNDARY);
+}
+
+TEST_F(TextObjectsTest, TextObjectRange_AroundWhitespaceBeforeWhitespaceOnlyLineInvalid) {
+  Lines lines = {"~  ", "  "};
+
+  CharRange result = wordObjectRange(CursorPos(0, 2), lines, false, false);
+
+  EXPECT_EQ(result.begin, POSITION_OUTSIDE_BOUNDARY);
+  EXPECT_EQ(result.end, POSITION_OUTSIDE_BOUNDARY);
 }
 
 TEST_F(TextObjectsTest, TextObjectRange_CrossesBoundary) {

@@ -43,6 +43,9 @@ TransformResult::TransformResult(vector<vector<Result>> results, TransformSearch
     }
   }
 
+  indexToBufferPos_.assign(results_.size(), CursorPos(-1, -1));
+  validStartByIndex_.assign(results_.size(), true);
+
   lineBaseIndex_.reserve(initialLines.size());
   int cumSum = 0;
   for (size_t i = 0; i < initialLines.size(); i++) {
@@ -60,9 +63,9 @@ TransformResult::TransformResult(vector<vector<Result>> results, TransformSearch
     for (int localCol = 0; localCol < positions; localCol++) {
       const int bufferCol = firstCol + localCol;
       const int idx = resultIndexAt(bufferBeginLine + line, bufferCol);
-      if (idx >= 0 && idx < static_cast<int>(results_.size()) &&
-          !results_[static_cast<size_t>(idx)].empty()) {
-        startPositions_.push_back(CursorPos(bufferBeginLine + line, bufferCol));
+      if (idx >= 0 && idx < static_cast<int>(results_.size())) {
+        indexToBufferPos_[static_cast<size_t>(idx)] =
+            CursorPos(bufferBeginLine + line, bufferCol);
       }
     }
   }
@@ -95,6 +98,36 @@ TransformResult::TransformResult(vector<vector<Result>> results, TransformSearch
     bucket = std::move(sortedBucket);
     goalBucket = std::move(sortedGoals);
   }
+
+  rebuildStartPositions();
+}
+
+void TransformResult::rebuildStartPositions() {
+  startPositions_.clear();
+  for (size_t idx = 0; idx < results_.size(); idx++) {
+    if (!isValidStartIndex(static_cast<int>(idx))) continue;
+    if (results_[idx].empty()) continue;
+    CursorPos pos = indexToBufferPos_.empty()
+        ? CursorPos(-1, -1)
+        : indexToBufferPos_[idx];
+    if (pos.isValid()) startPositions_.push_back(pos);
+  }
+}
+
+void TransformResult::restrictValidStartRegion(CharRange validStartRegion) {
+  validStartRegion.normalize();
+  if (validStartByIndex_.empty()) {
+    validStartByIndex_.assign(results_.size(), true);
+  }
+
+  for (size_t idx = 0; idx < validStartByIndex_.size(); idx++) {
+    CursorPos pos = indexToBufferPos_.empty()
+        ? CursorPos(-1, -1)
+        : indexToBufferPos_[idx];
+    validStartByIndex_[idx] =
+        pos.isValid() && pos >= validStartRegion.begin && pos < validStartRegion.end;
+  }
+  rebuildStartPositions();
 }
 
 ostream& operator<<(ostream& os, const TransformResult& transformResult) {
@@ -313,8 +346,25 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
     const Lines& lines = s.getLines();
     stats.maybeRecordExploredState(pos.line, pos.col, s.getEffort(), string_view(s.getSeq()));
 
-    if (mode.isGoalReached(lines)) {
-      recordResult(s, Result(s.getSeq(), s.getEffort()), true);
+    bool reachedGoal = false;
+    if constexpr (PureDeletion) {
+      reachedGoal = mode.isGoalReached(lines);
+    } else {
+      reachedGoal = mode.isGoalReached(s.getEditorState());
+    }
+
+    if (reachedGoal) {
+      if constexpr (PureDeletion) {
+        recordResult(s, Result(s.getSeq(), s.getEffort()), true);
+      } else {
+        // emitEditGoal-pushed states already contain the typed completion in
+        // their seq (and set lastEditBase_). Initial / nav-only states whose
+        // source already matched the cleared shell have not typed yet.
+        Result result = s.hasLastEdit()
+            ? Result(s.getSeq(), s.getEffort())
+            : mode.resultFromClearedGoal(s);
+        recordResult(s, result, false);
+      }
       ::maybeMarkStartExhausted(pendingByStart, startActive, terminalStarts, activeStart);
       continue;
     }
@@ -341,8 +391,10 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
         transformBoundary, config,      effortWeight, distanceWeight,
         leftColOffset, rightColOffset, params.allowLinewisePureDeletion};
 
-    auto onDeletion = [&](const auto& range, const SequenceBinding& cmd) { dispatch.deleteRange(range, cmd); };
-    auto onLinewise = [&](LineRange r, const SequenceBinding& cmd) { dispatch.deleteLinewise(r, cmd); };
+    auto onDeletion = [&](const ResolvedEditAction& action,
+                          const SequenceBinding& cmd) {
+      dispatch.deleteResolved(action, cmd);
+    };
     auto onJoin = [&](bool sp, const SequenceBinding& cmd) { dispatch.joinLines(sp, cmd); };
 
     bool inSuffixRegion = pos.line == lines.lastLine() &&
@@ -352,8 +404,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
       int firstSuffixCol = static_cast<int>(lines.getSize(pos.line)) - rightColOffset;
       if (pos.col == firstSuffixCol && firstSuffixCol > 0) {
         explorer.exploreWordEdits(
-            Edit::EXCLUSIVE_BACKWARD_WORD_EDITS, pos, lines, onDeletion,
-            onLinewise);
+            Edit::EXCLUSIVE_BACKWARD_WORD_EDITS, pos, lines, onDeletion);
       }
       if (pos.col > 0) {
         dispatch.moveByMotion(CursorPos(pos.line, pos.col - 1),
@@ -382,7 +433,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
     sweepExplorerStructurals(
         explorer, s, lines, pos, leftColOffset, rightColOffset,
         params.minPrefixCount,
-        onDeletion, onLinewise, onJoin,
+        onDeletion, onJoin,
         [&](LineRange range, const SequenceBinding& sourceCmd) {
           dispatch.deleteCountedLinewise(range, sourceCmd);
         },

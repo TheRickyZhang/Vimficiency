@@ -33,7 +33,7 @@ unit/assert pins regressions; property checks the universal invariant).
 - **Unit/assert** — named-bug regressions, canonical-semantic documentation,
   and specific-output assertions for VimCore commands and operators
   (`tests/Commands/`, `tests/Operator/`); fixed-case optimizer replay
-  regressions and cost/heuristic/determinism checks
+  regressions and small heuristic/API checks
   (`tests/NavOptimizer/`, `tests/TransformOptimizer/`,
   `tests/CompositionOptimizer/`, `tests/Optimizer/`); parser error cases, cost
   math, range and position helpers, config defaults, data-structure invariants
@@ -71,10 +71,7 @@ That runner seed controls FuzzTest's generated input stream; it is the knob for
 
 `.WithSeeds(...)` is different: those values are explicit corpus inputs that
 always run. Omit them by default; add them only for intentional smoke coverage
-or pinned regressions. Some expensive bridge properties still accept a
-`uint32_t` domain value and pass it to `RandomGen::seed(...)`; in local
-exploration FuzzTest generates those `uint32_t` values from the domain, while
-`.WithSeeds(...)` only adds checked-in corpus streams.
+or pinned regressions.
 
 CI runs the same exploration process with a fixed runner seed. The runners set:
 
@@ -85,6 +82,12 @@ FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk
 Leaving `FUZZTEST_FUZZ_FOR` unset keeps FuzzTest's normal unit-test exploration
 loop, currently about one second per `FUZZ_TEST`. The fixed runner seed makes
 that exploration deterministic in CI.
+
+This is not an exact fixed-work contract: expensive generated tests can hit the
+time cap before FuzzTest's internal iteration cap. For gate tests that need
+strict work-based behavior, prefer explicit deterministic loops or checked-in
+corpus seeds. Use fixed-time campaign runs for bug hunting, and measure their
+throughput only when the target exposes meaningful work counters.
 
 FuzzTest also prints `FUZZTEST_PRNG_SEED` to stderr whenever its runtime starts.
 The wrapper filters that line in fixed `seed` mode on success, because the seed
@@ -135,12 +138,9 @@ env FUZZTEST_PRNG_SEED=<printed-seed> \
   scripts/vimfy_tests property "InterpreterMatchesOracle.MovementSequences"
 ```
 
-Remaining `uint32_t` domain-driver properties usually run 8-40 generated
-cases per FuzzTest input. That is intentional: oracle and optimizer properties
-are expensive, and FuzzTest exploration already supplies additional input
-streams.
-Prefer broadening a generator or running a targeted campaign over globally
-raising inner loop counts.
+Prefer broadening a semantic domain or running a targeted campaign over adding
+manual inner random loops. Inner loops hide the generated case from FuzzTest,
+which makes shrinking much less useful.
 
 ### How Property, Safety, And Fuzzing Relate
 
@@ -170,12 +170,8 @@ Fuzzing is a mode for searching either kind of property:
 | `vimfy_benchmarks` | Google Benchmark suites | `build/tests/vimfy_benchmarks` | `./build/tests/vimfy_benchmarks` |
 | `vimfy_debug` | Scratch/debug tests | `build/tests/vimfy_debug` | `./build/tests/vimfy_debug` |
 
-`VIMF_ENABLE_FUZZTEST` is on by default. Disable it only when you need a narrow
-build that avoids fetching/building the FuzzTest stack:
-
-```bash
-cmake -B build -DVIMF_ENABLE_FUZZTEST=OFF
-```
+FuzzTest is part of the normal test build. Property and safety tests should be
+available anywhere the C++ test suite is built.
 
 ## Running Tests
 
@@ -255,7 +251,6 @@ cmake -S . -B build-fuzz \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DCMAKE_C_COMPILER=clang \
   -DCMAKE_CXX_COMPILER=clang++ \
-  -DVIMF_ENABLE_FUZZTEST=ON \
   -DFUZZTEST_FUZZING_MODE=ON
 
 cmake --build build-fuzz -j --target vimfy_safety_tests
@@ -273,45 +268,32 @@ is "trusted internal caller only" until a fallible boundary has been introduced.
 
 ## Writing FuzzTest Properties
 
-Prefer direct FuzzTest domains for new or migrated non-oracle properties:
+Prefer direct FuzzTest domains for new or migrated properties:
 
 ```cpp
-void MergeEqualsSequentialAppend(const vector<int>& a, const vector<int>& b) {
-  PhysicalKeys left = PropertyDomains::toPhysicalKeys(a);
-  PhysicalKeys right = PropertyDomains::toPhysicalKeys(b);
-  EXPECT_EQ(merge(left, right), append(left, right));
+void RoundTripAndStructureAcrossBufferStyles(
+    const PropertyDomains::DiffCaseSpec& spec) {
+  Lines initial(spec.initial);
+  Lines goal = spec.identity ? initial : Lines(spec.goal);
+  EXPECT_EQ(Myers::applyAllDiffState(Myers::calculate(initial, goal), initial),
+            goal);
 }
 
-FUZZ_TEST(EffortGeneratedPropertyTest, MergeEqualsSequentialAppend)
-    .WithDomains(
-        PropertyDomains::KeyIdsDomain(0, 16),
-        PropertyDomains::KeyIdsDomain(0, 16));
+FUZZ_TEST(DiffStateGeneratedPropertyTest, RoundTripAndStructureAcrossBufferStyles)
+    .WithDomains(PropertyDomains::DiffCaseSpecDomain());
 ```
 
-Use a `uint32_t` domain-driver parameter only when converting an existing
-generated loop or when the property relies on expensive state such as
-`NeovimOracle`. In that case call `runSeedDriverCases(...)` so `RandomGen` is
-seeded and failures include the generated value plus inner case index:
+For optimizer replay and oracle-conformance properties, prefer a shrinkable
+case-spec struct over a seed-driver loop. Put the semantic pieces FuzzTest
+should shrink directly into the domain: lines, cursor indices, command tokens,
+edit/mutation descriptors, boundary shape, and goal text. The test can still
+build richer project objects from that spec, but failure output should print
+the converted semantic case.
 
-```cpp
-class TransformOptimizerGeneratedPropertyTest {
- public:
-  void SingleLineChangeTopResultsReplay(uint32_t seed) {
-    runSeedDriverCases(seed, 30, [&] {
-      // Generate a valid edit problem, optimize it, replay top results.
-    });
-  }
-};
-
-FUZZ_TEST_F(TransformOptimizerGeneratedPropertyTest, SingleLineChangeTopResultsReplay)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));
-```
-
-This pattern is a compatibility bridge, not the preferred shape for new pure
-data-structure properties. Direct domains give FuzzTest better mutation and
-shrinking behavior. In either style, omit `.WithSeeds(...)` by default. Add it
-only for intentional checked-in corpus inputs, such as reduced regressions or
-rare smoke cases that the generator might not hit quickly.
+Direct semantic domains give FuzzTest better mutation and shrinking behavior.
+In either style, omit `.WithSeeds(...)` by default. Add it only for intentional
+checked-in corpus inputs, such as reduced regressions or rare smoke cases that
+the generator might not hit quickly.
 
 ## Directory Structure
 

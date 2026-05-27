@@ -92,4 +92,36 @@ TEST(CompositionResultPlannedEditView, ReversedDiffOrderKeepsFencepostsAligned) 
   }
 }
 
+TEST(CompositionResultPlannedEditView, ExclusiveDiffEndIsNotAValidTransformStart) {
+  Config config = Config::uniform();
+  CompositionOptimizer opt(config);
+
+  Lines initial = {
+      "keep",
+      "delete",
+      "next",
+  };
+  Lines goal = {
+      "keep",
+      "next",
+  };
+  NavBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
+
+  CompositionResult result = opt.optimize(
+      initial, CursorPos(2, 0), goal, goal.lastPos(),
+      CompositionOptimizerParams{}.withMaxResults(1), "", boundary);
+
+  ASSERT_EQ(result.totalEdits(), 1);
+  const auto plannedEdit = result.plannedEditAt(0);
+  ASSERT_EQ(plannedEdit.diff.beginPos, CursorPos(1, 0));
+  ASSERT_EQ(plannedEdit.diff.endPos, CursorPos(2, 0));
+
+  EXPECT_FALSE(plannedEdit.transformResult.isValidStartPosition(2, 0));
+  EXPECT_TRUE(plannedEdit.transformResult.resultsAt(2, 0).empty());
+  EXPECT_FALSE(plannedEdit.transformResult.startPositions().empty());
+  for (CursorPos start : plannedEdit.transformResult.startPositions()) {
+    EXPECT_NE(start, CursorPos(2, 0));
+  }
+}
+
 }  // namespace

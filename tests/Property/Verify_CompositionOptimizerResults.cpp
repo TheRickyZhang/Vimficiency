@@ -2,9 +2,10 @@
 // must replay in Neovim from the generated initial cursor to the exact generated
 // goal buffer and goal cursor.
 
-#include <cstdint>
+#include <algorithm>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <fuzztest/fuzztest.h>
 
@@ -14,13 +15,19 @@
 #include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
 #include "Property/OptimizerResultChecks.h"
-#include "Property/PropertyTestUtils.h"
-#include "Utils/RandomBufferHelpers.h"
-#include "Utils/RandomGeneration.h"
+#include "Property/PropertyDomains.h"
 
 using namespace std;
 
 namespace {
+
+int clampedIndex(int value, int size) {
+  return std::clamp(value, 0, size - 1);
+}
+
+int clampedInsertIndex(int value, int size) {
+  return std::clamp(value, 0, size);
+}
 
 struct CompositionReplayCase {
   Lines initial;
@@ -29,106 +36,159 @@ struct CompositionReplayCase {
   CursorPos goalPos;
 };
 
-void replaceLineSpan(Lines& lines) {
-  int line = randomLineIndex(lines);
+struct CompositionMutationSpec {
+  int kind;
+  int lineIndex;
+  int beginCol;
+  int endCol;
+  string text;
+};
+
+struct CompositionReplayCaseSpec {
+  vector<string> initial;
+  vector<CompositionMutationSpec> mutations;
+  int initialPosIndex;
+  int goalPosIndex;
+};
+
+void replaceLineSpan(Lines& lines, const CompositionMutationSpec& mutation) {
+  int line = clampedIndex(mutation.lineIndex, static_cast<int>(lines.size()));
   string& text = lines[line];
-  int begin = randomInsertCol(text);
-  int end = RandomGen::range(begin, static_cast<int>(text.size()));
-  text.replace(begin, end - begin, randomLine(RandomGen::range(0, 6)));
+  int begin = std::clamp(mutation.beginCol, 0, static_cast<int>(text.size()));
+  int end = std::clamp(mutation.endCol, begin, static_cast<int>(text.size()));
+  text.replace(begin, end - begin, mutation.text);
 }
 
-void splitLine(Lines& lines) {
-  int line = randomLineIndex(lines);
+void splitLine(Lines& lines, const CompositionMutationSpec& mutation) {
+  int line = clampedIndex(mutation.lineIndex, static_cast<int>(lines.size()));
   string& text = lines[line];
-  int col = randomInsertCol(text);
+  int col = std::clamp(mutation.beginCol, 0, static_cast<int>(text.size()));
   string suffix = text.substr(col);
   text.erase(col);
   lines.insert(lines.begin() + line + 1, suffix);
 }
 
-void joinAdjacentLines(Lines& lines) {
+void joinAdjacentLines(Lines& lines, const CompositionMutationSpec& mutation) {
   if (lines.size() < 2) {
-    replaceLineSpan(lines);
+    replaceLineSpan(lines, mutation);
     return;
   }
 
-  int line = RandomGen::range(0, lines.lastLine() - 1);
+  int line = clampedIndex(mutation.lineIndex, lines.lastLine());
   lines[line] += lines[line + 1];
   lines.erase(lines.begin() + line + 1);
 }
 
-void insertLine(Lines& lines) {
-  int index = RandomGen::range(0, static_cast<int>(lines.size()));
-  lines.insert(lines.begin() + index, randomLine(RandomGen::range(0, 8)));
+void insertLine(Lines& lines, const CompositionMutationSpec& mutation) {
+  int index =
+      clampedInsertIndex(mutation.lineIndex, static_cast<int>(lines.size()));
+  lines.insert(lines.begin() + index, mutation.text);
 }
 
-void deleteLine(Lines& lines) {
+void deleteLine(Lines& lines, const CompositionMutationSpec& mutation) {
   if (lines.size() < 2) {
-    replaceLineSpan(lines);
+    replaceLineSpan(lines, mutation);
     return;
   }
 
-  lines.erase(lines.begin() + randomLineIndex(lines));
+  int line = clampedIndex(mutation.lineIndex, static_cast<int>(lines.size()));
+  lines.erase(lines.begin() + line);
 }
 
-void applyRandomMutation(Lines& lines) {
-  switch (RandomGen::range(0, 4)) {
+void applyMutation(Lines& lines, const CompositionMutationSpec& mutation) {
+  switch (mutation.kind) {
     case 0:
-      replaceLineSpan(lines);
+      replaceLineSpan(lines, mutation);
       break;
     case 1:
-      splitLine(lines);
+      splitLine(lines, mutation);
       break;
     case 2:
-      joinAdjacentLines(lines);
+      joinAdjacentLines(lines, mutation);
       break;
     case 3:
-      insertLine(lines);
+      insertLine(lines, mutation);
       break;
     default:
-      deleteLine(lines);
+      deleteLine(lines, mutation);
       break;
   }
 }
 
-CompositionReplayCase generateReplayCase() {
+CompositionReplayCase toReplayCase(const CompositionReplayCaseSpec& spec) {
   CompositionReplayCase test;
-  test.initial = randomLines(RandomGen::range(1, 4), 3, 9);
+  test.initial = Lines(spec.initial);
   test.goal = test.initial;
 
-  // Mix simple text edits, line splits/joins, and line insert/delete instead
-  // of encoding each shape as a separate property entry point.
-  int mutationCount = RandomGen::range(1, 3);
-  for (int i = 0; i < mutationCount; i++) {
-    applyRandomMutation(test.goal);
+  for (const auto& mutation : spec.mutations) {
+    applyMutation(test.goal, mutation);
   }
 
-  if (test.goal == test.initial) {
-    test.goal[0] += "a";
-  }
-
-  test.initialPos = randomPos(test.initial);
-  test.goalPos = randomPos(test.goal);
+  test.initialPos = test.initial.cursorFromFlatIndexClamped(spec.initialPosIndex);
+  test.goalPos = test.goal.cursorFromFlatIndexClamped(spec.goalPosIndex);
   return test;
+}
+
+string formatMutation(const CompositionMutationSpec& mutation) {
+  ostringstream out;
+  out << "{kind=" << mutation.kind
+      << ", lineIndex=" << mutation.lineIndex
+      << ", beginCol=" << mutation.beginCol
+      << ", endCol=" << mutation.endCol
+      << ", text='" << mutation.text << "'}";
+  return out.str();
+}
+
+string formatMutations(const vector<CompositionMutationSpec>& mutations) {
+  string out;
+  for (const auto& mutation : mutations) {
+    if (!out.empty()) out += ", ";
+    out += formatMutation(mutation);
+  }
+  return out;
+}
+
+auto CompositionMutationSpecDomain() {
+  return fuzztest::StructOf<CompositionMutationSpec>(
+      fuzztest::InRange<int>(0, 4),
+      fuzztest::InRange<int>(0, 6),
+      fuzztest::InRange<int>(0, 12),
+      fuzztest::InRange<int>(0, 12),
+      PropertyDomains::LineTextDomain(0, 6));
+}
+
+auto CompositionReplayCaseSpecDomain() {
+  return fuzztest::StructOf<CompositionReplayCaseSpec>(
+      PropertyDomains::LineVecDomain(1, 4, 0, 9),
+      fuzztest::VectorOf(CompositionMutationSpecDomain())
+          .WithMinSize(1)
+          .WithMaxSize(3),
+      fuzztest::InRange<int>(0, 64),
+      fuzztest::InRange<int>(0, 64));
 }
 
 class CompositionOptimizerGeneratedPropertyTest {
  public:
-  void RandomBufferMutationsTopResultsReplay(uint32_t seed) {
-    runSeedDriverCases(seed, 80, [&] {
-      CompositionReplayCase test = generateReplayCase();
-      auto compResult = opt_.optimize(
-          test.initial, test.initialPos, test.goal, test.goalPos, params_);
+  void ShrinkableBufferMutationsTopResultsReplay(
+      const CompositionReplayCaseSpec& spec) {
+    CompositionReplayCase test = toReplayCase(spec);
+    if (test.initial == test.goal) return;
 
-      ostringstream context;
-      context << "random composition mutation initial=" << test.initial
-              << " initialPos=" << test.initialPos
-              << " goal=" << test.goal
-              << " goalPos=" << test.goalPos;
-      expectTopResultsReplay(
-          oracle_, compResult.getResults(), test.initial, test.initialPos,
-          test.goal, MAX_RESULTS_TO_REPLAY, context.str(), test.goalPos);
-    });
+    auto compResult = opt_.optimize(
+        test.initial, test.initialPos, test.goal, test.goalPos, params_);
+
+    ostringstream context;
+    context << "shrinkable composition mutation"
+            << " initial=" << test.initial
+            << " initialPos=" << test.initialPos
+            << " goal=" << test.goal
+            << " goalPos=" << test.goalPos
+            << " rawInitialPosIndex=" << spec.initialPosIndex
+            << " rawGoalPosIndex=" << spec.goalPosIndex
+            << " mutations=[" << formatMutations(spec.mutations) << "]";
+    expectTopResultsReplay(
+        oracle_, compResult.getResults(), test.initial, test.initialPos,
+        test.goal, MAX_RESULTS_TO_REPLAY, context.str(), test.goalPos);
   }
 
  private:
@@ -143,5 +203,6 @@ class CompositionOptimizerGeneratedPropertyTest {
 }  // namespace
 
 FUZZ_TEST_F(
-    CompositionOptimizerGeneratedPropertyTest, RandomBufferMutationsTopResultsReplay)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));
+    CompositionOptimizerGeneratedPropertyTest,
+    ShrinkableBufferMutationsTopResultsReplay)
+    .WithDomains(CompositionReplayCaseSpecDomain());

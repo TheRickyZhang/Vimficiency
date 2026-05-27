@@ -1983,7 +1983,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
 }
 
 // =============================================================================
-// HumanApproval Example1: `i` instead of `ce`/`cw` for replacement edits
+// Telescoping composition search investigation.
 // =============================================================================
 
 TEST_F(DebugTest, InvestigateTelescopingSearch) {
@@ -3383,15 +3383,8 @@ const char* debugModeName(Mode mode) {
 void printLinesWithColumns(const string& label, const Lines& lines) {
   cerr << label << " (" << lines.size() << " lines)" << endl;
   for (size_t i = 0; i < lines.size(); i++) {
-    cerr << "  [" << i << "] len=" << lines[i].size() << " \"";
-    for (char c : lines[i]) {
-      if (c == ' ') {
-        cerr << '_';
-      } else {
-        cerr << c;
-      }
-    }
-    cerr << "\"" << endl << "       idx ";
+    cerr << "  [" << i << "] len=" << lines[i].size() << " \""
+         << VF::PrettyText(lines[i]) << "\"" << endl << "       idx ";
     for (size_t j = 0; j < lines[i].size(); j++) {
       cerr << j % 10;
     }
@@ -3406,8 +3399,8 @@ void printFirstLineDiff(const Lines& expected, const Lines& actual) {
     for (size_t j = 0; j < commonCols; j++) {
       if (expected[i][j] != actual[i][j]) {
         cerr << "First content diff at line " << i << " col " << j
-             << ": expected '" << expected[i][j]
-             << "' actual '" << actual[i][j] << "'" << endl;
+             << ": expected '" << VF::PrettyText(expected[i][j])
+             << "' actual '" << VF::PrettyText(actual[i][j]) << "'" << endl;
         return;
       }
     }

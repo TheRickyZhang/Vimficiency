@@ -1,4 +1,5 @@
 import { Outlet, Link, useMatches } from '@tanstack/react-router';
+import { getTestSuite, isTestSuiteSlug } from '../utils/testSuites';
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -10,6 +11,7 @@ export function RootLayout() {
 
   // Determine breadcrumb context from matched routes
   const optimizerParam = (last?.params as Record<string, string>)?.['optimizer'];
+  const testSuiteParam = (last?.params as Record<string, string>)?.['testSuite'];
   const fullPath = last?.fullPath ?? '';
   const isChunkDetail = fullPath.includes('/explore/chunk');
   const isExplore = fullPath.endsWith('/explore') || isChunkDetail;
@@ -18,7 +20,10 @@ export function RootLayout() {
   let title = 'Vimficiency Benchmarks';
 
   if (optimizerParam) {
-    const label = capitalize(optimizerParam);
+    const testSuite = optimizerParam === 'tests'
+      ? getTestSuite(isTestSuiteSlug(testSuiteParam) ? testSuiteParam : 'unit')
+      : null;
+    const label = testSuite?.title ?? capitalize(optimizerParam);
     if (isChunkDetail) {
       title = `Chunk Detail — ${label} — Vimficiency`;
       breadcrumb = (
@@ -41,6 +46,23 @@ export function RootLayout() {
           <Link to="/$optimizer" params={{ optimizer: optimizerParam }} search={{ cat: undefined, bench: undefined }} className="link-brand">{label}</Link>
           <span className="text-[#999] mx-2">&#x203A;</span>
           <span>Search Space</span>
+        </div>
+      );
+    } else if (testSuite) {
+      title = `${testSuite.title} — Vimficiency Benchmarks`;
+      breadcrumb = (
+        <div className="mb-6 text-base">
+          <Link to="/" className="link-brand">Vimficiency</Link>
+          <span className="text-[#999] mx-2">&#x203A;</span>
+          {testSuiteParam ? (
+            <>
+              <Link to="/$optimizer" params={{ optimizer: optimizerParam }} search={{ cat: undefined, bench: undefined }} className="link-brand">Tests</Link>
+              <span className="text-[#999] mx-2">&#x203A;</span>
+              <span>{testSuite.title}</span>
+            </>
+          ) : (
+            <span>{testSuite.title}</span>
+          )}
         </div>
       );
     } else {

@@ -57,13 +57,30 @@ TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_BackwardSentence_Backe
 }
 
 TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardParagraph_Linewise) {
-  // d} from col 0: linewise
+  // d} from col 0, or from a blank prefix to EOF: linewise
   verifySequenceWithOracle(oracle.get(), {"abc", "", "def"}, {0, 0}, "d}");
+  verifySequenceWithOracle(oracle.get(), {"dfdee", " ac,", "b  a.a"}, {1, 1}, "d}");
 }
 
 TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardParagraphChangeAutoindents) {
   verifyUserSequenceWithOracle(oracle.get(), {"   ", "", "d,d"}, {0, 0}, "c}ebfca<Esc>");
   verifyUserSequenceWithOracle(oracle.get(), {"  abc", "", "def"}, {0, 0}, "c}x<Esc>");
+  verifyUserSequenceWithOracle(
+      oracle.get(), {"dfdee", " ac,", "b  a.a"}, {1, 1}, "c}X<Esc>");
+}
+
+TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardParagraphChangeAtEof) {
+  verifyUserSequenceWithOracle(
+      oracle.get(), {" da,c,", "af,fb"}, {0, 0}, "c}fedb<Esc>");
+  verifyUserSequenceWithOracle(
+      oracle.get(), {" p~?", "F"}, {0, 0}, "c}abu<Esc>");
+}
+
+TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardParagraphChangeFromBlankPrefix) {
+  verifyUserSequenceWithOracle(
+      oracle.get(), {"      ", "~\"~"}, {0, 4}, "c}<CR><Esc>");
+  verifyUserSequenceWithOracle(
+      oracle.get(), {"    ", "", " %6D~"}, {0, 1}, "c}zuzhz<Esc>");
 }
 
 TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardSentenceChangeAutoindents) {
@@ -71,8 +88,9 @@ TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardSentenceChangeA
 }
 
 TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_ForwardParagraph_BackedUp) {
-  // d} from col > 0: backed up
+  // d} from col > 0 with nonblank prefix: backed up
   verifySequenceWithOracle(oracle.get(), {"abc", "", "def"}, {0, 2}, "d}");
+  verifySequenceWithOracle(oracle.get(), {"dfdee", " ac,", "b  a.a"}, {1, 2}, "d}");
 }
 
 TEST_F(TransformOptimizer_ManualTest, ExclusiveLineAdjust_BackwardParagraph_Linewise) {
@@ -97,6 +115,14 @@ TEST_F(TransformOptimizer_ManualTest, DeleteSpecial_BackwardWordBlankPrefixLinew
 TEST_F(TransformOptimizer_ManualTest, DeleteSpecial_BackwardWordNonBlankPrefixStaysCharwise) {
   verifySequenceWithOracle(oracle.get(), {"abc def", "ghi"}, {1, 0}, "db");
   verifySequenceWithOracle(oracle.get(), {"abc def", "ghi"}, {1, 0}, "dB");
+}
+
+TEST_F(TransformOptimizer_ManualTest, DeleteSpecial_BackwardWordEndBlankPrefixLinewise) {
+  verifySequenceWithOracle(oracle.get(), {"    ~ ", "Yh", "%o"}, {1, 1}, "dge");
+}
+
+TEST_F(TransformOptimizer_ManualTest, DeleteSpecial_BackwardWordEndAtLineStartStaysCharwise) {
+  verifySequenceWithOracle(oracle.get(), {"u", " ", " )"}, {2, 0}, "dge");
 }
 
 }  // namespace

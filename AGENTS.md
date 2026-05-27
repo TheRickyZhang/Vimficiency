@@ -75,6 +75,7 @@ Lua (User concepts):
 - Don't overuse namespaces. We should naturally bring them up as the code grows, not when we only have a few functions / classes.
 - Make sure to route unicode printing through PrettyPrint
 - Before introducing new variables, consider if there are similar existing ones!
+- When fixing an edge case in vim semantics, you should be wary of creating a net increase in logic. It is very easy to provide bloated hotfixes instead of precisely outlining the issue.
 
 ## Invariants
 - All positions in C++ are 0-indexed

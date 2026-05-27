@@ -141,6 +141,33 @@ TEST_F(VimOptionsTest, DD_MiddleLine) {
   EXPECT_EQ(ourLines, result.lines);
 }
 
+TEST_F(VimOptionsTest, LinewiseDeleteAllVisibleLinesWithHiddenAboveEscapesAbove) {
+  Lines lines = {"first", "second"};
+  CursorPos pos(0, 1);
+
+  VimCore::deleteLineRangeAndUpdatePos(
+      lines, LineRange(0, 2), pos,
+      VimCore::LineDeleteContext{.hasLinesAbove = true});
+
+  EXPECT_EQ(lines, Lines{""});
+  EXPECT_EQ(pos.line, -1);
+}
+
+TEST_F(VimOptionsTest, LinewiseDeleteAllVisibleLinesPrefersHiddenBelow) {
+  Lines lines = {"first", "second"};
+  CursorPos pos(0, 1);
+
+  VimCore::deleteLineRangeAndUpdatePos(
+      lines, LineRange(0, 2), pos,
+      VimCore::LineDeleteContext{
+          .hasLinesAbove = true,
+          .hasLinesBelow = true,
+      });
+
+  EXPECT_EQ(lines, Lines{""});
+  EXPECT_EQ(pos.line, static_cast<int>(lines.size()));
+}
+
 // =============================================================================
 // joinspaces tests
 // =============================================================================
@@ -233,6 +260,102 @@ TEST_F(VimOptionsTest, J_NextLineLeadingWhitespace) {
   } else {
     EXPECT_EQ(ourLines[0], "first. second");
   }
+}
+
+TEST_F(VimOptionsTest, CountedJ_PreservesSeparatorForBlankLineAfterSpace) {
+  Lines lines = {"a ", "", "b"};
+  auto result = oracleSimulate(lines, 0, 0, "3J");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(0, 0);
+  VimCore::joinLineRange(ourLines, ourPos, 3, true);
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+  EXPECT_EQ(ourLines[0], "a  b");
+}
+
+TEST_F(VimOptionsTest, CountedJ_PreservesSeparatorForWhitespaceLineAfterSpace) {
+  Lines lines = {"a ", "   ", "b"};
+  auto result = oracleSimulate(lines, 0, 0, "3J");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(0, 0);
+  VimCore::joinLineRange(ourLines, ourPos, 3, true);
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+  EXPECT_EQ(ourLines[0], "a  b");
+}
+
+TEST_F(VimOptionsTest, BareJ_DoesNotPreserveEmptyLineSeparator) {
+  Lines lines = {"a ", ""};
+  auto result = oracleSimulate(lines, 0, 0, "J");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(0, 0);
+  VimCore::joinLines(ourLines, ourPos, true);
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+  EXPECT_EQ(ourLines[0], "a ");
+}
+
+TEST_F(VimOptionsTest, CountedGJ_CursorLandsAtLastJoinPoint) {
+  Lines lines = {"  ~;b", "~ ~", "$ C{ ", "~~  ~z"};
+  auto result = oracleSimulate(lines, 0, 2, "4gJ");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(0, 2);
+  VimCore::joinLineRange(ourLines, ourPos, 4, false);
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+}
+
+TEST_F(VimOptionsTest, CountedJ_CursorUsesTrailingWhitespaceFromContentLine) {
+  Lines lines = {"m~;b", "~ ~", "~~ ", " ~~( ~z"};
+  auto result = oracleSimulate(lines, 0, 1, "4J");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(0, 1);
+  VimCore::joinLineRange(ourLines, ourPos, 4, true);
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+}
+
+TEST_F(VimOptionsTest, J_StripsHashCommentLeaderAfterDashLeader) {
+  Lines lines = {"x- ", "#  1"};
+  auto result = oracleSimulate(lines, 0, 0, "J");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(0, 0);
+  VimCore::joinLines(ourLines, ourPos, true);
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+  EXPECT_EQ(ourLines[0], "x- 1");
+}
+
+TEST_F(VimOptionsTest, J_DoesNotInsertSpaceBeforeClosingParen) {
+  Lines lines = {"abc", " )def"};
+  auto result = oracleSimulate(lines, 0, 0, "J");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(0, 0);
+  VimCore::joinLines(ourLines, ourPos, true);
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+  EXPECT_EQ(ourLines[0], "abc)def");
 }
 
 // =============================================================================

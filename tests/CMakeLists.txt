@@ -30,13 +30,11 @@ FetchContent_Declare(
   GIT_TAG        v.10.13.0
 )
 
-if(VIMF_ENABLE_FUZZTEST)
-  FetchContent_Declare(
-    fuzztest
-    GIT_REPOSITORY https://github.com/google/fuzztest.git
-    GIT_TAG        2026-02-19
-  )
-endif()
+FetchContent_Declare(
+  fuzztest
+  GIT_REPOSITORY https://github.com/google/fuzztest.git
+  GIT_TAG        2026-02-19
+)
 
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 set(MSGPACK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -61,11 +59,8 @@ FetchContent_MakeAvailable(
   googlebenchmark
   nlohmann_json
   ApprovalTests
+  fuzztest
 )
-
-if(VIMF_ENABLE_FUZZTEST)
-  FetchContent_MakeAvailable(fuzztest)
-endif()
 
 if(CMAKE_VERSION VERSION_GREATER_EQUAL 4.0)
   set(CMAKE_POLICY_VERSION_MINIMUM "${VIMFY_CMAKE_POLICY_VERSION_MINIMUM_PREV}")
@@ -163,67 +158,65 @@ gtest_discover_tests(vimfy_approval_tests)
 # Property tests check semantic invariants over structured project inputs. Safety
 # checks adversarial or malformed inputs at parser/payload/file boundaries.
 
-if(VIMF_ENABLE_FUZZTEST)
-  function(suppress_fuzztest_header_warnings target_name)
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-      target_compile_options(${target_name}
-        PRIVATE
-          -Wno-non-template-friend
-          -Wno-return-type
-      )
-    endif()
-  endfunction()
-
-  if(FUZZTEST_FUZZING_MODE AND COMMAND fuzztest_setup_fuzzing_flags)
-    fuzztest_setup_fuzzing_flags()
-  endif()
-
-  file(GLOB VIMFY_PROPERTY_TEST_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/Property/*.cpp
-  )
-
-  add_executable(vimfy_property_tests
-    ${VIMFY_PROPERTY_TEST_SOURCES}
-  )
-
-  target_link_libraries(vimfy_property_tests
-    PRIVATE
-      test_utils
-  )
-
-  link_fuzztest(vimfy_property_tests)
-  suppress_fuzztest_header_warnings(vimfy_property_tests)
-  if(NOT FUZZTEST_FUZZING_MODE AND NOT FUZZTEST_COMPATIBILITY_MODE STREQUAL "libfuzzer")
-    gtest_discover_tests(vimfy_property_tests
-      PROPERTIES
-        ENVIRONMENT
-          "FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk"
+function(suppress_fuzztest_header_warnings target_name)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(${target_name}
+      PRIVATE
+        -Wno-non-template-friend
+        -Wno-return-type
     )
   endif()
+endfunction()
 
-  file(GLOB VIMFY_SAFETY_TEST_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/Safety/*.cpp
+if(FUZZTEST_FUZZING_MODE AND COMMAND fuzztest_setup_fuzzing_flags)
+  fuzztest_setup_fuzzing_flags()
+endif()
+
+file(GLOB VIMFY_PROPERTY_TEST_SOURCES CONFIGURE_DEPENDS
+  ${CMAKE_CURRENT_SOURCE_DIR}/Property/*.cpp
+)
+
+add_executable(vimfy_property_tests
+  ${VIMFY_PROPERTY_TEST_SOURCES}
+)
+
+target_link_libraries(vimfy_property_tests
+  PRIVATE
+    test_utils
+)
+
+link_fuzztest(vimfy_property_tests)
+suppress_fuzztest_header_warnings(vimfy_property_tests)
+if(NOT FUZZTEST_FUZZING_MODE AND NOT FUZZTEST_COMPATIBILITY_MODE STREQUAL "libfuzzer")
+  gtest_discover_tests(vimfy_property_tests
+    PROPERTIES
+      ENVIRONMENT
+        "FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk"
   )
+endif()
 
-  add_executable(vimfy_safety_tests
-    ${VIMFY_SAFETY_TEST_SOURCES}
-    ${VIMFY_LUA_PAYLOAD_SOURCE}
+file(GLOB VIMFY_SAFETY_TEST_SOURCES CONFIGURE_DEPENDS
+  ${CMAKE_CURRENT_SOURCE_DIR}/Safety/*.cpp
+)
+
+add_executable(vimfy_safety_tests
+  ${VIMFY_SAFETY_TEST_SOURCES}
+  ${VIMFY_LUA_PAYLOAD_SOURCE}
+)
+
+target_link_libraries(vimfy_safety_tests
+  PRIVATE
+    vimfy_core
+)
+
+link_fuzztest(vimfy_safety_tests)
+suppress_fuzztest_header_warnings(vimfy_safety_tests)
+if(NOT FUZZTEST_FUZZING_MODE AND NOT FUZZTEST_COMPATIBILITY_MODE STREQUAL "libfuzzer")
+  gtest_discover_tests(vimfy_safety_tests
+    PROPERTIES
+      ENVIRONMENT
+        "FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk"
   )
-
-  target_link_libraries(vimfy_safety_tests
-    PRIVATE
-      vimfy_core
-  )
-
-  link_fuzztest(vimfy_safety_tests)
-  suppress_fuzztest_header_warnings(vimfy_safety_tests)
-  if(NOT FUZZTEST_FUZZING_MODE AND NOT FUZZTEST_COMPATIBILITY_MODE STREQUAL "libfuzzer")
-    gtest_discover_tests(vimfy_safety_tests
-      PROPERTIES
-        ENVIRONMENT
-          "FUZZTEST_PRNG_SEED=OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk"
-    )
-  endif()
 endif()
 
 # Build target for the fast correctness surface. Running still goes through
@@ -231,15 +224,10 @@ endif()
 set(VIMFY_FAST_TEST_TARGETS
   vimfy_unit_tests
   vimfy_approval_tests
+  vimfy_property_tests
+  vimfy_safety_tests
   vimficiency
 )
-
-if(VIMF_ENABLE_FUZZTEST)
-  list(APPEND VIMFY_FAST_TEST_TARGETS
-    vimfy_property_tests
-    vimfy_safety_tests
-  )
-endif()
 
 add_custom_target(vimfy_tests
   DEPENDS ${VIMFY_FAST_TEST_TARGETS}

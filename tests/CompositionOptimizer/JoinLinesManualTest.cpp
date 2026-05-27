@@ -1,8 +1,18 @@
 #include "CompositionOptimizer/ManualTestHelpers.h"
 
+#include "Optimizer/CompositionOptimizer/PlannedEditArtifacts.h"
+
 using namespace std;
 
 namespace {
+
+DiffState makeWholeBufferDiff(const Lines& initial, const Lines& goal) {
+  CursorPos begin(0, 0);
+  CursorPos end = initial.endPos();
+  return DiffState(
+      begin, end, initial.flatten(), goal.flatten(),
+      TransformBoundary(initial, begin, end));
+}
 
 TEST_F(CompositionOptimizer_ManualTest, JoinLinesExact) {
   // J alone, no residual: two lines joined with space
@@ -58,6 +68,29 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesWithResidual) {
   EXPECT_TRUE(hasJ) << "Expected at least one result with J";
 }
 
+TEST_F(CompositionOptimizer_ManualTest, JoinPlanStartsWithBoundaryJoin) {
+  Lines initial = {"aaa", "xxx", "ccc"};
+  Lines goal = {"aaa bbb ccc"};
+  DiffState diff = makeWholeBufferDiff(initial, goal);
+
+  auto plan = computeJoinPlanForDiff(diff, initial, params, config);
+
+  ASSERT_TRUE(plan.has_value());
+  ASSERT_FALSE(plan->sequence.empty());
+  EXPECT_TRUE(plan->sequence.view().starts_with("J"));
+  EXPECT_EQ(plan->entryLine, 0);
+}
+
+TEST_F(CompositionOptimizer_ManualTest, JoinPlanSkipsResidualBeforeFirstJoin) {
+  Lines initial = {"old", "aaa", "bbb"};
+  Lines goal = {"new", "aaa bbb"};
+  DiffState diff = makeWholeBufferDiff(initial, goal);
+
+  auto plan = computeJoinPlanForDiff(diff, initial, params, config);
+
+  EXPECT_FALSE(plan.has_value());
+}
+
 TEST_F(CompositionOptimizer_ManualTest, JoinResidualKeepsSentenceContext) {
   Lines initial = {"a bc", "bec .", "aaca", ".e.c cbf"};
   Lines goal = {"a bc", "bec .aacac"};
@@ -69,6 +102,28 @@ TEST_F(CompositionOptimizer_ManualTest, JoinResidualKeepsSentenceContext) {
   expectHasValidResults(
       res.getResults(), initial, initialPos, goal,
       "join residual keeps context");
+}
+
+TEST_F(CompositionOptimizer_ManualTest, JoinPlanEntryLineIsColumnInsensitive) {
+  Lines initial = {"aaa", "xxx", "ccc"};
+  Lines goal = {"aaa bbb ccc"};
+  CursorPos initialPos(0, 2);
+  CursorPos goalPos = goal.lastPos();
+
+  CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
+
+  expectHasValidResults(
+      res.getResults(), initial, initialPos, goal,
+      "join residual from nonzero column");
+
+  bool hasLeadingJ = false;
+  for (const auto& r : res.getResults()) {
+    if (r.getSequence().view().starts_with("J")) {
+      hasLeadingJ = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(hasLeadingJ) << "Expected a result starting with J";
 }
 
 TEST_F(CompositionOptimizer_ManualTest, JoinLinesPartialJoin) {
@@ -90,17 +145,17 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesPartialJoin) {
   EXPECT_TRUE(foundJ) << "Expected a result containing J";
 }
 
-TEST_F(CompositionOptimizer_ManualTest, JoinLinesNoViable) {
-  // Target has MORE lines than source — J can't help, should still produce results
-  Lines initial = {"hello world"};
-  Lines goal = {"hello", "world"};
-  CursorPos initialPos(0, 0);
-  CursorPos goalPos = goal.lastPos();
+TEST_F(CompositionOptimizer_ManualTest, PureDeletionDoesNotKeepHiddenContextPlaceholder) {
+  Lines initial = {"", "~", " "};
+  Lines goal = {"", ""};
+  CursorPos initialPos(2, 0);
+  CursorPos goalPos(1, 0);
 
-  CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
-  // Just verify results exist; oracle verification skipped due to pre-existing
-  // newline-insertion bugs unrelated to J plans
-  EXPECT_FALSE(res.getResults().empty());
+  CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos, params);
+
+  expectHasValidResults(
+      res.getResults(), initial, initialPos, goal,
+      "pure deletion with hidden line above");
 }
 
 }  // namespace

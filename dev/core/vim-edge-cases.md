@@ -12,10 +12,10 @@ When `}` lands at col 0 (a blank-line separator):
 
 | Operator | pos.col == 0 | pos.col > 0 | EOF (last non-blank line) |
 |----------|-------------|-------------|--------------------------|
-| `d}` | Linewise: delete lines `[pos.line, goalPos.line-1]` | Characterwise: back up to `(goalPos.line-1, lastCol)` | Characterwise: inclusive through `(lastLine, lastCol)` |
-| `c}` | Linewise change: replace affected lines with one autoindented insert line | Characterwise if content before cursor must be preserved | Same as d} but enter Insert |
+| `d}` | Linewise: delete lines `[pos.line, goalPos.line-1]` | Characterwise if content before cursor must be preserved | Linewise when only blank prefix precedes cursor; otherwise characterwise through `(lastLine, lastCol)` |
+| `c}` | Linewise change: replace affected lines with one autoindented insert line | Characterwise if content before cursor must be preserved | Characterwise through `(lastLine, lastCol)` |
 
-**Why `d}` with `pos.col > 0` is also characterwise:** The linewise conversion only fires when the start position is at or before the first non-blank. With `pos.col > 0`, there's content before the cursor on the start line that must be preserved, so Vim falls through to characterwise with the backed-up endpoint.
+**Why `d}` with `pos.col > 0` can still be linewise:** The linewise conversion fires when the prefix before the cursor is only blank. With real content before the cursor, Vim must preserve that content and falls through to characterwise with the backed-up or EOF endpoint.
 
 **Code:** `EditInterpreter.cpp` handles `c`'s linewise replacement via `tryApplyExclusiveLinewiseChange`; backed-up and delete cases use `VimCore::resolveExclusiveDeleteRange`.
 

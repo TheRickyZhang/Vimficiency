@@ -89,6 +89,12 @@ CharRange wordTextObjectRange(CursorPos cursor,
                               bool isBigWord,
                               WordBoundaryContext boundary = {});
 
+CharRange wordTextObjectChangeRange(CursorPos cursor,
+                                    const Lines& lines,
+                                    WordTextObjectKind kind,
+                                    bool isBigWord,
+                                    WordBoundaryContext boundary = {});
+
 CharRange quoteTextObjectRange(CursorPos cursor,
                                const Lines& lines,
                                bool isInner,

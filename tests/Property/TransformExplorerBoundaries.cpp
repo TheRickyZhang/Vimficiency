@@ -3,8 +3,9 @@
 // prefix/suffix text, and every safe unbounded structural command should remain
 // available when a boundary is applied.
 
-#include <cstdint>
+#include <algorithm>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -19,16 +20,18 @@
 #include "Optimizer/TransformOptimizer/TransformExplorer.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
 #include "Optimizer/TransformOptimizer/TransformState.h"
+#include "Property/PropertyDomains.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 #include "Utils/NeovimOracle.h"
-#include "Property/PropertyTestUtils.h"
-#include "Utils/RandomBufferHelpers.h"
-#include "Utils/RandomGeneration.h"
 
 using namespace std;
 
 namespace {
+
+int clampedIndex(int value, int size) {
+  return std::clamp(value, 0, size - 1);
+}
 
 struct BoundaryCase {
   Lines fullBuffer;
@@ -40,6 +43,15 @@ struct BoundaryCase {
   CursorPos cursor;
   string protectedPrefix;
   string protectedSuffix;
+};
+
+struct BoundaryCaseSpec {
+  vector<string> editRegion;
+  vector<string> linesAbove;
+  vector<string> linesBelow;
+  string prefix;
+  string suffix;
+  int cursorIndex;
 };
 
 // Full-buffer byte offset for a normal-mode cursor position. Newlines count
@@ -82,74 +94,99 @@ bool dependsOnHiddenSentenceOrParagraphContext(string_view command) {
          command.find('}') != string_view::npos;
 }
 
-void appendRandomLines(Lines& lines, int count) {
-  for (int i = 0; i < count; i++) {
-    lines.push_back(randomLine(RandomGen::range(3, 8)));
+void appendRawLines(Lines& lines, const vector<string>& rawLines) {
+  for (const string& line : rawLines) {
+    lines.push_back(line);
   }
 }
 
-string guardText(string_view alphabet, int len) {
-  return string(alphabet.substr(0, static_cast<size_t>(len)));
+bool hasEditableText(const vector<string>& lines) {
+  return any_of(lines.begin(), lines.end(),
+                [](const string& line) { return !line.empty(); });
 }
 
-// Builds a full buffer, an embedded edit region, and the effective view that
-// TransformExplorer actually sees: prefix + editRegion + suffix.
-BoundaryCase generateBoundaryCase(int editLineCount) {
-  BoundaryCase test;
-
-  int linesAbove = RandomGen::range(0, 2);
-  int linesBelow = RandomGen::range(0, 2);
-  int prefixLen = RandomGen::range(0, 3);
-  int suffixLen = RandomGen::range(0, 3);
-
-  test.editRegion = randomLines(editLineCount, 3, 8);
-
-  appendRandomLines(test.fullBuffer, linesAbove);
-
-  string prefix = guardText("XYZ", prefixLen);
-  string suffix = guardText("UVW", suffixLen);
-  for (int line = 0; line < editLineCount; line++) {
-    string fullLine = test.editRegion[line];
-    if (line == 0) fullLine.insert(0, prefix);
-    if (line == editLineCount - 1) fullLine += suffix;
-    test.fullBuffer.push_back(fullLine);
-  }
-
-  appendRandomLines(test.fullBuffer, linesBelow);
-
-  test.begin = CursorPos(linesAbove, prefixLen);
-  test.end = CursorPos(
-      linesAbove + editLineCount - 1,
-      static_cast<int>(test.fullBuffer[linesAbove + editLineCount - 1].size()) -
-          suffixLen);
-  test.boundary = TransformBoundary(test.fullBuffer, test.begin, test.end);
-  test.effectiveLines = test.boundary.withBoundary(test.editRegion);
-
+VimCore::WordBoundaryContext wordBoundaryContext(const BoundaryCase& test) {
   VimCore::WordBoundaryContext boundaryContext;
   boundaryContext.leftColOffset = test.boundary.leftColOffset();
   boundaryContext.rightColOffset = test.boundary.rightColOffset();
   boundaryContext.hasLinesAbove = test.boundary.hasLinesAbove();
   boundaryContext.hasLinesBelow = test.boundary.hasLinesBelow();
+  return boundaryContext;
+}
 
-  int cursorLine = RandomGen::range(0, test.effectiveLines.lastLine());
-  int contentStart = boundaryContext.contentStartCol(cursorLine);
-  int contentEnd = boundaryContext.effectiveLineEnd(
-      test.effectiveLines, cursorLine,
-      cursorLine == test.effectiveLines.lastLine());
-  if (contentEnd <= contentStart) {
-    cursorLine = 0;
-    contentStart = boundaryContext.contentStartCol(cursorLine);
-    contentEnd = boundaryContext.effectiveLineEnd(
-        test.effectiveLines, cursorLine,
-        cursorLine == test.effectiveLines.lastLine());
+vector<CursorPos> editableCursorPositions(const BoundaryCase& test) {
+  VimCore::WordBoundaryContext boundaryContext = wordBoundaryContext(test);
+  vector<CursorPos> positions;
+  for (int line = 0; line <= test.effectiveLines.lastLine(); line++) {
+    int contentStart = boundaryContext.contentStartCol(line);
+    int contentEnd = boundaryContext.effectiveLineEnd(
+        test.effectiveLines, line, line == test.effectiveLines.lastLine());
+    for (int col = contentStart; col < contentEnd; col++) {
+      positions.emplace_back(line, col);
+    }
   }
-  test.cursor = CursorPos(cursorLine, RandomGen::range(contentStart, contentEnd - 1));
+  if (positions.empty()) {
+    positions.emplace_back(0, 0);
+  }
+  return positions;
+}
+
+BoundaryCase buildBoundaryCase(const BoundaryCaseSpec& spec) {
+  BoundaryCase test;
+  test.editRegion = Lines(spec.editRegion);
+
+  appendRawLines(test.fullBuffer, spec.linesAbove);
+
+  for (int line = 0; line <= test.editRegion.lastLine(); line++) {
+    string fullLine = test.editRegion[line];
+    if (line == 0) fullLine.insert(0, spec.prefix);
+    if (line == test.editRegion.lastLine()) fullLine += spec.suffix;
+    test.fullBuffer.push_back(fullLine);
+  }
+
+  appendRawLines(test.fullBuffer, spec.linesBelow);
+
+  int linesAbove = static_cast<int>(spec.linesAbove.size());
+  int suffixLen = static_cast<int>(spec.suffix.size());
+  int lastEditFullLine = linesAbove + test.editRegion.lastLine();
+  test.begin = CursorPos(linesAbove, static_cast<int>(spec.prefix.size()));
+  test.end = CursorPos(
+      lastEditFullLine,
+      static_cast<int>(test.fullBuffer[lastEditFullLine].size()) - suffixLen);
+  test.boundary = TransformBoundary(test.fullBuffer, test.begin, test.end);
+  test.effectiveLines = test.boundary.withBoundary(test.editRegion);
+
+  vector<CursorPos> positions = editableCursorPositions(test);
+  test.cursor = positions[clampedIndex(
+      spec.cursorIndex, static_cast<int>(positions.size()))];
 
   string flat = test.fullBuffer.flatten();
   test.protectedPrefix = flat.substr(0, flatOffset(test.fullBuffer, test.begin));
   test.protectedSuffix = flat.substr(flatOffset(test.fullBuffer, test.end));
 
   return test;
+}
+
+string formatSpec(const BoundaryCaseSpec& spec) {
+  ostringstream out;
+  out << "rawCursorIndex=" << spec.cursorIndex
+      << " prefix='" << spec.prefix << "'"
+      << " suffix='" << spec.suffix << "'";
+  return out.str();
+}
+
+auto BoundaryCaseSpecDomain() {
+  return fuzztest::StructOf<BoundaryCaseSpec>(
+      fuzztest::Filter(
+          hasEditableText,
+          fuzztest::VectorOf(fuzztest::InRegexp("[abcdef .,]{0,8}"))
+              .WithMinSize(1)
+              .WithMaxSize(4)),
+      fuzztest::VectorOf(fuzztest::InRegexp("[abcdef .,]{0,8}")).WithMaxSize(2),
+      fuzztest::VectorOf(fuzztest::InRegexp("[abcdef .,]{0,8}")).WithMaxSize(2),
+      fuzztest::InRegexp("[XYZ]{0,3}"),
+      fuzztest::InRegexp("[UVW]{0,3}"),
+      fuzztest::InRange<int>(0, 96));
 }
 
 // Translate an effective-lines cursor into full-buffer coordinates. Prefix is
@@ -199,7 +236,7 @@ vector<string> collectExplorerCommands(const BoundaryCase& test, bool bounded = 
   auto record = [&](const auto&, const SequenceBinding& cmd) {
     commands.insert(commandText(cmd));
   };
-  auto recordLinewise = [&](LineRange, const SequenceBinding& cmd) {
+  auto recordCountedLinewise = [&](LineRange, const SequenceBinding& cmd) {
     commands.insert(commandText(cmd));
   };
   auto recordJoin = [&](bool, const SequenceBinding& cmd) {
@@ -210,65 +247,65 @@ vector<string> collectExplorerCommands(const BoundaryCase& test, bool bounded = 
       explorer, state, test.effectiveLines, test.cursor,
       boundary.leftColOffset(), boundary.rightColOffset(),
       params.minPrefixCount,
-      record, recordLinewise, recordJoin, recordLinewise, recordJoin);
+      record, recordJoin, recordCountedLinewise, recordJoin);
 
   return vector<string>(commands.begin(), commands.end());
 }
 
 class TransformExplorerBoundaryPropertyTest {
  public:
-  void EmittedDeletesPreserveBoundaries(uint32_t seed) {
-    runSeedDriverCases(seed, 10, [&] {
-      BoundaryCase test = generateBoundaryCase(RandomGen::range(1, 4));
-      vector<string> commands = collectExplorerCommands(test);
-      ASSERT_FALSE(commands.empty());
+  void EmittedDeletesPreserveBoundaries(const BoundaryCaseSpec& spec) {
+    BoundaryCase test = buildBoundaryCase(spec);
+    vector<string> commands = collectExplorerCommands(test);
+    if (commands.empty()) return;
 
-      for (const string& command : commands) {
-        SCOPED_TRACE(::testing::Message()
-                     << "command='" << command << "'"
-                     << " cursor=" << test.cursor
-                     << " fullCursor=" << fullCursor(test)
-                     << "\nfullBuffer=" << test.fullBuffer
-                     << "\neffectiveLines=" << test.effectiveLines);
-        SimulationResult result = oracle_.simulate(
-            test.fullBuffer, fullCursor(test).line, fullCursor(test).col, command);
-        EXPECT_EQ(result.mode, Mode::Normal);
-        EXPECT_TRUE(preservesBoundary(test, result.lines));
-      }
-    });
+    for (const string& command : commands) {
+      SCOPED_TRACE(::testing::Message()
+                   << "command='" << command << "'"
+                   << " cursor=" << test.cursor
+                   << " fullCursor=" << fullCursor(test)
+                   << " " << formatSpec(spec)
+                   << "\nfullBuffer=" << test.fullBuffer
+                   << "\neditRegion=" << test.editRegion
+                   << "\neffectiveLines=" << test.effectiveLines);
+      SimulationResult result = oracle_.simulate(
+          test.fullBuffer, fullCursor(test).line, fullCursor(test).col, command);
+      EXPECT_EQ(result.mode, Mode::Normal);
+      EXPECT_TRUE(preservesBoundary(test, result.lines));
+    }
   }
 
   // Completeness check for local commands. Sentence/paragraph operators can be
   // safe in the full buffer while still ambiguous from slice-local context.
-  void SafeLocalUnboundedDeletesRemainAvailable(uint32_t seed) {
-    runSeedDriverCases(seed, 8, [&] {
-      BoundaryCase test = generateBoundaryCase(RandomGen::range(1, 4));
-      vector<string> emitted = collectExplorerCommands(test);
-      set<string> emittedSet(emitted.begin(), emitted.end());
-      vector<string> unbounded = collectExplorerCommands(test, /*bounded=*/false);
+  void SafeLocalUnboundedDeletesRemainAvailable(const BoundaryCaseSpec& spec) {
+    BoundaryCase test = buildBoundaryCase(spec);
+    vector<string> emitted = collectExplorerCommands(test);
+    set<string> emittedSet(emitted.begin(), emitted.end());
+    vector<string> unbounded = collectExplorerCommands(test, /*bounded=*/false);
 
-      for (const string& command : unbounded) {
-        if (emittedSet.contains(command)) continue;
-        if (dependsOnHiddenSentenceOrParagraphContext(command)) continue;
-        SimulationResult result = oracle_.simulate(
-            test.fullBuffer, fullCursor(test).line, fullCursor(test).col, command);
-        bool changed = result.lines != test.fullBuffer;
-        bool safe = changed &&
-                    result.mode == Mode::Normal &&
-                    preservesBoundary(test, result.lines);
-        if (!safe) continue;
+    for (const string& command : unbounded) {
+      if (emittedSet.contains(command)) continue;
+      if (dependsOnHiddenSentenceOrParagraphContext(command)) continue;
+      SimulationResult result = oracle_.simulate(
+          test.fullBuffer, fullCursor(test).line, fullCursor(test).col, command);
+      bool changed = result.lines != test.fullBuffer;
+      bool safe = changed &&
+                  result.mode == Mode::Normal &&
+                  preservesBoundary(test, result.lines);
+      if (!safe) continue;
 
-        SCOPED_TRACE(::testing::Message()
-                     << "boundary-pruned safe command='" << command << "'"
-                     << " cursor=" << test.cursor
-                     << " fullCursor=" << fullCursor(test)
-                     << "\nfullBuffer=" << test.fullBuffer
-                     << "\neffectiveLines=" << test.effectiveLines
-                     << "\nemitted=" << formatCommands(emitted)
-                     << "\nunbounded=" << formatCommands(unbounded));
-        EXPECT_TRUE(emittedSet.contains(command));
-      }
-    });
+      SCOPED_TRACE(::testing::Message()
+                   << "boundary-pruned safe command='" << command << "'"
+                   << " cursor=" << test.cursor
+                   << " fullCursor=" << fullCursor(test)
+                   << " " << formatSpec(spec)
+                   << "\nfullBuffer=" << test.fullBuffer
+                   << "\neditRegion=" << test.editRegion
+                   << "\neffectiveLines=" << test.effectiveLines
+                   << "\nemitted=" << formatCommands(emitted)
+                   << "\nunbounded=" << formatCommands(unbounded));
+      EXPECT_TRUE(emittedSet.contains(command));
+    }
   }
 
  private:
@@ -278,7 +315,7 @@ class TransformExplorerBoundaryPropertyTest {
 }  // namespace
 
 FUZZ_TEST_F(TransformExplorerBoundaryPropertyTest, EmittedDeletesPreserveBoundaries)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));
+    .WithDomains(BoundaryCaseSpecDomain());
 
 FUZZ_TEST_F(TransformExplorerBoundaryPropertyTest, SafeLocalUnboundedDeletesRemainAvailable)
-    .WithDomains(fuzztest::InRange<uint32_t>(1, 1000000));
+    .WithDomains(BoundaryCaseSpecDomain());

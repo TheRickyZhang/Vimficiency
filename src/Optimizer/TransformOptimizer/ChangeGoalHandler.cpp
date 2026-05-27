@@ -53,15 +53,8 @@ struct LinewiseChangeShape {
 
 LinewiseChangeShape linewiseChangeShapeForCommand(
     const TransformState& base,
-    LineRange range,
-    string_view baseCmd) {
+    LineRange range) {
   int rangeLineCount = range.endLine - range.beginLine;
-  // `c}` at EOF is characterwise: preserved lines above the cursor remain
-  // above the insert line, so only those line breaks can need `<BS>`.
-  if (baseCmd == "d}" &&
-      range.endLine == static_cast<int>(base.getLines().size())) {
-    return {range.beginLine + 1, range.beginLine};
-  }
   return {
       static_cast<int>(base.getLines().size()) - rangeLineCount + 1,
       range.beginLine};
@@ -107,6 +100,15 @@ bool ChangeGoalHandler::isGoalReached(const Lines& lines) const {
     if (!lines[i].empty()) return false;
   }
   return true;
+}
+
+bool ChangeGoalHandler::isGoalReached(const TransformEditorState& state) const {
+  const Lines& lines = state.getLines();
+  if (!isGoalReached(lines)) return false;
+  if (lines.size() != 1) return true;
+
+  CursorPos pos = state.getPos();
+  return pos.line == 0 && pos.col == static_cast<int>(pre.size());
 }
 
 bool ChangeGoalHandler::isDotRepeat(const TransformState& base, const SequenceBinding& sourceCmd) const {
@@ -224,22 +226,9 @@ CursorPos ChangeGoalHandler::seedPositionForStart(int startIndex, const Lines& i
 KeyedSequence ChangeGoalHandler::buildChangePrefix(
     const SequenceBinding& sourceCmd,
     const Lines& postDelLines, const CursorPos& postDelPos,
-    const Lines& preDelLines, const CharRange& range) const {
+    const Lines&, const CharRange&) const {
   int totalLines = static_cast<int>(postDelLines.size());
   int cursorLine = postDelPos.line;
-
-  bool rangeEndsAtLineEnd = range.isValid()
-      && !range.isEmpty()
-      && range.end.col >= static_cast<int>(preDelLines[range.end.line].size());
-
-  if (range.spansMultiple() &&
-      range.begin.col == 0 &&
-      rangeEndsAtLineEnd) {
-    if (preDelLines.size() - range.size() > 0) {
-      totalLines++;
-      cursorLine++;
-    }
-  }
 
   KeyedSequence prefix = deleteToChangeChar(sourceCmd);
   prefix += buildCollapseSequence(totalLines, cursorLine);
@@ -249,17 +238,9 @@ KeyedSequence ChangeGoalHandler::buildChangePrefix(
 KeyedSequence ChangeGoalHandler::buildChangePrefix(
     const SequenceBinding& sourceCmd,
     const Lines& postDelLines, const CursorPos& postDelPos,
-    const Lines& preDelLines, const CharLineRange& range) const {
+    const Lines&, const CharLineRange&) const {
   int totalLines = static_cast<int>(postDelLines.size());
   int cursorLine = postDelPos.line;
-
-  if (range.begin.col == 0) {
-    int removedLines = range.lineCountTouched();
-    if (static_cast<int>(preDelLines.size()) - removedLines > 0) {
-      totalLines++;
-      cursorLine++;
-    }
-  }
 
   KeyedSequence prefix = deleteToChangeChar(sourceCmd);
   prefix += buildCollapseSequence(totalLines, cursorLine);
@@ -269,18 +250,9 @@ KeyedSequence ChangeGoalHandler::buildChangePrefix(
 KeyedSequence ChangeGoalHandler::buildChangePrefix(
     const SequenceBinding& sourceCmd,
     const Lines& postDelLines, const CursorPos& postDelPos,
-    const Lines& preDelLines, const LineCharRange& range) const {
+    const Lines&, const LineCharRange&) const {
   int totalLines = static_cast<int>(postDelLines.size());
   int cursorLine = postDelPos.line;
-
-  bool rangeEndsAtLineEnd =
-      range.end.col >= static_cast<int>(preDelLines[range.end.line].size());
-  if (range.end.line > range.beginLine &&
-      rangeEndsAtLineEnd &&
-      static_cast<int>(preDelLines.size()) - range.lineCountTouched() > 0) {
-    totalLines++;
-    cursorLine++;
-  }
 
   KeyedSequence prefix = deleteToChangeChar(sourceCmd);
   prefix += buildCollapseSequence(totalLines, cursorLine);
@@ -456,6 +428,21 @@ GoalStates ChangeGoalHandler::emitEditGoal(
   return result;
 }
 
+Result ChangeGoalHandler::resultFromClearedGoal(const TransformState& base) const {
+  KeyedSequence completion = KeyedSequence::i;
+  completion += buildCollapseSequence(
+      static_cast<int>(base.getLines().size()), base.getPos().line);
+  completion += typed;
+
+  RunningEffort completionEffort(completion.keys, config);
+  RunningEffort totalEffort =
+      RunningEffort::merge(base.getRunningEffort(), completionEffort);
+
+  Sequence seq(base.getSeq());
+  seq.append(completion.seq.view());
+  return Result(seq, totalEffort.getEffort(config));
+}
+
 GoalStates ChangeGoalHandler::emitLinewiseChangeGoal(
     const TransformEditorState& afterDel, const TransformState& base,
     const SequenceBinding& sourceCmd, int line,
@@ -507,15 +494,11 @@ GoalStates ChangeGoalHandler::onLinewiseGoal(
   if constexpr (VimOptions::autoindent()) {
     applyAutoindent = (changeCmd.seq.view() != "0C");
   }
-  bool paragraphChangeAtEof =
-      sourceCmd.base.seq.view() == "d}" &&
-      range.endLine == static_cast<int>(base.getLines().size());
   LinewiseChangeShape shape =
-      linewiseChangeShapeForCommand(base, range, sourceCmd.base.seq.view());
-  bool collapseLines = paragraphChangeAtEof ? line > 0 : true;
+      linewiseChangeShapeForCommand(base, range);
   return emitLinewiseChangeGoal(afterDel, base, sourceCmd, shape.cursorLine,
                                 shape.lineCount, changeCmd, applyAutoindent,
-                                collapseLines);
+                                true);
 }
 
 GoalStates ChangeGoalHandler::onCountedLinewiseGoal(
@@ -523,14 +506,11 @@ GoalStates ChangeGoalHandler::onCountedLinewiseGoal(
     LineRange range, const SequenceBinding& sourceCmd) {
   int line = range.beginLine;
   KeyedSequence changeCmd = deleteToChangeLine(sourceCmd, base.getLines()[line]);
-  bool paragraphChangeAtEof =
-      sourceCmd.base.seq.view() == "d}" &&
-      range.endLine == static_cast<int>(base.getLines().size());
   LinewiseChangeShape shape =
-      linewiseChangeShapeForCommand(base, range, sourceCmd.base.seq.view());
+      linewiseChangeShapeForCommand(base, range);
   return emitLinewiseChangeGoal(
       afterDel, base, sourceCmd, shape.cursorLine, shape.lineCount, changeCmd, true,
-      paragraphChangeAtEof ? line > 0 : true);
+      true);
 }
 
 GoalStates ChangeGoalHandler::onJoinGoal(

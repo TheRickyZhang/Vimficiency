@@ -46,11 +46,11 @@ When a diff has more source lines than target lines, the `J` command can collaps
 
 ### Why J lives at the composition level
 
-The TransformOptimizer cannot find J sequences for two structural reasons:
-1. **Boundary constraints**: In a diff like `\n` -> ` ` with prefix "aaa" and suffix "bbb", boundary positions prevent J from firing -- it operates on full lines, not bounded regions.
-2. **Goal mismatch**: J transforms content (strips leading whitespace, adds space), but TransformOptimizer's "delete then type" paradigm expects pure deletions followed by insertions.
+TransformOptimizer already searches normal in-diff `J`, `gJ`, and counted join edits. A composition-level join plan exists only for a boundary-crossing `J` that must be executed from outside the diff-local transform start positions.
 
-At the composition level, J works naturally: the cursor operates on the full intermediate buffer without boundary constraints.
+Example: changing `aaa\nbbb` to `aaa bbb` can produce the scoped diff `\nbbb` -> ` bbb`. The physical `J` command must start on the `aaa` line, not inside the scoped deleted text. Composition owns that activation point because it operates on the full intermediate buffer.
+
+Invariant: every `JoinPlan` sequence starts with `J`. If the useful sequence would start with a residual edit, movement, or any non-join action, it is not a composition join plan; normal transform/composition search owns it.
 
 ### Algorithm: Partition -> J per Group -> TransformOptimizer Residual
 
@@ -58,8 +58,9 @@ For a diff with N source lines -> M target lines (N > M):
 
 1. **Partition** N source lines into M contiguous groups, where group k maps to target line k
 2. **Match quality check** -- if joined group content is too different from target (common prefix+suffix ratio < 0.3), skip J for this diff
-3. **Per group**: simulate J joins using `VimCore::joinLines` semantics, then run TransformOptimizer on the single-line residual (joined line vs target line)
-4. **Assemble**: concatenate all groups' sequences (J's + residual + `j` between groups) into one `JoinPlan`
+3. **Entry gate**: skip the plan unless the first group needs at least one `J`
+4. **Per group**: simulate J joins using `VimCore::joinLines` semantics, then run TransformOptimizer on the single-line residual (joined line vs target line)
+5. **Assemble**: concatenate all groups' sequences (J's + residual + `j` between groups) into one `JoinPlan`
 
 **Partition finding:**
 - M=1 (most common): trivial -- all N lines form one group
@@ -69,12 +70,14 @@ For a diff with N source lines -> M target lines (N > M):
 
 ```cpp
 struct JoinPlan {
-  Sequence sequence;   // Full assembled sequence (J's + residuals + j's)
-  Position goalPos;    // Cursor position after plan executes
-  double effort;       // Pre-computed effort
-  int entryLine;       // Cursor must be on this line (any column)
+  Sequence sequence;
+  CursorPos goalPos;
+  double effort;
+  int entryLine;
 };
 ```
+
+Because the first action is `J`, activation is column-insensitive: Vim joins the cursor line with the next line and lands at the join point regardless of the starting column on `entryLine`.
 
 ### Integration into A* search
 
