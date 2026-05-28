@@ -134,6 +134,7 @@ function M.normalize_auto_suggest(raw, defaults)
     idle = true,
     keys = true,
     cost = true,
+    default_cost = true,
     cooldown_ms = true,
   })
 
@@ -153,8 +154,15 @@ function M.normalize_auto_suggest(raw, defaults)
     trigger_count = trigger_count + 1
   end
 
-  if trigger_count == 0 then
-    error("auto_suggest must configure at least one trigger", 0)
+  -- Fallback gate for on-demand `:Vimfy suggest on`; always present from
+  -- defaults. Same shape as a cost trigger, but it is not a startup trigger,
+  -- so it does not satisfy the requirement below.
+  normalize_cost_trigger("auto_suggest.default_cost", merged.default_cost)
+
+  if trigger_count == 0 and raw.default_cost == nil then
+    error("auto_suggest must configure at least one trigger (idle/keys/cost). " ..
+      "For on-demand use, run `:Vimfy suggest on` with no block; to tune that " ..
+      "gate, set auto_suggest.default_cost.", 0)
   end
 
   expect_non_negative_number("auto_suggest.cooldown_ms", merged.cooldown_ms)

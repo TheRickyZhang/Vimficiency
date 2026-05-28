@@ -5,7 +5,6 @@ local M = {}
 
 local config        = require("vimficiency.config")
 local end_trigger   = require("vimficiency.capture.end_trigger")
-local result_view   = require("vimficiency.session.result_view")
 local session       = require("vimficiency.session")
 local session_store = require("vimficiency.session.store")
 
@@ -31,14 +30,22 @@ local function fingerprint_result(result)
     result.user_seq or "", opt_str)
 end
 
+-- Compact, nonintrusive toast. Full breakdown is one command away via the `@`
+-- selector (the record is already finished + stored at this point). `id` lets a
+-- notifier (snacks/nvim-notify) replace the prior suggestion in place instead of
+-- stacking; plain `vim.notify` ignores it.
 ---@param summary VF.Session.Summary
 local function render_suggestion(summary)
   local result = summary.result
   if not result then return end
+  local optimal = (result.optimal_results or {})[1]
+  if not optimal then return end
 
   vim.notify(
-    result_view.format_message("vimfy suggest", result),
-    vim.log.levels.INFO)
+    string.format("%.1f → %.1f   %s\n:Vimfy explore @   ·   save @ <name>",
+      result.user_cost or 0, optimal.cost or 0, optimal.seq or ""),
+    vim.log.levels.INFO,
+    { title = "vimfy suggest", id = "vimfy_suggest" })
 end
 
 --- Shared path for every trigger.
@@ -100,9 +107,10 @@ end
 ---@return boolean counted
 local function fire_cost()
   local cfg = config.auto_suggest
-  if not cfg or not cfg.cost then return false end
-  local m, b = cfg.cost.m, cfg.cost.b
-  return fire_with_window(cfg.cost.window, function(result)
+  if not cfg then return false end
+  local cost = cfg.cost or cfg.default_cost
+  local m, b = cost.m, cost.b
+  return fire_with_window(cost.window, function(result)
     local optimal = (result.optimal_results or {})[1]
     if not optimal then return false end
     local user_cost = result.user_cost or 0
@@ -115,9 +123,10 @@ end
 function M.enable()
   if #disarms > 0 then return false end
   local cfg = config.auto_suggest
-  if not cfg then return false end
+  if not cfg then return false end  -- master off (auto_suggest = false)
 
   local cooldown_ms = cfg.cooldown_ms or 0
+  local has_user_trigger = cfg.idle ~= nil or cfg.keys ~= nil or cfg.cost ~= nil
 
   if cfg.idle then
     local d = end_trigger.arm_idle({
@@ -143,6 +152,19 @@ function M.enable()
     local d = end_trigger.arm_idle({
       name        = SUBSCRIBER_COST,
       idle_ms     = cfg.cost.ms,
+      cooldown_ms = cooldown_ms,
+      on_fire     = fire_cost,
+    })
+    if d then table.insert(disarms, d) end
+  end
+
+  -- Turnkey: no explicit triggers → arm the default cost gate so
+  -- `:Vimfy suggest on` works with zero config. fire_cost falls back to
+  -- cfg.default_cost when cfg.cost is absent.
+  if not has_user_trigger then
+    local d = end_trigger.arm_idle({
+      name        = SUBSCRIBER_COST,
+      idle_ms     = cfg.default_cost.ms,
       cooldown_ms = cooldown_ms,
       on_fire     = fire_cost,
     })

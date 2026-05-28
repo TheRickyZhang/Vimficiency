@@ -30,6 +30,10 @@ local fields = {
   -- Session features
   auto_suggest = {
     cooldown_ms = 5000,
+    -- Fallback cost gate armed by `:Vimfy suggest on` when no idle/keys/cost
+    -- trigger is configured. Tuning it does not auto-enable at startup; only
+    -- an explicit trigger does.
+    default_cost = { m = 1.5, b = 2.0, ms = 1000, window = "3s" },
   },
   watch = false,
 

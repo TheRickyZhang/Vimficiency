@@ -1,10 +1,11 @@
 // tests/Unit/Commands/CountMotionsTest.cpp
 //
-// BufferIndex internals, CountableMovementPair tables, and hard "this count
-// capability exists" backstops for the NavOptimizer. The full ranked
-// recommendation menus for these scenarios are snapshotted in
-// tests/Approval/CountMotionsApprovalTest.cpp; the assertions here only guard
-// against a capability being silently dropped.
+// BufferIndex internals, CountableMovementPair tables, and NavOptimizer
+// count-motion capabilities. The optimizer assertions are membership checks
+// (`contains` a count-prefixed sequence) rather than exact-menu snapshots,
+// because the full ranked menu is not cross-platform deterministic — the result
+// set/ordering of equal-cost alternatives differs across stdlibs (libc++ vs
+// libstdc++). Membership is stable; an approval snapshot is not.
 
 #include <gtest/gtest.h>
 
@@ -70,11 +71,18 @@ TEST(BufferIndexTest, SmallWordLandingsIncludePunctuationRuns) {
 class CountMotionsOptimizerTest : public ::testing::Test {
 protected:
   static Lines wordLine;
+  static Lines multiWordLines;
   static NavContext navContext;
 
   static void SetUpTestSuite() {
     // "one two three four five six seven eight"
     wordLine = {"one two three four five six seven eight"};
+    multiWordLines = {
+      "first second third fourth",
+      "alpha beta gamma delta",
+      "",
+      "after blank paragraph"
+    };
     navContext = NavContext();
   }
 
@@ -96,6 +104,7 @@ protected:
 };
 
 Lines CountMotionsOptimizerTest::wordLine;
+Lines CountMotionsOptimizerTest::multiWordLines;
 NavContext CountMotionsOptimizerTest::navContext(0, 0);
 
 TEST_F(CountMotionsOptimizerTest, CountW_BasicForward) {
@@ -154,6 +163,32 @@ TEST_F(CountMotionsOptimizerTest, CountGe_BackwardToWordEnd) {
 
   // Should find count-prefixed ge (4ge lands at 17)
   EXPECT_TRUE(contains_all(results, {"4ge"})) << "Should find count-prefixed 4ge";
+}
+
+TEST_F(CountMotionsOptimizerTest, CountW_SameLineOnly) {
+  // The COUNT_SEARCHABLE_MOTIONS_LINE should only apply when on same line
+  CursorPos start(0, 0);
+  CursorPos end(1, 6);  // "beta" on line 1
+  string userSeq = "jwww";
+
+  auto results = runOptimizer(multiWordLines, start, end, userSeq);
+
+  // Should still find good results, even though cross-line
+  EXPECT_FALSE(results.empty());
+}
+
+TEST_F(CountMotionsOptimizerTest, CountParagraph_Global) {
+  // Paragraph motions are in GLOBAL, should work across lines
+  CursorPos start(0, 0);
+  CursorPos end(3, 0);  // "after blank paragraph"
+  string userSeq = "}}";
+
+  auto results = runOptimizer(
+    multiWordLines, start, end, userSeq
+  );
+
+  // Should find paragraph-based motions
+  EXPECT_FALSE(results.empty());
 }
 
 TEST_F(CountMotionsOptimizerTest, SmallCount_NotEmitted) {

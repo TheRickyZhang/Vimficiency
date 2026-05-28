@@ -176,6 +176,30 @@ test("validate_auto_suggest: empty table (no triggers) errors loudly", function(
   end)
 end)
 
+test("validate_auto_suggest: default_cost always present and tunable without a trigger", function()
+  with_saved_auto_suggest(function()
+    -- Zero config still yields the fallback gate.
+    config.auto_suggest = config_detail.normalize_auto_suggest(nil, config._defaults.auto_suggest)
+    assert_eq(config.auto_suggest.default_cost.m, 1.5)
+    assert_eq(config.auto_suggest.default_cost.window, "3s")
+
+    -- A partial override is allowed with no trigger and merges over defaults.
+    validate_auto_suggest({ default_cost = { m = 3.0 } })
+    assert_eq(config.auto_suggest.default_cost.m, 3.0)
+    assert_eq(config.auto_suggest.default_cost.b, 2.0,
+      "unset default_cost fields fall back to defaults")
+  end)
+end)
+
+test("validate_auto_suggest: default_cost validates its shape", function()
+  with_saved_auto_suggest(function()
+    assert_error(
+      function() validate_auto_suggest({ default_cost = { m = 0 } }) end,
+      "auto_suggest.default_cost.m", "default_cost is validated like a cost trigger"
+    )
+  end)
+end)
+
 test("validate_auto_suggest: all three triggers coexist", function()
   with_saved_auto_suggest(function()
     validate_auto_suggest({

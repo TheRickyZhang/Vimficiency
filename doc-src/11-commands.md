@@ -21,7 +21,7 @@ title: "Commands reference"
 | `:Vimfy rm <name>`                         | Delete a saved result from disk.                     |
 | `:Vimfy list`                              | Open the interactive session picker (see below).     |
 | `:Vimfy stats`                             | Show lifetime session stats (see below).             |
-| `:Vimfy suggest <on\|off\|toggle>`         | Runtime toggle for auto-suggest (config-driven).     |
+| `:Vimfy suggest <on\|off\|toggle>`         | Runtime toggle for auto-suggest (works with zero config). |
 | `:Vimfy config`                            | Show the current configuration.                      |
 | `:Vimfy reload`                            | Rebuild the C++ library (needs restart).             |
 | `:Vimfy help`                              | Show the command list.                               |

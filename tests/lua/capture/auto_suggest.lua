@@ -241,3 +241,55 @@ test("fire_cost: gate fail finishes the record (consume, not leak)", function()
       "gate failure must still finish the record so next tick doesn't re-analyze it")
   end)
 end)
+
+--------------------------------------------------------------------------------
+-- Turnkey default: `:Vimfy suggest on` with no configured triggers falls back
+-- to the built-in cost gate (DEFAULT_COST = m 1.5, b 2.0).
+--------------------------------------------------------------------------------
+
+-- Mirrors a normalized config: no explicit trigger, but default_cost is always
+-- present (config_detail fills it from defaults).
+local NO_TRIGGERS = {
+  cooldown_ms = 5000,
+  default_cost = { m = 1.5, b = 2.0, ms = 1000, window = "3s" },
+}
+
+test("fire_cost: uses default gate when cfg.cost absent", function()
+  harness({
+    cfg = NO_TRIGGERS,
+    compute = function() return h.fake_result({
+      user_cost = 100,
+      optimal_results = { { seq = "y", cost = 1.0 } },
+    }) end,
+  }, function()
+    assert_eq(fire_cost(), true, "optimizer ran")
+    assert_true(get_last_fp() ~= nil,
+      "100 > 1.5*1+2 = 3.5 → default gate passes")
+  end)
+end)
+
+test("fire_cost: default gate suppresses near-optimal sequences", function()
+  harness({
+    cfg = NO_TRIGGERS,
+    compute = function() return h.fake_result({
+      user_cost = 3,
+      optimal_results = { { seq = "y", cost = 1.0 } },
+    }) end,
+  }, function()
+    assert_eq(fire_cost(), true, "optimizer ran")
+    assert_eq(get_last_fp(), nil,
+      "3 <= 1.5*1+2 = 3.5 → default gate suppresses")
+  end)
+end)
+
+test("enable: turnkey default arms a trigger with no config", function()
+  auto_suggest.disable()  -- clean baseline regardless of prior tests
+  h.with_patch({ { config, "auto_suggest", NO_TRIGGERS } }, function()
+    assert_eq(auto_suggest.is_enabled(), false)
+    assert_eq(auto_suggest.enable(), true,
+      "enable must arm the default cost gate with no configured triggers")
+    assert_eq(auto_suggest.is_enabled(), true)
+    auto_suggest.disable()
+    assert_eq(auto_suggest.is_enabled(), false)
+  end)
+end)

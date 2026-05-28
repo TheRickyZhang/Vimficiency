@@ -1,4 +1,5 @@
 local ffi_core = require("vimficiency.ffi.core")
+local config = require("vimficiency.config")
 local session = require("vimficiency.session")
 local auto_suggest = require("vimficiency.capture.auto_suggest")
 local alias_mod = require("vimficiency.session.alias")
@@ -210,14 +211,14 @@ subcommands.stats = {
 }
 
 subcommands.suggest = {
-  desc = "Control auto-suggest (idle trigger)",
+  desc = "Control auto-suggest (cost-based suggestions)",
   usage = "suggest <on|off|toggle>",
   fn = function(args)
     local action = args[1]
     local function enable_or_warn()
-      if not auto_suggest.is_configured() then
+      if config.auto_suggest == false then
         vim.notify(
-          "auto_suggest has no triggers configured. Add `auto_suggest = { idle = { ms = N, window = 'Ns' } }` or another full trigger to setup{}.",
+          "auto-suggest is turned off in setup{} (auto_suggest = false). Remove that to enable.",
           vim.log.levels.ERROR
         )
         return
