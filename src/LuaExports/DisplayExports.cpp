@@ -6,6 +6,8 @@
 #include <charconv>
 #include <string>
 
+#include <fast_float/fast_float.h>
+
 using namespace std;
 namespace helpers = VF::LuaExports::helpers;
 namespace payload = VF::LuaExports::payload;
@@ -27,7 +29,7 @@ Result<int> parseIntField(string_view text, string_view name) {
 
 Result<double> parseDoubleField(string_view text, string_view name) {
   double out = 0;
-  const auto [ptr, ec] = from_chars(text.data(), text.data() + text.size(), out);
+  const auto [ptr, ec] = fast_float::from_chars(text.data(), text.data() + text.size(), out);
   if (ec != errc{} || ptr != text.data() + text.size()) {
     return helpers::unexpectedError(
         ExportErrorKind::InvalidValue,

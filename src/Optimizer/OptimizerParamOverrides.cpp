@@ -1,12 +1,12 @@
 #include "OptimizerParamOverrides.h"
 
-#include <cerrno>
 #include <charconv>
-#include <cstdlib>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
+
+#include <fast_float/fast_float.h>
 
 #include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
 #include "Optimizer/NavOptimizer/NavOptimizerParams.h"
@@ -23,13 +23,9 @@ std::optional<int> parseInt(std::string_view s) {
 }
 
 std::optional<double> parseDouble(std::string_view s) {
-  // Apple's libc++ deletes std::from_chars for floating point (P0067 still
-  // unimplemented as of Xcode 16). strtod needs NUL-terminated input.
-  std::string buf(s);
-  char* end = nullptr;
-  errno = 0;
-  double v = std::strtod(buf.c_str(), &end);
-  if (end != buf.c_str() + buf.size() || errno != 0) return std::nullopt;
+  double v = 0.0;
+  auto [_, ec] = fast_float::from_chars(s.data(), s.data() + s.size(), v);
+  if (ec != std::errc{}) return std::nullopt;
   return v;
 }
 

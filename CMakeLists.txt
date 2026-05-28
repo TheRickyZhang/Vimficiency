@@ -95,6 +95,18 @@ configure_file(
     @ONLY
 )
 
+# fast_float: portable, header-only replacement for std::from_chars<double>.
+# Apple's libc++ ships from_chars<double> as = delete (P0067 unimplemented as
+# of Xcode 16), so std::from_chars<double> fails to compile on macOS.
+# fast_float is faster than std::from_chars even where the latter works.
+include(FetchContent)
+FetchContent_Declare(
+    fast_float
+    GIT_REPOSITORY https://github.com/fastfloat/fast_float.git
+    GIT_TAG        v8.0.0
+)
+FetchContent_MakeAvailable(fast_float)
+
 # Source globs are intentional for fast-moving local development.
 file(GLOB_RECURSE VIMFY_CORE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
@@ -102,6 +114,7 @@ file(GLOB_RECURSE VIMFY_CORE_SOURCES CONFIGURE_DEPENDS
 list(FILTER VIMFY_CORE_SOURCES EXCLUDE REGEX [[/src/(LuaExports/|lua_exports\.cpp$|main\.cpp$)]])
 
 add_library(vimfy_core STATIC ${VIMFY_CORE_SOURCES})
+target_link_libraries(vimfy_core PUBLIC fast_float)
 
 # We can reference everything under src/ absolutely. The generated/ directory
 # carries BuildConfig.h; source includes it as `#include "BuildConfig.h"`.

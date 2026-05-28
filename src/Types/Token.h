@@ -14,6 +14,4 @@ struct Token final : std::string {
   operator std::string_view() const {
     return std::string_view(data(), size());
   }
-
-  bool operator==(const Token&) const = default;
 };
