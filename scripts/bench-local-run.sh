@@ -45,16 +45,25 @@ LOG_DIR="$CACHE_DIR/logs"
 LOCK_FILE="$CACHE_DIR/lock"
 mkdir -p "$CACHE_DIR" "$LOG_DIR"
 
-# Single-flight. Queuing would let stale commits run after the user has
-# already pushed a newer one — the dashboard only cares about the latest.
-exec 9>"$LOCK_FILE"
-if ! flock -n 9; then
-  echo "[bench-local-run] another run in progress; skipping $PUSHED_SHA" >&2
-  exit 0
+# Single-flight on the maintainer's machine. Queuing would let stale commits
+# run after the user has already pushed a newer one — the dashboard only
+# cares about the latest. Skipped under CI (the workflow's concurrency:
+# group serializes runs already, and flock isn't on macOS by default).
+if [ -z "${CI:-}" ]; then
+  exec 9>"$LOCK_FILE"
+  if ! flock -n 9; then
+    echo "[bench-local-run] another run in progress; skipping $PUSHED_SHA" >&2
+    exit 0
+  fi
 fi
 
 LOG_FILE="$LOG_DIR/run-$(date +%Y%m%d-%H%M%S)-${PUSHED_SHA:0:8}-${SAFE_BRANCH}.log"
-exec >"$LOG_FILE" 2>&1
+# Under CI, leave stdout/stderr connected to the workflow log so failures
+# are visible in the Actions tab; the local log file is only useful when
+# the runner is backgrounded by the pre-push hook on the dev machine.
+if [ -z "${CI:-}" ]; then
+  exec >"$LOG_FILE" 2>&1
+fi
 
 # Failure surfacing. The runner is backgrounded with stdout/stderr already
 # redirected to /dev/null by the hook, so without these mechanisms a crash

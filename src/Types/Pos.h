@@ -9,18 +9,18 @@ struct Pos {
   Pos() = default;
   constexpr Pos(int l, int c) : line(l), col(c) {}
 
-  bool isValid() const { return line >= 0; }
+  constexpr bool isValid() const { return line >= 0; }
 
   // Lexicographic ordering on (line, col).
-  bool operator==(const Pos& o) const { return line == o.line && col == o.col; }
-  bool operator!=(const Pos& o) const { return !(*this == o); }
-  bool operator<(const Pos& o) const {
+  constexpr bool operator==(const Pos& o) const { return line == o.line && col == o.col; }
+  constexpr bool operator!=(const Pos& o) const { return !(*this == o); }
+  constexpr bool operator<(const Pos& o) const {
     if (line != o.line) return line < o.line;
     return col < o.col;
   }
-  bool operator>(const Pos& o) const { return o < *this; }
-  bool operator<=(const Pos& o) const { return !(o < *this); }
-  bool operator>=(const Pos& o) const { return !(*this < o); }
+  constexpr bool operator>(const Pos& o) const { return o < *this; }
+  constexpr bool operator<=(const Pos& o) const { return !(o < *this); }
+  constexpr bool operator>=(const Pos& o) const { return !(*this < o); }
 
   friend std::ostream& operator<<(std::ostream& os, const Pos& p) {
     os << "(" << p.line << ", " << p.col << ")";

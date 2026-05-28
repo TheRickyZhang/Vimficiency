@@ -1,0 +1,57 @@
+name: bench-main
+# Triggered on every push to main (including PR merges), runs the local
+# bench pipeline on the self-hosted macOS runner. Replaces the pre-push hook
+# as the source of truth for main-branch chart entries — the hook only fires
+# from the maintainer's machine and misses PR-merged commits.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  # Needed so the runner can push the updated data.json + dashboard back to
+  # gh-pages via the workflow's GITHUB_TOKEN.
+  contents: write
+
+# Serialize main runs end-to-end. Don't cancel-in-progress: each main SHA
+# deserves its own measurement, and back-to-back merges should produce
+# back-to-back chart points, not just the latest one.
+concurrency:
+  group: bench-main
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    runs-on: [self-hosted, macOS, vimficiency-bench]
+    # First run after registering the runner builds everything from scratch.
+    # Steady state is ~3-5 min once ccache is warm.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # bench-local-run.sh's baseline lookup walks to HEAD~1 and reads
+          # gh-pages; a shallow clone breaks both.
+          fetch-depth: 0
+
+      - name: Add Homebrew to PATH
+        # The actions runner runs under launchd, which doesn't inherit a
+        # login shell's PATH. brew installs to /opt/homebrew on Apple
+        # Silicon and /usr/local on Intel — add whichever exists.
+        run: |
+          [ -d /opt/homebrew/bin ] && echo "/opt/homebrew/bin" >> $GITHUB_PATH
+          [ -d /usr/local/bin ]    && echo "/usr/local/bin"    >> $GITHUB_PATH
+          true   # don't let a missing dir fail the step
+
+      - name: Install bench deps
+        # Idempotent — brew install on already-present formulae is a fast
+        # version check. Keeps the runner machine's required state to just
+        # brew + Xcode CLI tools; everything else lives in the workflow.
+        run: brew install --quiet ccache cmake neovim jq oven-sh/bun/bun
+
+      - name: Run bench pipeline
+        env:
+          # Tells bench-local-run.sh to skip the flock-based single-flight
+          # (the concurrency group above already serializes runs) and to
+          # skip the pre-push hook self-install step in CMakeLists.txt.
+          CI: "true"
+        run: scripts/bench-local-run.sh "${{ github.sha }}" main

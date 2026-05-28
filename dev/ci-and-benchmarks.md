@@ -43,23 +43,58 @@ Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.
 - Neovim install is cached by OS + version. On cache hit, CI skips the GitHub release download and untar.
 - `apt-get update` and apt package installation are intentionally not cached in this workflow. These commands still run on every fresh GitHub-hosted runner, so `Setup CI deps` can remain one of the slower steps even when all project-level caches hit.
 
-## Local benchmark pipeline (`scripts/bench-local-run.sh`)
+## Benchmark pipeline (`scripts/bench-local-run.sh`)
 
-Benchmark publishing happens on the maintainer's machine via a `pre-push`
-git hook. The hook installs itself the first time you run `cmake -B build`
-— the top-level `CMakeLists.txt` sets `core.hooksPath=.githooks` if it
-isn't already, so `.githooks/pre-push` fires on every `git push origin`.
-The install step is skipped in CI (`CI` env var present) since CI clones
-don't push from these checkouts.
+Two triggers drive the same `bench-local-run.sh` script:
 
-### What the hook does
+1. **`main` pushes** — `.github/workflows/bench-main.yml` runs on a
+   self-hosted macOS runner (the "spare machine"). Fires on every push to
+   main, including PR merges done via the web UI. Source of truth for the
+   chart's main-history points.
+2. **Feature branch pushes** — `.githooks/pre-push` on the maintainer's
+   dev machine. Local hook, fires on `git push origin <feature-branch>`.
+   Useful for pre-merge perf intuition; not on the chart's main-history
+   path.
 
-For each pushed branch ref it applies guardrails (working tree clean, `HEAD`
-matches the pushed SHA, on AC power if a `/sys/class/power_supply/AC/online`
-sensor exists). Failed guardrails log a skip reason — they never block the
-push itself. If guardrails pass, it backgrounds `scripts/bench-local-run.sh
-<sha> <branch>` via `setsid nohup`, so the bench keeps running even after
-the terminal that ran `git push` is closed.
+Cross-machine note: feature-branch entries come from the dev machine and
+main entries from the spare. The two hardware profiles produce different
+absolute numbers. Within a single regime (main-to-main, feature-to-feature
+on the same dev machine) comparisons are stable; cross-regime baseline
+comparisons (e.g. `bench-compare` against a parent SHA benched on the
+other machine) are apples-to-oranges and worth reading with that caveat.
+
+### Pre-push hook (feature branches)
+
+Installs itself the first time you run `cmake -B build` — the top-level
+`CMakeLists.txt` sets `core.hooksPath=.githooks` if it isn't already, so
+`.githooks/pre-push` fires on every `git push origin`. The install step is
+skipped in CI (`CI` env var present) since CI clones don't push from these
+checkouts.
+
+For each pushed branch ref the hook applies guardrails (working tree
+clean, `HEAD` matches the pushed SHA, on AC power if a
+`/sys/class/power_supply/AC/online` sensor exists). It also **skips
+`main`** — those go through the self-hosted runner. Failed guardrails log
+a skip reason; they never block the push itself. If guardrails pass, it
+backgrounds `scripts/bench-local-run.sh <sha> <branch>` via `setsid
+nohup`, so the bench keeps running even after the terminal that ran `git
+push` is closed.
+
+### Self-hosted macOS runner (`main`)
+
+GitHub workflow `bench-main.yml` on `runs-on: [self-hosted, macOS,
+vimficiency-bench]`, triggered `on: push: branches: [main]`. The job
+checks out the repo with `fetch-depth: 0` (the baseline-lookup step needs
+HEAD~1; gh-pages is fetched explicitly inside the script) and invokes the
+same `bench-local-run.sh` with `CI=true` set. The CI env gate inside the
+script skips the `flock` single-flight (the workflow's `concurrency:
+group: bench-main` already serializes runs).
+
+The runner is registered to the repo via `Settings → Actions → Runners`
+and runs as a launchd service via the installer's `./svc.sh install`.
+Sleep is disabled via `pmset` so PR merges during off-hours bench
+promptly. Deps installed via Homebrew (`ccache cmake neovim jq bun`);
+Apple clang from `xcode-select --install` handles the C++ build.
 
 ### What the runner does
 
@@ -74,11 +109,12 @@ never touched. Two `git worktree`s sharing `.git` with the main repo:
 
 ### Single-source data model
 
-Every push — `main` or feature branch — ingests its results into the same
-root timeline at `gh-pages/{edit,motion,composition}/data.json`. There are
-no per-branch dashboards, no promotion-on-PR-merge logic, no
-`branches.json` index. Each commit in the chart corresponds to an actual
-measurement on the maintainer's hardware. The trade-off: feature-branch
+Every bench — main on the spare machine, feature branches on the dev
+machine — ingests into the same root timeline at
+`gh-pages/{edit,motion,composition}/data.json`. There are no per-branch
+dashboards, no promotion-on-PR-merge logic, no `branches.json` index.
+Each commit in the chart corresponds to an actual measurement on one of
+the two machines (with the cross-regime caveat noted above). Feature-branch
 SHAs that never reach `main` (squashed away, rebased, abandoned) still
 appear on the timeline as historical points — accepted as the cost of
 keeping the bench/merge concerns decoupled.
@@ -104,16 +140,23 @@ Steps:
 
 ### Failure surfacing
 
-The runner is backgrounded with output redirected to a log file, so a crash isn't immediately visible. Three mechanisms close that gap:
-
-- `notify-send` desktop notification on completion — critical urgency on failure, low on success. Silently skipped if no notification daemon
-- `~/.cache/vimficiency-bench/last-status` records exit code, SHA, branch, and log path
-- The next `git push` (via the pre-push hook) reads `last-status` and prints a warning if the previous exit was non-zero. A successful run overwrites the status so the warning clears
+- **Self-hosted runner (main):** the workflow run shows up under the
+  Actions tab; failures send the standard GitHub notification. Logs are
+  retained per GitHub's defaults.
+- **Local hook (feature branches):** runner is backgrounded with output
+  redirected, so crashes aren't immediately visible. Mechanisms:
+  - `notify-send` desktop notification on completion — critical urgency on
+    failure, low on success. Silently skipped if no notification daemon.
+  - `~/.cache/vimficiency-bench/last-status` records exit code, SHA,
+    branch, and log path.
+  - The next `git push` (via the pre-push hook) reads `last-status` and
+    prints a warning if the previous exit was non-zero. A successful run
+    overwrites the status so the warning clears.
 
 ### Re-running manually
 
-If a push happened with the hook disabled or guardrails skipped it, run the
-runner directly:
+If a push happened with the hook disabled or guardrails skipped it, run
+the runner directly from any machine that has the build deps installed:
 
 ```bash
 scripts/bench-local-run.sh <sha> <branch>
@@ -121,6 +164,64 @@ scripts/bench-local-run.sh <sha> <branch>
 
 The script's behavior is identical whether `<branch>` is `main` or a
 feature branch — only the optional main-only extras differ.
+
+## Self-hosted macOS runner setup (one-time)
+
+Steps to register the spare MacBook as the runner backing
+`bench-main.yml`. Run as your normal user; nothing here needs `sudo`
+except where noted.
+
+1. **Toolchain bootstrap.** Apple clang for the C++ build, Homebrew so
+   the workflow has something to install bench deps into. Everything else
+   (`ccache`, `cmake`, `neovim`, `jq`, `bun`) is installed idempotently by
+   `bench-main.yml`'s "Install bench deps" step on every run, so it
+   doesn't need to live in this checklist.
+
+   ```bash
+   xcode-select --install
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+
+2. **Disable sleep so PR merges during off-hours bench promptly.**
+
+   ```bash
+   sudo pmset -a sleep 0
+   sudo pmset -a disksleep 0
+   sudo pmset -c disablesleep 1   # AC-powered: never sleep, even with lid closed
+   ```
+
+3. **Register the runner.** In the repo on GitHub: Settings → Actions →
+   Runners → New self-hosted runner → macOS. The page gives a download +
+   `./config.sh` command with a registration token (1hr expiry). When it
+   asks for labels, enter `vimficiency-bench` so the workflow's
+   `runs-on: [self-hosted, macOS, vimficiency-bench]` matches.
+
+4. **Install as a launchd service** so it auto-starts on boot and
+   survives logout:
+
+   ```bash
+   cd ~/actions-runner       # or wherever you extracted it
+   ./svc.sh install
+   ./svc.sh start
+   ./svc.sh status           # should show running
+   ```
+
+5. **Verify.** The runner appears as "Idle" in the GitHub Settings page.
+   Trigger a test run by pushing any commit to main, or by re-running the
+   most recent `bench-main` workflow from the Actions tab.
+
+### First-run gotchas
+
+- First main push after registration builds everything from scratch
+  (cmake fetches GoogleTest/FuzzTest/benchmark/msgpack/etc., compiles
+  Release with no ccache history). Expect ~10-20 min. Steady-state with a
+  warm ccache is ~3-5 min.
+- Apple clang may flag warnings GCC doesn't. If the first build fails,
+  fix the warnings or set `-DCMAKE_CXX_FLAGS=-Wno-<flag>` in the workflow
+  rather than hacking around it.
+- Numbers will land in a different absolute range than the dev-machine
+  history — the chart shows a step at the cutover. Not a bug; the spare
+  machine is a different CPU.
 
 ## Data Pipeline
 

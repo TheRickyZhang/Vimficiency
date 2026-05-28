@@ -58,6 +58,15 @@ while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
   esac
   BRANCH="${REMOTE_REF#refs/heads/}"
 
+  # main is benched by .github/workflows/bench-main.yml on the self-hosted
+  # macOS runner — running a second bench locally would race with that
+  # workflow over the gh-pages push and produce duplicate (possibly
+  # divergent-hardware) chart entries. Feature branches still bench locally.
+  if [ "$BRANCH" = "main" ]; then
+    echo "[pre-push] main is benched by the self-hosted runner; skipping local bench for $BRANCH" >&2
+    continue
+  fi
+
   # Guardrails. Each prints a reason and skips this ref — never blocks the push.
   if [ -n "$(git status --porcelain)" ]; then
     echo "[pre-push] working tree dirty; skipping bench for $BRANCH" >&2
