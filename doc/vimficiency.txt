@@ -286,6 +286,37 @@ Suggest runs the optimizer on its own and surfaces a result without you calling
 `:Vimfy finish` or `:Vimfy recall`. It reuses the recall queue for the start
 and fires on triggers you configure.
 
+
+ZERO-CONFIG DEFAULT
+
+You don’t need to configure anything to try it:
+
+>vim
+    :Vimfy suggest on
+<
+
+With no `auto_suggest` block in `setup{}`, Suggest arms a built-in **cost
+gate** (`auto_suggest.default_cost`, default `{ m = 1.5, b = 2.0, ms = 1000,
+window = "3s" }`): after a brief idle pause it analyzes the last ~3s of editing
+and surfaces a result only when your typed effort exceeds `1.5 * optimal + 2`.
+The toast is one line — `<your effort> → <optimal> <suggested keys>` —
+and the result is already saved as a session, reachable with the `@` selector:
+
+>vim
+    :Vimfy explore @        " inspect interactively
+    :Vimfy play @           " replay side-by-side
+    :Vimfy save @ <name>    " persist to disk
+<
+
+To tune this gate, set `auto_suggest = { default_cost = { ... } }` (any subset
+merges over the defaults) — this alone does not auto-enable at startup. To
+auto-enable at startup, add a real trigger (`idle`/`keys`/`cost`, below).
+Setting `auto_suggest = false` turns the feature off entirely, and `:Vimfy
+suggest on` will refuse.
+
+
+CONFIGURED TRIGGERS
+
 >lua
     require('vimficiency').setup({
         auto_suggest = {
@@ -364,10 +395,14 @@ policy.
 RUNTIME ON/OFF
 
 >vim
-    :Vimfy suggest on        " enable if config has triggers
+    :Vimfy suggest on        " enable (uses configured triggers, else the default cost gate)
     :Vimfy suggest off       " suppress firing; config untouched
     :Vimfy suggest toggle
 <
+
+If `setup{}` provides an `auto_suggest` block with triggers, Suggest is enabled
+automatically at startup. With no block, it stays off until you run `:Vimfy
+suggest on`, which falls back to the zero-config cost gate above.
 
 
 RELATIONSHIP TO THE RECALL QUEUE
@@ -804,8 +839,8 @@ C++ source (`cpp/effort_model.*`) is the spec.
   :Vimfy stats                          Show lifetime session stats (see
                                         below).
 
-  :Vimfy suggest <on\|off\|toggle>      Runtime toggle for auto-suggest
-                                        (config-driven).
+  :Vimfy suggest <on\|off\|toggle>      Runtime toggle for auto-suggest (works
+                                        with zero config).
 
   :Vimfy config                         Show the current configuration.
 
