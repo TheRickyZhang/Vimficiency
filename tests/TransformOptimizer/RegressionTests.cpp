@@ -110,14 +110,14 @@ TEST(TransformOptimizerRegression, BoundaryAwareReplayPrefixKeepsXApplicable) {
 
   CursorPos pos(0, leftOffset + 1);  // startIndex=1 in effective coordinates
   Mode mode = Mode::Normal;
-  string lastEditCmd;
+  DotRepeat lastEdit;
 
   // Use a sequence that exercises boundary-aware prefix replay and leaves
   // `X` applicable afterward.
   auto parsedPrefix = Edit::parseEdits("DdaW");
   assert(parsedPrefix);
   for (const ParsedEdit& op : *parsedPrefix) {
-    Edit::applyEdit(replayLines, pos, mode, op, &lastEditCmd,
+    Edit::applyEdit(replayLines, pos, mode, op, &lastEdit,
                     test.boundary.hasLinesBelow(),
                     test.boundary.leftColOffset(),
                     test.boundary.rightColOffset(),
@@ -125,11 +125,12 @@ TEST(TransformOptimizerRegression, BoundaryAwareReplayPrefixKeepsXApplicable) {
   }
 
   EXPECT_EQ(mode, Mode::Normal);
-  EXPECT_EQ(lastEditCmd, "daW");
+  EXPECT_EQ(lastEdit.base, "daW");
+  EXPECT_EQ(lastEdit.count, 0);
   EXPECT_GT(pos.col, 0) << "Prefix replay should leave room for following X";
 
   const ParsedEdit x("X");
-  Edit::applyEdit(replayLines, pos, mode, x, &lastEditCmd,
+  Edit::applyEdit(replayLines, pos, mode, x, &lastEdit,
                   test.boundary.hasLinesBelow(),
                   test.boundary.leftColOffset(),
                   test.boundary.rightColOffset(),
@@ -178,7 +179,7 @@ TEST(TransformOptimizerRegression, BackwardWordChangeFromEmptyLineMatchesVim) {
   Lines lines = {"~~~~", ""};
   CursorPos pos(1, 0);
   Mode mode = Mode::Normal;
-  string lastEdit;
+  DotRepeat lastEdit;
   ParsedEdit cb("cb");
 
   Edit::applyEdit(lines, pos, mode, cb, &lastEdit);
@@ -329,7 +330,7 @@ TEST(TransformOptimizerRegression, CountedDwWithLinesBelowBoundaryMatchesLocalSe
   Lines withBoundary = {" ecbb.abec"};
   CursorPos posWithBoundary(0, 0);
   Mode modeWithBoundary = Mode::Normal;
-  string lastEditWithBoundary;
+  DotRepeat lastEditWithBoundary;
   Edit::applyEdit(withBoundary, posWithBoundary, modeWithBoundary, fourDw,
                   &lastEditWithBoundary,
                   /*hasLinesBelow=*/true,
@@ -340,7 +341,7 @@ TEST(TransformOptimizerRegression, CountedDwWithLinesBelowBoundaryMatchesLocalSe
   Lines localOnly = {" ecbb.abec"};
   CursorPos posLocal(0, 0);
   Mode modeLocal = Mode::Normal;
-  string lastEditLocal;
+  DotRepeat lastEditLocal;
   Edit::applyEdit(localOnly, posLocal, modeLocal, fourDw,
                   &lastEditLocal,
                   /*hasLinesBelow=*/false,
@@ -623,7 +624,7 @@ TEST(TransformOptimizerRegression, BlankBufferPureDeletionCandidatesReplayToGoal
   for (size_t i = 0; i < result.resultCount(); i++) {
     const auto& bucket = result.getResults()[i];
     if (bucket.empty()) continue;
-    CursorPos start = fromFlatIndex(static_cast<int>(i), source);
+    CursorPos start = source.cursorFromFlatIndexClamped(static_cast<int>(i));
     ASSERT_TRUE(start.isValid()) << "bucket=" << i;
     for (const Result& candidate : bucket) {
       EXPECT_TRUE(OracleReplay::matches(
@@ -727,7 +728,7 @@ TEST(TransformOptimizerRegression, StraddledPureDeletionAllResultsReplayToGoal) 
       const auto& bucket = result.getResults()[i];
       if (bucket.empty()) continue;
 
-      CursorPos localPos = fromFlatIndex(static_cast<int>(i), editRegion);
+      CursorPos localPos = editRegion.cursorFromFlatIndexClamped(static_cast<int>(i));
       ASSERT_TRUE(localPos.isValid()) << "Invalid local position at bucket " << i;
       CursorPos fullPos = toFullBufferPos(localPos, test.begin);
       for (const Result& resultForStart : bucket) {

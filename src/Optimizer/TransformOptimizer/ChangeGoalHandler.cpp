@@ -112,9 +112,10 @@ bool ChangeGoalHandler::isGoalReached(const TransformEditorState& state) const {
 }
 
 bool ChangeGoalHandler::isDotRepeat(const TransformState& base, const SequenceBinding& sourceCmd) const {
-  return base.hasLastEdit() &&
-         base.getLastEditCount() == sourceCmd.count &&
-         base.getLastEditBase() == sourceCmd.base.seq.view();
+  const DotRepeat& last = base.getLastEdit();
+  return !last.empty() &&
+         last.count == sourceCmd.count &&
+         last.base == sourceCmd.base.seq.view();
 }
 
 // Static helpers
@@ -126,6 +127,48 @@ KeyedSequence ChangeGoalHandler::buildCollapseSequence(int totalLines, int curso
   ks.append(KeyedSequence::BS, cursorLine);
   ks.append(KeyedSequence::Del, totalLines - 1 - cursorLine);
   return ks;
+}
+
+// The "cleared shell" is the buffer shape `isGoalReached` accepts before the
+// typed completion runs: lines[0] == pre, lines[last] == suf, all middle lines
+// empty. From there, the collapse chain produced by `buildCollapseSequence`
+// merges the shell into a single `pre+suf` line and leaves the cursor at end
+// of pre, ready for typing.
+//
+// The chain only does line-joins under tight conditions: `<BS>` joins only at
+// col 0, `<Del>` joins only at end-of-line (NUL position). Anywhere else they
+// delete a single character and corrupt pre or suf. The entry sequence picks
+// where in the shell we open insert mode so that the chain only ever fires a
+// real join.
+//
+// Cases by where the cursor sits in the cleared shell:
+//   - cursorLine == 0 (on pre line, possibly non-empty):
+//       No BS is emitted, so the chain starts with `<Del>`. `<Del>` only joins
+//       when cursor is past pre's last char; entering with `0i` would put it
+//       at col 0 and the first Del would delete pre's first char. Use `A` to
+//       enter insert mode at end-of-line directly.
+//   - cursorLine > 0, cursorCol != 0 (on suf line, suf non-empty):
+//       BS chain needs col 0 to start. Use `0i`, NOT `I`: `I` enters insert at
+//       the line's first non-blank, which is col > 0 whenever suf has leading
+//       whitespace, and a `<BS>` from there deletes the space instead of
+//       joining — corrupting suf.
+//   - cursorLine > 0, cursorCol == 0 (on a middle line, empty by invariant):
+//       Already at col 0; `0` is redundant. Use plain `i`.
+//   - totalLines == 1 (shell is `[preSuf]`, no collapse needed):
+//       `isGoalReached` (multi-arg overload) pins cursor at col == pre.size(),
+//       which is the correct insert position. Plain `i`.
+KeyedSequence ChangeGoalHandler::buildClearedShellEntry(
+    int totalLines, int cursorLine, int cursorCol) {
+  KeyedSequence entry;
+  if (totalLines > 1 && cursorLine == 0) {
+    entry += KeyedSequence::A;
+    return entry;
+  }
+  if (cursorCol != 0) {
+    entry += KeyedSequence::Zero;
+  }
+  entry += KeyedSequence::i;
+  return entry;
 }
 
 void ChangeGoalHandler::appendOptionalCount(KeyedSequence& out, int count, const KeyedSequence& base) {
@@ -285,17 +328,16 @@ SuffixValue ChangeGoalHandler::buildSuffixValueForNextIndex(
     const vector<SuffixCommandInfo>& commandInfos,
     const vector<RunningEffort>& rawSuffixEfforts,
     int nextIndex,
-    int lastEditCount,
-    string_view lastEditBase) const {
+    const DotRepeat& lastEdit) const {
   int programSize = suffixProgram->size();
   assert(nextIndex >= 0 && nextIndex <= programSize);
 
   int dotIndex = firstDotBeforeDotContextReset(commandInfos, nextIndex);
-  if (dotIndex < 0 || lastEditBase.empty()) {
+  if (dotIndex < 0 || lastEdit.empty()) {
     return SuffixValue(suffixProgram, nextIndex, rawSuffixEfforts[nextIndex]);
   }
 
-  string expectedDotCmd = formatCountedCommand(lastEditCount, lastEditBase);
+  string expectedDotCmd = formatCountedCommand(lastEdit.count, lastEdit.base);
   KeyedSequence expandedPrefix = buildExpandedDotPrefix(
       *suffixProgram, nextIndex, dotIndex, expectedDotCmd);
   RunningEffort expandedPrefixEffort(expandedPrefix.keys, config);
@@ -353,23 +395,20 @@ void ChangeGoalHandler::cacheSuffixesForPath(
     int lineCount = initialLineCount;
     CursorPos replayPos = initialPos;
     Mode replayMode = base.getMode();
-    int lastEditCount = 0;
-    string_view lastEditBase;
+    DotRepeat lastEdit;
     if (nextIndex > 0) {
       const TransformPathStep* previous = path[static_cast<size_t>(nextIndex - 1)];
       linesHash = previous->linesHashAfter;
       lineCount = previous->lineCountAfter;
       replayPos = previous->posAfter;
       replayMode = previous->modeAfter;
-      lastEditCount = previous->lastEditCountAfter;
-      lastEditBase = previous->lastEditBaseAfter;
+      lastEdit = previous->lastEditAfter;
     }
 
     SuffixKey sk(linesHash, lineCount, replayPos, replayMode);
     if (suffixCache.find(sk) == suffixCache.end()) {
       suffixCache[sk] = buildSuffixValueForNextIndex(
-          suffixProgram, commandInfos, rawSuffixEfforts, nextIndex,
-          lastEditCount, lastEditBase);
+          suffixProgram, commandInfos, rawSuffixEfforts, nextIndex, lastEdit);
     }
   }
 }
@@ -407,16 +446,17 @@ GoalStates ChangeGoalHandler::emitEditGoal(
   TransformStateFactory states(config, effortWeight);
   TransformState normalState = states.afterCommandWithLastEdit(
       base, postCompletionState, normalSeq.seq.view(), normalEffort, 0.0,
-      sourceCmd.count, sourceCmd.base.seq.view());
+      DotRepeat{string(sourceCmd.base.seq.view()), sourceCmd.count});
 
   GoalStates result{std::move(normalState), nullopt};
 
   if (allowDotGoalPath) {
     KeyedSequence dotSeq(".", KeyedSequence::Period.keys);
-    dotSeq += KeyedSequence::i;
-    dotSeq += buildCollapseSequence(
-        static_cast<int>(postCompletionState.getLines().size()),
-        postCompletionState.getPos().line);
+    int totalLines = static_cast<int>(postCompletionState.getLines().size());
+    int cursorLine = postCompletionState.getPos().line;
+    dotSeq += buildClearedShellEntry(
+        totalLines, cursorLine, postCompletionState.getPos().col);
+    dotSeq += buildCollapseSequence(totalLines, cursorLine);
     RunningEffort dotPrefixEffort(dotSeq.keys, config);
     RunningEffort dotEffort = RunningEffort::merge(dotPrefixEffort, typedVariants.dotTyped.effort);
     dotSeq += typedVariants.dotTyped.sequence;
@@ -429,9 +469,11 @@ GoalStates ChangeGoalHandler::emitEditGoal(
 }
 
 Result ChangeGoalHandler::resultFromClearedGoal(const TransformState& base) const {
-  KeyedSequence completion = KeyedSequence::i;
-  completion += buildCollapseSequence(
-      static_cast<int>(base.getLines().size()), base.getPos().line);
+  KeyedSequence completion;
+  int totalLines = static_cast<int>(base.getLines().size());
+  int cursorLine = base.getPos().line;
+  completion += buildClearedShellEntry(totalLines, cursorLine, base.getPos().col);
+  completion += buildCollapseSequence(totalLines, cursorLine);
   completion += typed;
 
   RunningEffort completionEffort(completion.keys, config);
@@ -520,6 +562,9 @@ GoalStates ChangeGoalHandler::onJoinGoal(
   const auto& iCmd = KeyedSequence::i;
   KeyedSequence goalCompletionCmd;
   appendOptionalCount(goalCompletionCmd, sourceCmd.count, sourceCmd.base);
+  if (afterJn.getPos().line > 0 && afterJn.getPos().col != 0) {
+    goalCompletionCmd += KeyedSequence::Zero;
+  }
   goalCompletionCmd += iCmd;
   goalCompletionCmd += buildCollapseSequence(
       static_cast<int>(afterJn.getLines().size()), afterJn.getPos().line);
@@ -549,7 +594,7 @@ SuffixCacheResult ChangeGoalHandler::tryUseSuffixCache(
 
   const SuffixValue& sv = cacheIt->second;
 
-  bool useDot = sv.canUseDot(s.getLastEditCount(), s.getLastEditBase());
+  bool useDot = sv.canUseDot(s.getLastEdit());
   const KeyedSequence& suffix = sv.suffix(useDot);
   const RunningEffort& suffixEffort = sv.suffixEffort(useDot);
 

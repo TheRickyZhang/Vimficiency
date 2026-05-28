@@ -15,6 +15,18 @@ filter="${2:-}"
 mode="${3:-explore}"
 approval_update=0
 fuzztest_seed="OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk"
+repeat=1
+
+# `vimfy_tests property 10` etc. — a bare positive integer in the filter slot
+# means "run the suite that many times" rather than a gtest filter.
+if [[ "$suite" == "all" || "$suite" == "property" || "$suite" == "safety" ]]; then
+  if [[ "$filter" =~ ^[1-9][0-9]*$ ]]; then
+    repeat="$filter"
+    filter=""
+  elif [[ "${3:-}" =~ ^[1-9][0-9]*$ ]]; then
+    repeat="$3"
+  fi
+fi
 
 if [[ "$suite" == "approval" ]]; then
   case "$filter" in
@@ -130,7 +142,7 @@ run_seed_generated() {
   fi
 }
 
-run_generated() {
+run_one_generated() {
   local binary="$1"
   local test_filter="${2:-}"
   local run_mode="${3:-seed}"
@@ -159,6 +171,19 @@ run_generated() {
       exit 1
       ;;
   esac
+}
+
+run_generated() {
+  local binary="$1"
+  local test_filter="${2:-}"
+  local run_mode="${3:-seed}"
+
+  if (( repeat > 1 )); then
+    export FUZZTEST_FUZZ_FOR="${repeat}s"
+    echo "[fuzz_for=${repeat}s] each FUZZ_TEST gets max(10000 iterations, ${repeat}s budget)"
+  fi
+
+  run_one_generated "$binary" "$test_filter" "$run_mode"
 }
 
 run_lua() {
@@ -215,8 +240,9 @@ case "$suite" in
     run_lua "$filter"
     ;;
   *)
-    echo "usage: scripts/vimfy_tests [all|unit|approval|property|safety|lua] [filter-or-file] [seed|explore|campaign|--approve]" >&2
+    echo "usage: scripts/vimfy_tests [all|unit|approval|property|safety|lua] [filter-or-file|N] [seed|explore|campaign|N|--approve]" >&2
     echo "  property/safety/all default to explore mode; CI passes seed for deterministic generated tests." >&2
+    echo "  property/safety/all accept a positive integer N to budget each FUZZ_TEST for N seconds (FUZZTEST_FUZZ_FOR)." >&2
     echo "  approval accepts --approve before or after the optional filter to update snapshots and rerun." >&2
     exit 1
     ;;

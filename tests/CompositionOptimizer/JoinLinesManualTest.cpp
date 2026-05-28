@@ -68,6 +68,24 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesWithResidual) {
   EXPECT_TRUE(hasJ) << "Expected at least one result with J";
 }
 
+TEST_F(CompositionOptimizer_ManualTest, WhitespaceJoinInsertionTransitionsReplay) {
+  Lines initial = {"    ", "  ", "   ", ""};
+  Lines goal = {"      ", "", " ", "  ", ""};
+  CursorPos initialPos(3, 0);
+  CursorPos goalPos(0, 2);
+
+  CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
+  ASSERT_FALSE(res.getResults().empty());
+
+  size_t checked = std::min<size_t>(3, res.getResults().size());
+  for (size_t i = 0; i < checked; i++) {
+    EXPECT_TRUE(OracleReplay::matches(
+        *oracle, initial, initialPos, res.getResults()[i].getSequence().str(),
+        goal, goalPos, Mode::Normal, "whitespace join insertion"))
+        << "sequence=" << res.getResults()[i].getSequence().str();
+  }
+}
+
 TEST_F(CompositionOptimizer_ManualTest, JoinPlanStartsWithBoundaryJoin) {
   Lines initial = {"aaa", "xxx", "ccc"};
   Lines goal = {"aaa bbb ccc"};
@@ -143,6 +161,31 @@ TEST_F(CompositionOptimizer_ManualTest, JoinLinesPartialJoin) {
     if (r.getSequence().view().find("J") != string::npos) { foundJ = true; break; }
   }
   EXPECT_TRUE(foundJ) << "Expected a result containing J";
+}
+
+TEST_F(CompositionOptimizer_ManualTest, GJEmittedForPureNewlineDeletion) {
+  // Pure-newline-deletion diff: just remove the '\n' between two lines.
+  // The diff's "in-range" cursor (L, lineEnd) is past line L's last char so
+  // TransformOptimizer's start-position iteration skips it; the structural
+  // (gJ) must therefore be offered as a composition motion regardless of
+  // where the cursor currently sits on line L.
+  Lines initial = {"abc", "def"};
+  Lines goal = {"abcdef"};
+  CursorPos initialPos(0, 0);
+  CursorPos goalPos(0, 3);
+
+  CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
+  expectHasValidResults(res.getResults(), initial, initialPos, goal,
+                        "pure newline deletion via gJ");
+
+  bool foundGJ = false;
+  for (const Result& r : res.getResults()) {
+    if (r.getSequence().view().find("gJ") != string::npos) {
+      foundGJ = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(foundGJ) << "Expected a result containing gJ";
 }
 
 TEST_F(CompositionOptimizer_ManualTest, PureDeletionDoesNotKeepHiddenContextPlaceholder) {

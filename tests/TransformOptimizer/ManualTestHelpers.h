@@ -47,11 +47,11 @@ struct ApplyResult {
 inline ApplyResult applySequence(const Lines& source, CursorPos initialPos,
                                  const std::string& sequence) {
   ApplyResult result(source, initialPos);
-  std::string lastEditCmd;
+  DotRepeat lastEdit;
   auto parsed = Edit::parseEdits(sequence);
   assert(parsed);
   for (const auto& op : *parsed) {
-    Edit::applyEdit(result.lines, result.pos, result.mode, op, &lastEditCmd);
+    Edit::applyEdit(result.lines, result.pos, result.mode, op, &lastEdit);
   }
   return result;
 }

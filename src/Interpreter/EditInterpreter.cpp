@@ -1,4 +1,5 @@
 #include "EditInterpreter.h"
+#include "Interpreter/EditHash.h"
 #include "VimCore/CharMask.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimEditUtils.h"
@@ -6,7 +7,7 @@
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimOptions.h"
 #include "VimCore/VimCore.h"
-#include "Interpreter/SequenceFormatting.h"
+#include "Keyboard/KeyNotation.h"
 #include "Utils/Debug.h"
 #include "Types/Lines.h"
 
@@ -26,17 +27,6 @@ string formatEditParseError(const EditParseError& error) {
   }
   assert(false && "Unhandled EditParseErrorKind");
   return "unknown parse error";
-}
-
-// Compile-time string hash for switch statements.
-// Uses M=131 (prime > 126, total chars supported) to guarantee collision-free hashing for all strings.
-// Math: hash(s) = s[0]*M^(n-1) + s[1]*M^(n-2) + ... + s[n-1]
-// This is bijective (unique hash per string) until 64-bit overflow at ~10 chars.
-constexpr size_t hash(string_view s) {
-  assert(s.size() <= 10 && "hash() only collision-free for strings <= 10 chars");
-  size_t h = 0;
-  for (char c : s) h = h * 131 + static_cast<unsigned char>(c);
-  return h;
 }
 
 inline int clampedToLastChar(const string& line, int col) {
@@ -145,7 +135,10 @@ static void deleteToEndOfLine(Lines& lines, CursorPos& pos) {
 static bool isPastEndPosition(const Lines& lines, const CursorPos& pos) {
   // Lines invariant: buffer always has at least one line
   if (pos.line >= static_cast<int>(lines.size())) return false;
-  return pos.col == static_cast<int>(lines[pos.line].size());
+  // For empty lines, col 0 IS the cursor position (not past end). Only treat
+  // col == size as past-end when size > 0.
+  int size = static_cast<int>(lines[pos.line].size());
+  return size > 0 && pos.col == size;
 }
 
 static bool inBoundaryRegion(const CursorPos& pos, const Lines& lines,
@@ -195,6 +188,11 @@ bool isValidNormalEditOnEmptyLine(string_view e) {
     case hash("i"): case hash("a"): case hash("I"): case hash("A"):
     case hash("o"): case hash("O"): case hash("dd"): case hash("cc"): case hash("S"):
     case hash("J"): case hash("gJ"):
+    // Char-delete operators on empty line: Vim no-ops, doesn't beep.
+    case hash("x"): case hash("X"):
+    // Dot-repeat: only valid if there's something to repeat. We assert at
+    // dot-handling time; on empty line `.` itself is fine to dispatch.
+    case hash("."):
     case hash("w"): case hash("W"): case hash("b"): case hash("B"):
     case hash("e"): case hash("E"): case hash("ge"): case hash("gE"):
     case hash("dw"): case hash("dW"): case hash("db"): case hash("dB"):
@@ -206,25 +204,39 @@ bool isValidNormalEditOnEmptyLine(string_view e) {
     case hash("c}"): case hash("c{"): case hash("c)"): case hash("c("):
     case hash("diw"): case hash("daw"): case hash("diW"): case hash("daW"):
     case hash("ciw"): case hash("caw"): case hash("ciW"): case hash("caW"):
+    // Quote text objects: no-op on empty line (no quote to find).
+    case hash("da\""): case hash("di\""): case hash("da'"): case hash("di'"):
+    case hash("da`"): case hash("di`"):
+    case hash("ca\""): case hash("ci\""): case hash("ca'"): case hash("ci'"):
+    case hash("ca`"): case hash("ci`"):
+    // Bracket text objects: no-op on empty line (no bracket to find).
+    case hash("da("): case hash("di("): case hash("da)"): case hash("di)"):
+    case hash("da{"): case hash("di{"): case hash("da}"): case hash("di}"):
+    case hash("da["): case hash("di["): case hash("da]"): case hash("di]"):
+    case hash("da<"): case hash("di<"): case hash("da>"): case hash("di>"):
+    case hash("daB"): case hash("diB"): case hash("dab"): case hash("dib"):
+    case hash("ca("): case hash("ci("): case hash("ca)"): case hash("ci)"):
+    case hash("ca{"): case hash("ci{"): case hash("ca}"): case hash("ci}"):
+    case hash("ca["): case hash("ci["): case hash("ca]"): case hash("ci]"):
+    case hash("ca<"): case hash("ci<"): case hash("ca>"): case hash("ci>"):
+    case hash("caB"): case hash("ciB"): case hash("cab"): case hash("cib"):
+    // Sentence text objects: no-op on empty line (no sentence content).
+    case hash("das"): case hash("dis"): case hash("cas"): case hash("cis"):
+    // Paragraph text objects: handled linewise; safe to invoke on empty line.
+    case hash("dap"): case hash("dip"): case hash("cap"): case hash("cip"):
     case hash("0"): case hash("^"): case hash("$"):
     case hash("j"): case hash("k"): case hash("h"): case hash("l"):
     case hash("}"): case hash("{"): case hash(")"): case hash("("):
+    case hash("<Esc>"):
       return true;
     default:
       return false;
   }
 }
 
-string formatDotRepeatCommand(const ParsedEdit& edit) {
-  if (edit.hasCount()) {
-    return to_string(edit.effectiveCount()) + string(edit.edit);
-  }
-  return string(edit.edit);
-}
-
-optional<string> dotRepeatCommandFor(Mode mode, const ParsedEdit& edit) {
+optional<DotRepeat> dotRepeatFor(Mode mode, const ParsedEdit& edit) {
   if (!updatesDotRepeat(mode, edit.edit)) return nullopt;
-  return formatDotRepeatCommand(edit);
+  return DotRepeat{string(edit.edit), static_cast<int>(edit.rawCount())};
 }
 
 // -----------------------------------------------------------------------------
@@ -235,7 +247,7 @@ optional<string> dotRepeatCommandFor(Mode mode, const ParsedEdit& edit) {
 // de/dE/ce/cE: delete to end of word (inclusive motion)
 static void deleteToWordEnd(Lines& lines, CursorPos& pos, int count, bool big, Mode mode) {
   CursorPos goalPos = pos;
-  for (int i = 0; i < count; i++) VimCore::motionE(goalPos, lines, big);
+  for (int i = 0; i < count; i++) VimCore::motionEForOperator(goalPos, lines, big);
 
   if (isPastEndPosition(lines, goalPos)) {
     // e motion wanted to go past EOF - delete to last char inclusive
@@ -258,10 +270,11 @@ static void deleteToWordEnd(Lines& lines, CursorPos& pos, int count, bool big, M
 // dw/dW: delete to next word start (exclusive motion, special line-crossing rule)
 static void deleteToNextWord(Lines& lines, CursorPos& pos, int count, bool big, Mode mode) {
   CursorPos goalPos = pos;
-  for (int i = 0; i < count; i++) VimCore::motionW(goalPos, lines, big);
+  for (int i = 0; i < count; i++) VimCore::motionWForOperator(goalPos, lines, big);
 
   if (shouldStopAtEndOfLine(count, pos, goalPos, lines)) {
-    // Special case: single dw on non-empty line crossing to next line
+    // Special case: single dw on non-empty line crossing to next line —
+    // Vim's "for dw on last word of line, the newline is not included".
     deleteToEndOfLine(lines, pos);
   } else if (isPastEndPosition(lines, goalPos)) {
     // Motion wanted to go past EOF - delete to last char inclusive
@@ -271,23 +284,27 @@ static void deleteToNextWord(Lines& lines, CursorPos& pos, int count, bool big, 
       VimCore::deleteRangeAndUpdatePos(lines, r, pos, mode);
     }
   } else if (goalPos.line > pos.line || goalPos.col > pos.col) {
-    // Normal exclusive delete - compute one-past-end directly.
-    CursorPos end;
-    if (goalPos.col > 0) {
-      end = goalPos;
-    } else {
-      // goalPos at col 0 of new line - delete to end of previous line.
-      end = CursorPos(goalPos.line - 1, static_cast<int>(lines[goalPos.line - 1].size()));
-    }
-    CharRange r(pos, end);
-    VimCore::deleteRangeAndUpdatePos(lines, r, pos, mode);
+    // Standard exclusive motion. Let resolveExclusiveDeleteRange handle the
+    // shape (characterwise / line-char / linewise per Vim's exclusive rules).
+    // The "last word of line, don't include newline" rule above already
+    // peeled off the only case where Vim deviates from standard exclusive.
+    CharRange r(pos, goalPos);
+    auto resolved = VimCore::resolveExclusiveDeleteRange(r, lines, true);
+    VimCore::deleteResolvedRangeAndUpdatePos(lines, resolved, pos, mode);
   }
 }
 
 // db/dB: delete backward to word start (exclusive motion)
 static void deleteBackToWordStart(Lines& lines, CursorPos& pos, int count, bool big, Mode mode) {
   CursorPos initialPos = pos;
-  for (int i = 0; i < count; i++) VimCore::motionB(initialPos, lines, big);
+  // `bckWordOperator` returns false only when Vim's bck_word would FAIL — i.e.,
+  // the FIRST dec_cursor at the start of any iteration hits the start of the
+  // buffer. Mid-iteration `dec_cursor()==-1` returns OK, so partial counts
+  // succeed gracefully (matching Vim's observable behavior).
+  if (!VimCore::bckWordOperator(initialPos, lines, big, count)) {
+    pos = initialPos;
+    return;
+  }
 
   if (initialPos < pos) {
     auto resolved = VimCore::resolveWordOperatorMotion(
@@ -300,7 +317,13 @@ static void deleteBackToWordStart(Lines& lines, CursorPos& pos, int count, bool 
 // dge/dgE: delete backward to previous word end (inclusive motion)
 static void deleteBackToWordEnd(Lines& lines, CursorPos& pos, int count, bool big, Mode mode) {
   CursorPos initialPos = pos;
-  for (int i = 0; i < count; i++) VimCore::motionGe(initialPos, lines, big);
+  // `bckEndWordOperator` returns false only on Vim's bckend_word FAIL — i.e.,
+  // the initial dec_cursor at the start of an iteration hits start of buffer.
+  // Mid-iteration `dec_cursor()==-1` returns OK, so partial counts succeed.
+  if (!VimCore::bckEndWordOperator(initialPos, lines, big, count)) {
+    pos = initialPos;
+    return;
+  }
 
   if (initialPos < pos) {
     auto resolved = mode == Mode::Insert
@@ -362,9 +385,9 @@ void yankRange(Lines&, CursorPos& pos, Mode mode, const LineCharRange& range) {
 // we can't prune that easily without doing equivalent work as the action, it's fine.
 // TODO: we can apply the same technique to Motions as well
 void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
-               string* lastEditCmd, bool hasLinesBelow,
+               DotRepeat* lastEdit, bool hasLinesBelow,
                int leftColOffset, int rightColOffset,
-               bool hasLinesAbove) {
+               bool hasLinesAbove, int* pendingAutoindentLen) {
   // Lines invariant: buffer always has at least one line (minimum: {""})
   assert(!lines.empty());
 
@@ -372,29 +395,57 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
   int count = edit.effectiveCount();
   size_t h = hash(e);
 
-  // Dot repeat: replay the last buffer-modifying command
+  // Dot repeat: replay the last buffer-modifying command. With nothing to
+  // repeat (`.` after no prior edit, or after edits that all no-oped), Vim
+  // beeps and does nothing — match that by returning.
   if (mode == Mode::Normal && e == ".") {
-    assert(lastEditCmd && !lastEditCmd->empty() && ". with no previous edit to repeat");
-    // Parse count from lastEditCmd (e.g., "5de" → edit="de", count=5)
-    auto parsed = parseEdits(*lastEditCmd);
-    assert(parsed && !parsed->empty());
-    ParsedEdit repeat = (*parsed)[0];
+    if (!lastEdit || lastEdit->empty()) return;
+    ParsedEdit repeat = lastEdit->asEdit();
     // Explicit count on '.' overrides the stored count
     if (edit.hasCount()) {
       repeat = ParsedEdit{repeat.edit, count};
     }
     applyEdit(lines, pos, mode, repeat, nullptr, hasLinesBelow,
-              leftColOffset, rightColOffset, hasLinesAbove);  // don't update lastEditCmd
+              leftColOffset, rightColOffset, hasLinesAbove);  // don't update lastEdit
     return;
   }
 
   // Update dot repeat register for buffer-modifying Normal mode commands.
-  // Done pre-execution; pure motions and mode-entering commands are excluded.
-  if (lastEditCmd) {
-    if (optional<string> nextDotRepeat = dotRepeatCommandFor(mode, edit)) {
-      *lastEditCmd = std::move(*nextDotRepeat);
+  // Vim doesn't update the redo register for no-op edits (`x` on an empty
+  // line, `Ndd` when fewer than N lines remain, etc.). We approximate that
+  // by snapshotting the buffer/cursor here and only committing the new
+  // dot-cmd if the execution actually changed something. The proposed update
+  // is staged here; commit happens at end of applyEdit.
+  optional<DotRepeat> stagedDot;
+  Lines preLines;
+  CursorPos prePos = pos;
+  if (lastEdit) {
+    stagedDot = dotRepeatFor(mode, edit);
+    if (stagedDot) {
+      preLines = lines;
     }
   }
+  // Mode is intentionally ignored: `cc`/`S` on an empty line legitimately
+  // transitions Normal→Insert without modifying the buffer, and Vim doesn't
+  // update the redo register for that case (the dot-register update happens
+  // at `<Esc>` time, gated on whether anything was typed). We approximate by
+  // treating "buffer+cursor unchanged" as a no-op.
+  struct DotCommitGuard {
+    DotRepeat* slot;
+    optional<DotRepeat>& staged;
+    const Lines& pre;
+    const Lines& post;
+    const CursorPos& prePos;
+    const CursorPos& postPos;
+    ~DotCommitGuard() {
+      if (!slot || !staged) return;
+      if (pre == post && prePos.line == postPos.line &&
+          prePos.col == postPos.col) {
+        return;
+      }
+      *slot = std::move(*staged);
+    }
+  } dotGuard{lastEdit, stagedDot, preLines, lines, prePos, pos};
 
   int n = static_cast<int>(lines.size());
 
@@ -464,6 +515,12 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
   }
 
   if (mode == Mode::Normal) {
+    // <Esc> in Normal mode is a no-op (matches Vim: clears any pending
+    // operator but otherwise does nothing). Reached when a c-operator
+    // text-object motion failed and didn't transition to Insert mode.
+    if (e == "<Esc>") {
+      return;
+    }
     // Handle r{char} specially. Recall this fails if not enough characters.
     if (e.size() >= 2 && e[0] == 'r') {
       optional<char> target;
@@ -479,7 +536,8 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
         assert(false && "unsupported r{char} target");
       }
       if (pos.col + count > m) {
-        assert(false && "r{char} requires more chars than available");
+        // Not enough chars to replace — Vim no-ops with a beep.
+        return;
       }
       for (int i = 0; i < count; i++) {
         line[pos.col + i] = *target;
@@ -490,25 +548,24 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
 
     switch (hash(e)) {
       case hash("x"):
-        if (pos.col + count > m) {
-          assert(false && "x requires more chars");
-        }
-        line.erase(pos.col, count);
+        // Vim clamps count to chars remaining at or after cursor.
+        count = std::min(count, m - pos.col);
+        if (count > 0) line.erase(pos.col, count);
         pos.setCol(clampedToLastChar(line, pos.col));
         return;
 
       case hash("X"):
-        if (count > pos.col) {
-          assert(false && "X requires more chars before cursor");
+        // Vim limits count to chars available before cursor (silent clamp).
+        count = std::min(count, pos.col);
+        if (count > 0) {
+          line.erase(pos.col - count, count);
+          pos.setCol(pos.col - count);
         }
-        line.erase(pos.col - count, count);
-        pos.setCol(pos.col - count);
         return;
 
       case hash("~"):
-        if (pos.col + count > m) {
-          assert(false && "~ requires more chars");
-        }
+        // Vim clamps count to chars remaining at or after cursor.
+        count = std::min(count, m - pos.col);
         for (int i = 0; i < count; i++) {
           char& c = line[pos.col + i];
           if (isupper(c)) c = tolower(c);
@@ -520,25 +577,37 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
       case hash("J"): {
         int lineCount = max(count, 2);
         if (pos.line + lineCount > n) {
-          assert(false && "J requires more lines below");
+          // Not enough lines below — Vim no-ops with a beep.
+          return;
         }
-        VimCore::joinLineRange(lines, pos, lineCount, true);
+        if (lineCount == 2) {
+          VimCore::joinLines(lines, pos, true);
+        } else {
+          VimCore::joinLineRange(lines, pos, lineCount, true);
+        }
         return;
       }
 
       case hash("gJ"): {
         int lineCount = max(count, 2);
         if (pos.line + lineCount > n) {
-          assert(false && "gJ requires more lines below");
+          return;  // no-op, matches Vim
         }
-        VimCore::joinLineRange(lines, pos, lineCount, false);
+        if (lineCount == 2) {
+          VimCore::joinLines(lines, pos, false);
+        } else {
+          VimCore::joinLineRange(lines, pos, lineCount, false);
+        }
         return;
       }
 
       case hash("dd"):
-        if (pos.line + count > n) {
-          assert(false && "dd requires more lines");
-        }
+        // Vim's rule: `Ndd` with N >= 2 requires the cursor to NOT be at the
+        // last line (needs N-1 lines below). If insufficient, no-op (beep).
+        // For N == 1 (plain `dd`), always delete the cursor line.
+        if (count >= 2 && pos.line >= n - 1) return;
+        count = std::min(count, n - pos.line);
+        if (count <= 0) return;
         lines.erase(lines.begin() + pos.line, lines.begin() + pos.line + count);
         // Maintain invariant: buffer always has at least one line
         if (lines.empty()) {
@@ -674,7 +743,8 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           return;
         }
         if (pos.line == 0 && pos.col == 0) {
-          assert(false && "db/dB at start of buffer has no effect");
+          // No word before cursor at buffer start; matches Vim's no-op.
+          return;
         }
         deleteBackToWordStart(lines, pos, count, e == "dB", Mode::Normal);
         return;
@@ -704,29 +774,31 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           return;
         }
         if (pos.line == 0 && pos.col == 0) {
-          assert(false && "dge/dgE at start of buffer has no effect");
+          // No word before cursor at buffer start; matches Vim's no-op.
+          return;
         }
         deleteBackToWordEnd(lines, pos, count, e == "dgE", Mode::Normal);
         return;
 
-      // dj: linewise delete current line + count lines below
+      // dj: linewise delete current line + count lines below.
+      // Vim's rule: requires at least 1 line below (j motion); count clamped
+      // to lines remaining.
       case hash("dj"):
         {
-          int endLine = pos.line + count + 1;
-          if (endLine > n) {
-            assert(false && "dj requires more lines below");
-          }
+          if (pos.line >= n - 1) return;  // j motion fails → no-op
+          int linesBelow = n - 1 - pos.line;
+          int actualCount = std::min(count, linesBelow);
+          int endLine = pos.line + actualCount + 1;
           VimCore::deleteLineRangeAndUpdatePos(lines, LineRange(pos.line, endLine), pos, lineDeleteContext);
         }
         return;
 
-      // dk: linewise delete current line + count lines above
+      // dk: linewise delete current line + count lines above.
       case hash("dk"):
         {
-          int beginLine = pos.line - count;
-          if (beginLine < 0) {
-            assert(false && "dk requires more lines above");
-          }
+          if (pos.line == 0) return;  // k motion fails → no-op
+          int actualCount = std::min(count, pos.line);
+          int beginLine = pos.line - actualCount;
           VimCore::deleteLineRangeAndUpdatePos(lines, LineRange(beginLine, pos.line + 1), pos, lineDeleteContext);
         }
         return;
@@ -734,10 +806,10 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
       // cj: change current line + count lines below (linewise)
       case hash("cj"):
         {
-          int lastLine = pos.line + count;
-          if (lastLine >= n) {
-            assert(false && "cj requires more lines below");
-          }
+          if (pos.line >= n - 1) return;  // j motion fails → no-op
+          int linesBelow = n - 1 - pos.line;
+          int actualCount = std::min(count, linesBelow);
+          int lastLine = pos.line + actualCount;
           VimCore::linewiseChangeWithAutoindent(lines, pos, mode, pos.line, lastLine, lines[pos.line]);
         }
         return;
@@ -745,10 +817,9 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
       // ck: change current line + count lines above (linewise)
       case hash("ck"):
         {
-          int beginLine = pos.line - count;
-          if (beginLine < 0) {
-            assert(false && "ck requires more lines above");
-          }
+          if (pos.line == 0) return;  // k motion fails → no-op
+          int actualCount = std::min(count, pos.line);
+          int beginLine = pos.line - actualCount;
           VimCore::linewiseChangeWithAutoindent(lines, pos, mode, beginLine, pos.line, lines[beginLine]);
         }
         return;
@@ -1003,47 +1074,32 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
       // See VimEditUtils.h for the full rule description and examples.
       case hash("d)"):
       case hash("c)"):
-        {
-          CursorPos goalPos = pos;
-          for (int i = 0; i < count; i++) {
-            CursorPos endpoint = VimCore::sentenceOperatorEndpoint(
-                goalPos, lines, true,
-                hasBoundaryContext ? rightColOffset : 0,
-                hasBoundaryContext && hasLinesBelow);
-            if (endpoint == POSITION_OUTSIDE_BOUNDARY) {
-              goalPos = POSITION_OUTSIDE_BOUNDARY;
-              break;
-            }
-            goalPos = endpoint;
-          }
-          // Forward: exclusive end = goalPos (motion destination).
-          if (goalPos != POSITION_OUTSIDE_BOUNDARY && goalPos > pos) {
-            CharRange range(pos, goalPos);
-            applyExclusiveMotionEdit(
-                lines, pos, mode, range, lineDeleteContext, e[0] == 'c');
-          }
-          if (e[0] == 'c') mode = Mode::Insert;
-        }
-        return;
-
       case hash("d("):
       case hash("c("):
         {
-          CursorPos initialPos = pos;
-          for (int i = 0; i < count; i++) {
+          // Vim's `nv_brace` runs findsent; the motion target may be either
+          // before or after the cursor regardless of `)` vs `(` direction
+          // (findsent's backward-scan-through-closers can return a backward
+          // position even for forward motion). The operator range is just
+          // [min, max) — applyExclusiveMotionEdit handles both shapes.
+          bool forward = e[1] == ')';
+          CursorPos motionPos = pos;
+          bool ok = true;
+          for (int i = 0; i < count && ok; i++) {
             CursorPos endpoint = VimCore::sentenceOperatorEndpoint(
-                initialPos, lines, false,
-                hasBoundaryContext ? leftColOffset : 0,
-                hasBoundaryContext && hasLinesAbove);
+                motionPos, lines, forward,
+                hasBoundaryContext ? (forward ? rightColOffset : leftColOffset) : 0,
+                hasBoundaryContext && (forward ? hasLinesBelow : hasLinesAbove));
             if (endpoint == POSITION_OUTSIDE_BOUNDARY) {
-              initialPos = POSITION_OUTSIDE_BOUNDARY;
+              ok = false;
               break;
             }
-            initialPos = endpoint;
+            motionPos = endpoint;
           }
-          // Backward: exclusive end = cursor pos (the higher end of the range).
-          if (initialPos != POSITION_OUTSIDE_BOUNDARY && initialPos < pos) {
-            CharRange range(initialPos, pos);
+          if (ok && motionPos != pos) {
+            CursorPos lo = motionPos < pos ? motionPos : pos;
+            CursorPos hi = motionPos < pos ? pos : motionPos;
+            CharRange range(lo, hi);
             applyExclusiveMotionEdit(
                 lines, pos, mode, range, lineDeleteContext, e[0] == 'c');
           }
@@ -1170,39 +1226,118 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
             : VimCore::wordTextObjectRange(
                   pos, linesWrapper, kind, bigWord, boundary);
       }
+      bool isBracketObj = false;
       // Quote objects
-      else if (obj == '"' || obj == '\'' || obj == '`') {
+      if (obj == '"' || obj == '\'' || obj == '`') {
         r = VimCore::quoteTextObjectRange(
             pos, lines, inner, obj, leftColOffset, rightColOffset);
       }
       // Bracket objects - handle both opening and closing chars
       else if (obj == '(' || obj == ')' || obj == 'b') {
+        isBracketObj = true;
         r = VimCore::bracketTextObjectRange(
             pos, lines, inner, '(', ')', leftColOffset, rightColOffset);
       } else if (obj == '{' || obj == '}' || obj == 'B') {
+        isBracketObj = true;
         r = VimCore::bracketTextObjectRange(
             pos, lines, inner, '{', '}', leftColOffset, rightColOffset);
       } else if (obj == '[' || obj == ']') {
+        isBracketObj = true;
         r = VimCore::bracketTextObjectRange(
             pos, lines, inner, '[', ']', leftColOffset, rightColOffset);
       } else if (obj == '<' || obj == '>') {
+        isBracketObj = true;
         r = VimCore::bracketTextObjectRange(
             pos, lines, inner, '<', '>', leftColOffset, rightColOffset);
-      } else {
-        assert(false && "Unknown text object");
+      } else if (obj == 's') {
+        isBracketObj = true;  // route through exclusive-linewise resolver
+        r = VimCore::sentenceTextObjectRange(pos, lines, inner);
+      } else if (obj == 'p') {
+        // Paragraph text object: always linewise. Handle directly here and
+        // return — the generic CharRange dispatch below doesn't fit.
+        LineRange lineRange = VimCore::paragraphTextObjectRange(
+            pos.line, lines, inner);
+        if (lineRange.beginLine < 0 || lineRange.endLine < 0 ||
+            lineRange.beginLine >= lineRange.endLine) {
+          // Vim's current_par FAIL: operator is cleared, cursor unchanged,
+          // no mode transition (even for `cap`/`cip`).
+          return;
+        }
+        if (op == 'd') {
+          VimCore::deleteLineRangeAndUpdatePos(lines, lineRange, pos);
+        } else {
+          // c: clear the affected line range, leave one empty line, enter
+          // insert at col 0. Mirrors Vim's cc-like linewise change.
+          int begin = lineRange.beginLine;
+          int end = std::min(lineRange.endLine,
+                             static_cast<int>(lines.size()));
+          lines.erase(lines.begin() + begin, lines.begin() + end);
+          lines.insert(lines.begin() + begin, std::string{});
+          pos.line = begin;
+          pos.setCol(0);
+          mode = Mode::Insert;
+        }
+        return;
+      } else if (!(obj == 'w' || obj == 'W')) {
+        // Unknown text object: leave r as default (cursor,cursor) empty;
+        // falls through to no-op.
       }
 
       // Apply operator to range (all ranges are half-open [begin, end)).
       if (r.isValid()) {
-        if (op == 'd') {
+        if (r.isEmpty()) {
+          // Quote/bracket on empty pair: buffer unchanged, cursor moves to
+          // the resolved range start. Matches Vim's current_quote on `i"`
+          // over empty quotes.
+          pos = r.begin;
+          if (op == 'c') mode = Mode::Insert;
+        } else if (isBracketObj && r.spansMultiple()) {
+          // Multi-line bracket text object may need linewise promotion
+          // (op_delete in Vim merges the leading-blanks/full-line case into a
+          // linewise delete) or backed-up adjustment (`:help exclusive-linewise`).
+          VimCore::ResolvedDeleteRange resolved =
+              op == 'c'
+                  ? VimCore::resolveExclusiveChangeRange(r, lines)
+                  : VimCore::resolveExclusiveDeleteRange(r, lines, true);
+          VimCore::deleteResolvedRangeAndUpdatePos(
+              lines, resolved, pos, op == 'c' ? Mode::Insert : Mode::Normal);
+          if (op == 'c') mode = Mode::Insert;
+        } else if (op == 'd') {
           VimCore::deleteRangeAndUpdatePos(lines, r, pos);
         } else {  // op == 'c'
           VimCore::deleteRangeAndUpdatePos(lines, r, pos, Mode::Insert);
           mode = Mode::Insert;
         }
-      } else if (op == 'c') {
-        // Invalid/empty range but still enter insert mode for 'c'
-        mode = Mode::Insert;
+      } else {
+        // Invalid range: word text objects can FAIL (Vim's current_word
+        // returns FAIL when end_word/fwd_word hit EOF). Vim's clearopbeep
+        // leaves cursor at wherever the failed scan ended (clamped) AND
+        // does NOT enter insert mode for `c` — the operator is cleared.
+        bool wordFailed = false;
+        if ((obj == 'w' || obj == 'W') &&
+            !(leftColOffset > 0 || rightColOffset > 0 ||
+              hasLinesAbove || hasLinesBelow)) {
+          bool bigWord = (obj == 'W');
+          auto cw = VimCore::currentWord(pos, lines, !inner, bigWord);
+          if (!cw.ok) {
+            wordFailed = true;
+            CursorPos newPos = cw.end;
+            if (newPos.line >= 0 && newPos.line < static_cast<int>(lines.size())) {
+              int len = static_cast<int>(lines[newPos.line].size());
+              if (len == 0) {
+                newPos.setCol(0);
+              } else if (newPos.col >= len) {
+                newPos.setCol(len - 1);
+              }
+              pos = newPos;
+            }
+          }
+        }
+        if (op == 'c' && !wordFailed) {
+          // Non-word text objects, or empty range that nonetheless succeeded:
+          // still enter insert mode for `c`.
+          mode = Mode::Insert;
+        }
       }
       return;
     }
@@ -1211,13 +1346,35 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
   if (mode == Mode::Insert) {
     switch (hash(e)) {
       case hash("<Esc>"):
+        // Vim's autoindent strip on `<Esc>` (the `did_ai` path in change.c).
+        // If `<CR>` inserted autoindent and nothing user-typed (other than
+        // whitespace within the autoindent prefix) has happened since,
+        // truncate the line to "". Trip wire: `Verify_InsertNewline`
+        // (`i <CR><Esc>` on `[" "]` — autoindent " " on line 1 must strip).
+        if (pendingAutoindentLen != nullptr && *pendingAutoindentLen > 0 &&
+            pos.line >= 0 && pos.line < static_cast<int>(lines.size())) {
+          const std::string& line = lines[pos.line];
+          int ai = *pendingAutoindentLen;
+          if (static_cast<int>(line.size()) == ai && pos.col == ai) {
+            bool allWhitespace = true;
+            for (char c : line) {
+              if (c != ' ' && c != '\t') { allWhitespace = false; break; }
+            }
+            if (allWhitespace) {
+              lines[pos.line].clear();
+              pos.setCol(0);
+            }
+          }
+          *pendingAutoindentLen = 0;
+        }
         if (pos.col > 0) pos.setCol(pos.col - 1);
         mode = Mode::Normal;
         return;
 
       case hash("<BS>"):
         if (pos.col == 0 && pos.line == 0) {
-          assert(false && "<BS> at start of buffer has no effect");
+          // Vim: `<BS>` at start of buffer beeps, otherwise no-op. Match that.
+          return;
         }
         if (pos.col == 0) {
           // Join with previous line
@@ -1226,9 +1383,27 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
           VimCore::joinLines(lines, joinPos, false);
           pos = CursorPos(pos.line - 1, prevLen);
         } else {
-          // Delete char before cursor
-          CursorPos beforePos(pos.line, pos.col - 1);
-          CharRange r(beforePos, CursorPos(beforePos.line, beforePos.col + 1));
+          // `smarttab` + `bs=indent`: when cursor sits inside leading
+          // whitespace, `<BS>` deletes back to the previous shiftwidth boundary
+          // in one press (not one char). Mirrors ChangeGoalHandler's
+          // `bsCountForIndent` accounting. Trip wire: `Verify_InsertNewline`
+          // (`i<BS>  <BS><Esc>` on `[" ", " ", ""]` — the final `<BS>` must
+          // delete the whole `"  "` indent, not one space).
+          const std::string& line = lines[pos.line];
+          bool inLeadingWhitespace = true;
+          for (int c = 0; c < pos.col; c++) {
+            if (line[c] != ' ' && line[c] != '\t') {
+              inLeadingWhitespace = false;
+              break;
+            }
+          }
+          int deleteToCol = pos.col - 1;
+          if (inLeadingWhitespace) {
+            int sw = VimOptions::shiftwidth();
+            deleteToCol = ((pos.col - 1) / sw) * sw;
+          }
+          CharRange r(CursorPos(pos.line, deleteToCol),
+                      CursorPos(pos.line, pos.col));
           VimCore::deleteRangeAndUpdatePos(lines, r, pos, Mode::Insert);
         }
         return;
@@ -1250,9 +1425,54 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
         }
         return;
 
-      case hash("<CR>"):
-        VimCore::insertText(lines, pos, "\n");
+      case hash("<CR>"): {
+        // Vim's insert-mode `<CR>` with autoindent (Neovim default):
+        //   1. Compute split: `left=[0,col)`, `right=[col,EOL)`.
+        //   2. Compute autoindent = leading whitespace of `left`.
+        //   3. Strip leading whitespace from `right` (the moved chars).
+        //   4. If `did_ai` is still set (pending autoindent from a previous
+        //      `<CR>` with no user typing since), TRUNCATE the old line to
+        //      "" — Vim's `trunc_line` path in change.c open_line. The
+        //      moved-content `right` and the new autoindent are unaffected.
+        //   5. New line = autoindent + stripped_right; cursor at column
+        //      `len(autoindent)`.
+        // Trip wires: `Verify_InsertNewline` (`ib<CR><Esc>` strips moved
+        // trailing whitespace; `i<CR><CR><Esc>` truncates the first
+        // autoindented line on the second `<CR>`).
+        if constexpr (!VimOptions::autoindent()) {
+          VimCore::insertText(lines, pos, "\n");
+          return;
+        }
+        const std::string& srcLine = lines[pos.line];
+        int splitCol = std::min(pos.col, static_cast<int>(srcLine.size()));
+        std::string leftPart = srcLine.substr(0, splitCol);
+        std::string rightPart = srcLine.substr(splitCol);
+        size_t rightStart = 0;
+        while (rightStart < rightPart.size() &&
+               (rightPart[rightStart] == ' ' ||
+                rightPart[rightStart] == '\t')) {
+          rightStart++;
+        }
+        rightPart.erase(0, rightStart);
+        size_t indentLen = 0;
+        while (indentLen < leftPart.size() &&
+               (leftPart[indentLen] == ' ' ||
+                leftPart[indentLen] == '\t')) {
+          indentLen++;
+        }
+        std::string autoindent = leftPart.substr(0, indentLen);
+        bool truncateOldLine =
+            pendingAutoindentLen != nullptr && *pendingAutoindentLen > 0;
+        std::string newLineContent = autoindent + rightPart;
+        lines[pos.line] = truncateOldLine ? std::string{} : leftPart;
+        lines.insert(lines.begin() + pos.line + 1, newLineContent);
+        pos.line += 1;
+        pos.setCol(static_cast<int>(autoindent.size()));
+        if (pendingAutoindentLen != nullptr) {
+          *pendingAutoindentLen = static_cast<int>(autoindent.size());
+        }
         return;
+      }
 
       case hash("<C-u>"):
         if (pos.col == 0) {

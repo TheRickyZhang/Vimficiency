@@ -5,26 +5,6 @@
 
 using namespace std;
 
-int toFlatIndex(int row, int col, const Lines& lines) {
-  int idx = 0;
-  for (int r = 0; r < row && r < static_cast<int>(lines.size()); r++) {
-    idx += lines[r].empty() ? 1 : static_cast<int>(lines[r].size());
-  }
-  return idx + col;
-}
-
-CursorPos fromFlatIndex(int flatIdx, const Lines& lines) {
-  int remaining = flatIdx;
-  for (int r = 0; r < static_cast<int>(lines.size()); r++) {
-    int lineSize = lines[r].empty() ? 1 : static_cast<int>(lines[r].size());
-    if (remaining < lineSize) {
-      return CursorPos(r, remaining);
-    }
-    remaining -= lineSize;
-  }
-  return CursorPos(-1, -1);
-}
-
 TransformBoundary EmbeddedEditRegion::makeBoundary() const {
   return TransformBoundary(fullBuffer, {startLine, startCol}, {endLine, endCol});
 }

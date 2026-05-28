@@ -38,10 +38,9 @@ inline void verifyText(const std::string& report) {
       writer, ApprovalTests::Options(ApprovalTests::QuietReporter()));
 }
 
-inline std::string joinLines(const std::vector<std::string>& lines) {
+inline void verifyText(const std::vector<std::string>& lines) {
   std::ostringstream out;
-  for (const std::string& line : lines) {
-    out << line << "\n";
-  }
-  return out.str();
+  for (const std::string& line : lines) out << line << "\n";
+  verifyText(out.str());
 }
+

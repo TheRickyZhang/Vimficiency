@@ -358,7 +358,7 @@ TransformResult TransformOptimizer::optimizeImpl(const Lines &initialLines, cons
         recordResult(s, Result(s.getSeq(), s.getEffort()), true);
       } else {
         // emitEditGoal-pushed states already contain the typed completion in
-        // their seq (and set lastEditBase_). Initial / nav-only states whose
+        // their seq (and set lastEdit_). Initial / nav-only states whose
         // source already matched the cleared shell have not typed yet.
         Result result = s.hasLastEdit()
             ? Result(s.getSeq(), s.getEffort())

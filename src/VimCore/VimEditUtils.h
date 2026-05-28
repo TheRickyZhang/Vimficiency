@@ -175,6 +175,12 @@ struct ResolvedDeleteRange {
   CursorPos linewiseMotionBegin;
   DeleteCursorPolicy cursorPolicy;
   int firstContentCol;
+  // For TRUE exclusive-linewise (`:help exclusive-linewise`) promotions only:
+  // the column of the motion endpoint. Vim's `)`/`}` etc. update curswant to
+  // this column BEFORE the linewise delete; the post-delete cursor's
+  // targetCol must reflect that. -1 when not applicable (result-is-blank
+  // promotions keep the original cursor's targetCol).
+  int exclusiveMotionEndCol;
 
   static ResolvedDeleteRange characterwise(
       CharRange range,
@@ -184,32 +190,34 @@ struct ResolvedDeleteRange {
             CHAR_LINE_RANGE_OUTSIDE_BOUNDARY,
             LINE_CHAR_RANGE_OUTSIDE_BOUNDARY, LineRange(0, 0),
             LinewiseDeleteCursorPolicy::LinewiseCommand,
-            CursorPos(-1, -1), cursorPolicy, firstContentCol};
+            CursorPos(-1, -1), cursorPolicy, firstContentCol, -1};
   }
 
   static ResolvedDeleteRange charLine(CharLineRange range) {
     return {ResolvedDeleteRangeKind::CharLine, CharRange(),
             range, LINE_CHAR_RANGE_OUTSIDE_BOUNDARY, LineRange(0, 0),
             LinewiseDeleteCursorPolicy::LinewiseCommand,
-            CursorPos(-1, -1), DeleteCursorPolicy::Default, 0};
+            CursorPos(-1, -1), DeleteCursorPolicy::Default, 0, -1};
   }
 
   static ResolvedDeleteRange lineChar(LineCharRange range) {
     return {ResolvedDeleteRangeKind::LineChar, CharRange(),
             CHAR_LINE_RANGE_OUTSIDE_BOUNDARY, range, LineRange(0, 0),
             LinewiseDeleteCursorPolicy::LinewiseCommand,
-            CursorPos(-1, -1), DeleteCursorPolicy::Default, 0};
+            CursorPos(-1, -1), DeleteCursorPolicy::Default, 0, -1};
   }
 
   static ResolvedDeleteRange linewise(
       LineRange range, LinewiseDeleteCursorPolicy cursorPolicy,
       CursorPos motionBegin = CursorPos(-1, -1),
       DeleteCursorPolicy deleteCursorPolicy = DeleteCursorPolicy::Default,
-      int firstContentCol = 0) {
+      int firstContentCol = 0,
+      int exclusiveMotionEndCol = -1) {
     return {ResolvedDeleteRangeKind::Linewise, CharRange(),
             CHAR_LINE_RANGE_OUTSIDE_BOUNDARY,
             LINE_CHAR_RANGE_OUTSIDE_BOUNDARY, range,
-            cursorPolicy, motionBegin, deleteCursorPolicy, firstContentCol};
+            cursorPolicy, motionBegin, deleteCursorPolicy, firstContentCol,
+            exclusiveMotionEndCol};
   }
 };
 
@@ -235,6 +243,33 @@ inline bool hasOnlyBlankSuffix(std::string_view line, int beginCol) {
   return true;
 }
 
+// Returns 1 if TRUE exclusive-linewise (`:help exclusive-linewise`),
+// 2 if op_delete result-is-blank promotion (Vim's ops.c:741-757), 0 otherwise.
+// Distinguishes the two because their post-delete cursor targetCol semantics
+// differ: exclusive-linewise uses the motion endpoint's curswant; result-is-
+// blank keeps the original cursor's curswant.
+inline int classifyExclusiveDeleteLinewisePromotion(
+    CharRange range, const Lines& lines) {
+  range.normalize();
+  bool spansForwardLines = range.begin.line < range.end.line;
+  bool endAtLineStart = range.end.col == 0;
+  bool consumesBufferTail = !endAtLineStart &&
+      range.end.line == lines.lastLine() &&
+      range.end.col >= static_cast<int>(lines[range.end.line].size());
+
+  if (spansForwardLines &&
+      hasOnlyBlankPrefix(lines[range.begin.line], range.begin.col) &&
+      (endAtLineStart || consumesBufferTail)) {
+    return 1;
+  }
+  if (spansForwardLines &&
+      hasOnlyBlankPrefix(lines[range.begin.line], range.begin.col) &&
+      hasOnlyBlankSuffix(lines[range.end.line], range.end.col)) {
+    return 2;
+  }
+  return 0;
+}
+
 inline bool exclusiveDeletePromotesToLinewise(CharRange range, const Lines& lines) {
   range.normalize();
   bool spansForwardLines = range.begin.line < range.end.line;
@@ -243,9 +278,27 @@ inline bool exclusiveDeletePromotesToLinewise(CharRange range, const Lines& line
       range.end.line == lines.lastLine() &&
       range.end.col >= static_cast<int>(lines[range.end.line].size());
 
-  return spansForwardLines &&
-         hasOnlyBlankPrefix(lines[range.begin.line], range.begin.col) &&
-         (endAtLineStart || consumesBufferTail);
+  if (spansForwardLines &&
+      hasOnlyBlankPrefix(lines[range.begin.line], range.begin.col) &&
+      (endAtLineStart || consumesBufferTail)) {
+    return true;
+  }
+
+  // Vim's op_delete (ops.c:741-757) extra promotion rule: when a char-wise
+  // delete spans multi-line and the result would be a blank line, promote.
+  // Result-is-blank requires:
+  //   - cols [0, begin.col) on begin's line are all whitespace, AND
+  //   - chars after end.col on end's line are all whitespace.
+  // Exclusive motion's end is past the last char to delete, so we check
+  // hasOnlyBlankSuffix from end.col (no +inclusive shift since inclusive
+  // is false for exclusive motions).
+  if (spansForwardLines &&
+      hasOnlyBlankPrefix(lines[range.begin.line], range.begin.col) &&
+      hasOnlyBlankSuffix(lines[range.end.line], range.end.col)) {
+    return true;
+  }
+
+  return false;
 }
 
 inline LineRange exclusiveMotionLinewiseRange(CharRange range) {
@@ -265,11 +318,25 @@ inline ResolvedDeleteRange resolveExclusiveDeleteRange(
     CharRange range, const Lines& lines, bool allowLinewise) {
   range.normalize();
 
-  if (allowLinewise && exclusiveDeletePromotesToLinewise(range, lines)) {
-    return ResolvedDeleteRange::linewise(
-        exclusiveMotionLinewiseRange(range),
-        LinewiseDeleteCursorPolicy::ExclusiveMotion,
-        range.begin);
+  if (allowLinewise) {
+    int classification = classifyExclusiveDeleteLinewisePromotion(range, lines);
+    if (classification == 1) {
+      // TRUE exclusive-linewise: motion endpoint curswant feeds post-delete
+      // cursor targetCol.
+      return ResolvedDeleteRange::linewise(
+          exclusiveMotionLinewiseRange(range),
+          LinewiseDeleteCursorPolicy::ExclusiveMotion,
+          range.begin,
+          DeleteCursorPolicy::Default,
+          /*firstContentCol=*/0,
+          /*exclusiveMotionEndCol=*/range.end.col);
+    }
+    if (classification == 2) {
+      return ResolvedDeleteRange::linewise(
+          exclusiveMotionLinewiseRange(range),
+          LinewiseDeleteCursorPolicy::ExclusiveMotion,
+          range.begin);
+    }
   }
 
   if (range.end.col != 0 || range.end.line <= range.begin.line) {
@@ -386,9 +453,11 @@ inline ResolvedDeleteRange resolveForwardInclusiveWordEndDeleteRange(
       hasOnlyBlankPrefix(lines[range.begin.line], range.begin.col,
                          range.begin.line == 0 ? contentStartCol : 0) &&
       hasOnlyBlankSuffix(lines[range.end.line], range.end.col)) {
+    // op_delete result-is-blank promotion. Cursor honors `'nostartofline'` —
+    // see resolveBackwardInclusiveWordEndDeleteRange and dev/decisions.md.
     return ResolvedDeleteRange::linewise(
         LineRange(range.begin.line, range.end.line + 1),
-        LinewiseDeleteCursorPolicy::OperatorMotion,
+        LinewiseDeleteCursorPolicy::LinewiseCommand,
         range.begin);
   }
 
@@ -397,33 +466,24 @@ inline ResolvedDeleteRange resolveForwardInclusiveWordEndDeleteRange(
 
 inline ResolvedDeleteRange resolveBackwardInclusiveWordEndDeleteRange(
     const CursorPos& endpoint, const CursorPos& cursor, const Lines& lines) {
-  if (endpoint.line + 1 == cursor.line) {
-    if (endpoint.col > 0 &&
-        hasOnlyBlankPrefix(lines[endpoint.line], endpoint.col)) {
-      return ResolvedDeleteRange::linewise(
-          LineRange(endpoint.line, cursor.line + 1),
-          LinewiseDeleteCursorPolicy::OperatorMotion,
-          endpoint);
-    }
-    if (endpoint.col == 0 &&
-        VimCore::isBlankLine(lines[cursor.line]) &&
-        hasOnlyBlankSuffix(lines[endpoint.line], endpoint.col + 1)) {
-      return ResolvedDeleteRange::linewise(
-          LineRange(endpoint.line, cursor.line + 1),
-          LinewiseDeleteCursorPolicy::OperatorMotion,
-          endpoint);
-    }
-    if (VimCore::isBlankLine(lines[endpoint.line]) &&
-        hasOnlyBlankSuffix(lines[cursor.line], cursor.col + 1)) {
-      return ResolvedDeleteRange::linewise(
-          LineRange(endpoint.line, cursor.line + 1),
-          LinewiseDeleteCursorPolicy::OperatorMotion,
-          endpoint);
-    }
+  // Multi-line inclusive delete where the JOIN-RESULT is a blank line:
+  // prefix on begin's line (cols [0, begin.col)) and suffix on end's line
+  // (cols [end.col, EOL)) are all whitespace. Vim's op_delete result-is-blank
+  // promotion (ops.c:741-757). Vim's `beginline(BL_WHITE)` here is overridden
+  // by `'nostartofline'` (Neovim default) for the `d` operator — cursor keeps
+  // the same column rather than jumping to first non-blank. Use the
+  // LinewiseCommand cursor policy (which preserves targetCol) to match.
+  CharRange range(endpoint, VimCore::onePastOnSameLine(lines, cursor));
+  if (range.begin.line < range.end.line &&
+      hasOnlyBlankPrefix(lines[range.begin.line], range.begin.col) &&
+      hasOnlyBlankSuffix(lines[range.end.line], range.end.col)) {
+    return ResolvedDeleteRange::linewise(
+        LineRange(range.begin.line, range.end.line + 1),
+        LinewiseDeleteCursorPolicy::LinewiseCommand,
+        range.begin);
   }
 
-  return ResolvedDeleteRange::characterwise(
-      CharRange(endpoint, VimCore::onePastOnSameLine(lines, cursor)));
+  return ResolvedDeleteRange::characterwise(range);
 }
 
 // Single entry point for resolving a word-operator + motion delete

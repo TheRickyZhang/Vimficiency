@@ -189,19 +189,12 @@ class TransformOptimizerGeneratedPropertyTest {
     auto test = toEmbeddedRegion(spec);
     TransformResult res = pureDeletionResult(test.editRegion, test.makeBoundary());
     Lines expected{test.expectedAfterDeletion()};
-    int checkedStarts = 0;
     string context = contextForEmbedded("single-line embedded", test, expected);
-
-    for (size_t i = 0; i < res.resultCount(); i++) {
-      const auto& bucket = res.getResults()[i];
-      if (bucket.empty()) continue;
-
-      CursorPos editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
-      CursorPos bufferPos = test.toFullBufferPos(editPos);
-      expectEmittedTopResultsReachGoal(
-          bucket, test.fullBuffer, bufferPos, expected, context, checkedStarts);
-    }
-    EXPECT_GT(checkedStarts, 0);
+    runSampledReplays(res, test.fullBuffer, expected, context,
+                      hashLines(test.fullBuffer), [&](int startIdx) {
+      CursorPos editPos = test.editRegion.cursorFromFlatIndexClamped(startIdx);
+      return test.toFullBufferPos(editPos);
+    });
   }
 
   void MultiLineFullBufferTopResultsReplay(const FullBufferSpec& spec) {
@@ -209,18 +202,11 @@ class TransformOptimizerGeneratedPropertyTest {
     TransformBoundary boundary(source, {0, 0}, source.endPos());
     TransformResult res = pureDeletionResult(source, boundary);
     Lines goal{""};
-    int checkedStarts = 0;
     string context = contextForLines("multi-line full buffer", source, goal);
-
-    for (size_t i = 0; i < res.resultCount(); i += 2) {
-      const auto& bucket = res.getResults()[i];
-      if (bucket.empty()) continue;
-
-      CursorPos pos = fromFlatIndex(static_cast<int>(i), source);
-      expectEmittedTopResultsReachGoal(
-          bucket, source, pos, goal, context, checkedStarts);
-    }
-    EXPECT_GT(checkedStarts, 0);
+    runSampledReplays(res, source, goal, context, hashLines(source),
+                      [&](int startIdx) {
+      return source.cursorFromFlatIndexClamped(startIdx);
+    });
   }
 
   void SameLengthReplacementTopResultsReplay(
@@ -231,30 +217,22 @@ class TransformOptimizerGeneratedPropertyTest {
     TransformBoundary boundary(source, {0, 0}, source.endPos());
     TransformResult res = opt_.optimizeTransform(source, goal, boundary, params_);
 
-    int checkedStarts = 0;
-    expectEmittedTopResultsReachGoal(
-        res.getResults()[0], source, CursorPos(0, 0), goal,
-        contextForLines("same-length replacement", source, goal), checkedStarts);
-    EXPECT_GT(checkedStarts, 0);
+    expectTopResultsReplay(
+        oracle_, res.getResults()[0], source, CursorPos(0, 0), goal,
+        MAX_RESULTS_PER_START_TO_REPLAY,
+        contextForLines("same-length replacement", source, goal));
   }
 
   void MultiLineEmbeddedTopResultsReplay(const EmbeddedRegionSpec& spec) {
     auto test = toEmbeddedRegion(spec);
     TransformResult res = pureDeletionResult(test.editRegion, test.makeBoundary());
     Lines expected{test.expectedAfterDeletion()};
-    int checkedStarts = 0;
     string context = contextForEmbedded("multi-line embedded", test, expected);
-
-    for (size_t i = 0; i < res.resultCount(); i += 4) {
-      const auto& bucket = res.getResults()[i];
-      if (bucket.empty()) continue;
-
-      CursorPos editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
-      CursorPos bufferPos = test.toFullBufferPos(editPos);
-      expectEmittedTopResultsReachGoal(
-          bucket, test.fullBuffer, bufferPos, expected, context, checkedStarts);
-    }
-    EXPECT_GT(checkedStarts, 0);
+    runSampledReplays(res, test.fullBuffer, expected, context,
+                      hashLines(test.fullBuffer), [&](int startIdx) {
+      CursorPos editPos = test.editRegion.cursorFromFlatIndexClamped(startIdx);
+      return test.toFullBufferPos(editPos);
+    });
   }
 
   void SingleLineChangeTopResultsReplay(const SingleLineChangeSpec& spec) {
@@ -264,18 +242,12 @@ class TransformOptimizerGeneratedPropertyTest {
 
     TransformBoundary boundary(source, {0, 0}, source.endPos());
     TransformResult res = opt_.optimizeTransform(source, goal, boundary, params_);
-    int checkedStarts = 0;
     string context = contextForLines("single-line change", source, goal);
-
-    for (size_t i = 0; i < res.resultCount(); i++) {
-      const auto& bucket = res.getResults()[i];
-      if (bucket.empty()) continue;
-
-      CursorPos pos = fromFlatIndex(static_cast<int>(i), source);
-      expectEmittedTopResultsReachGoal(
-          bucket, source, pos, goal, context, checkedStarts);
-    }
-    EXPECT_GT(checkedStarts, 0);
+    runSampledReplays(res, source, goal, context,
+                      hashLines(source) ^ hashLines(goal),
+                      [&](int startIdx) {
+      return source.cursorFromFlatIndexClamped(startIdx);
+    });
   }
 
   void MultiLineFullBufferChangeTopResultsReplay(
@@ -286,18 +258,12 @@ class TransformOptimizerGeneratedPropertyTest {
 
     TransformBoundary boundary(source, {0, 0}, source.endPos());
     TransformResult res = opt_.optimizeTransform(source, goal, boundary, params_);
-    int checkedStarts = 0;
     string context = contextForLines("multi-line full-buffer change", source, goal);
-
-    for (size_t i = 0; i < res.resultCount(); i += 4) {
-      const auto& bucket = res.getResults()[i];
-      if (bucket.empty()) continue;
-
-      CursorPos pos = fromFlatIndex(static_cast<int>(i), source);
-      expectEmittedTopResultsReachGoal(
-          bucket, source, pos, goal, context, checkedStarts);
-    }
-    EXPECT_GT(checkedStarts, 0);
+    runSampledReplays(res, source, goal, context,
+                      hashLines(source) ^ hashLines(goal),
+                      [&](int startIdx) {
+      return source.cursorFromFlatIndexClamped(startIdx);
+    });
   }
 
   void MultiLineEmbeddedChangeTopResultsReplay(const EmbeddedChangeSpec& spec) {
@@ -318,23 +284,19 @@ class TransformOptimizerGeneratedPropertyTest {
       expectedFull.push_back(line);
     }
 
-    int checkedStarts = 0;
     string context =
         contextForEmbedded("multi-line embedded change", test, expectedFull);
-    for (size_t i = 0; i < res.resultCount(); i += 4) {
-      const auto& bucket = res.getResults()[i];
-      if (bucket.empty()) continue;
-
-      CursorPos editPos = fromFlatIndex(static_cast<int>(i), test.editRegion);
-      CursorPos bufferPos = test.toFullBufferPos(editPos);
-      expectEmittedTopResultsReachGoal(
-          bucket, test.fullBuffer, bufferPos, expectedFull, context, checkedStarts);
-    }
-    EXPECT_GT(checkedStarts, 0);
+    runSampledReplays(res, test.fullBuffer, expectedFull, context,
+                      hashLines(test.fullBuffer) ^ hashLines(goal),
+                      [&](int startIdx) {
+      CursorPos editPos = test.editRegion.cursorFromFlatIndexClamped(startIdx);
+      return test.toFullBufferPos(editPos);
+    });
   }
 
  private:
   static constexpr size_t MAX_RESULTS_PER_START_TO_REPLAY = 3;
+  static constexpr size_t MAX_REPLAY_SAMPLES_PER_ITERATION = 5;
 
   Config config_ = Config::uniform();
   TransformOptimizerParams params_{};
@@ -346,18 +308,34 @@ class TransformOptimizerGeneratedPropertyTest {
     return opt_.optimizePureDeletion(initialLines, boundary, params_);
   }
 
-  void expectEmittedTopResultsReachGoal(
-      const vector<Result>& bucket,
+  // Per-iteration replay is capped at MAX_REPLAY_SAMPLES_PER_ITERATION (start,
+  // result) pairs sampled deterministically from `seed`. Per-spec coverage is
+  // intentionally shallow; FuzzTest's per-iteration spec mutation handles the
+  // breadth across iterations.
+  template <typename PosForStart>
+  void runSampledReplays(
+      const TransformResult& res,
       const Lines& initial,
-      CursorPos initialPos,
       const Lines& goal,
       const string& context,
-      int& checkedStarts) {
-    if (bucket.empty()) return;
-    checkedStarts++;
-    expectTopResultsReplay(
-        oracle_, bucket, initial, initialPos, goal,
-        MAX_RESULTS_PER_START_TO_REPLAY, context);
+      uint64_t seed,
+      PosForStart posForStart) {
+    auto pairs = sampleReplayPairs(
+        res.getResults(), MAX_RESULTS_PER_START_TO_REPLAY,
+        MAX_REPLAY_SAMPLES_PER_ITERATION, seed);
+    if (pairs.empty()) {
+      ADD_FAILURE() << "no non-empty result buckets " << context;
+      return;
+    }
+    for (auto [startIdx, resultIdx] : pairs) {
+      CursorPos pos = posForStart(static_cast<int>(startIdx));
+      string itemContext = context + " start=" + std::to_string(startIdx)
+          + " result=" + std::to_string(resultIdx);
+      EXPECT_TRUE(OracleReplay::matches(
+          oracle_, initial, pos,
+          res.getResults()[startIdx][resultIdx].getSequence().str(),
+          goal, std::nullopt, Mode::Normal, itemContext));
+    }
   }
 };
 

@@ -87,7 +87,7 @@ TEST_F(TextObjectsTest, Ciw_FinalEmptyLineMatchesOracle) {
   Lines lines = {" ", ""};
   CursorPos pos(1, 0);
   Mode mode = Mode::Normal;
-  string lastEdit;
+  DotRepeat lastEdit;
   auto oracleResult = oracle_->simulate(lines, pos.line, pos.col, "ciw--\x1b");
 
   Edit::applyEdit(lines, pos, mode, ParsedEdit("ciw"), &lastEdit);
@@ -103,7 +103,7 @@ TEST_F(TextObjectsTest, Caw_WhitespaceBeforeWordPreservesTrailingSpaces) {
   Lines lines = {"    ", "  \";  ", ""};
   CursorPos pos(0, 0);
   Mode mode = Mode::Normal;
-  string lastEdit;
+  DotRepeat lastEdit;
   auto oracleResult = oracle_->simulate(lines, pos.line, pos.col, "cawX\x1b");
 
   Edit::applyEdit(lines, pos, mode, ParsedEdit("caw"), &lastEdit);

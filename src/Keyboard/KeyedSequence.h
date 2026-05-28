@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PhysicalKeys.h"
+#include "Keyboard/KeyNotation.h"
 #include "Keyboard/ToKeys/CountToKeys.h"
 #include "Keyboard/ToKeys/CharToKeys.h"
 #include "XMacroKeyedSequence.h"
@@ -20,7 +21,7 @@ enum class KSId : uint8_t {
 #undef KS_ENUM_VALUE
 
 static constexpr int KS_COUNT = static_cast<int>(KSId::COUNT);
-static_assert(KS_COUNT == 61, "Expected 61 static KeyedSequence constants");
+static_assert(KS_COUNT == 62, "Expected 62 static KeyedSequence constants");
 
 // =============================================================================
 // KeyedSequence
@@ -44,13 +45,13 @@ struct KeyedSequence {
 
   // Primitive appends
   void append(char c, int count = 1) {
-    seq.append(keyNotationFor(c), count);
+    seq.append(displayChar(c), count);
     keys.append(CHAR_TO_KEYS.at(c), count);
   }
   void append(std::string_view text) {
     keys.reserve(keys.size() + text.size());
     for (char c : text) {
-      seq.append(keyNotationFor(c));
+      seq.append(displayChar(c));
       keys.append(CHAR_TO_KEYS.at(c));
     }
   }
@@ -89,18 +90,6 @@ struct KeyedSequence {
     }};
 #undef KS_PTR
     return *table[static_cast<uint8_t>(id)];
-  }
-
-private:
-  static std::string keyNotationFor(char c) {
-    switch (c) {
-      case ' ':  return "<Space>";
-      case '\t': return "<Tab>";
-      case '\n':
-      case '\r': return "<CR>";
-      case '<':  return "<lt>";
-      default:   return std::string(1, c);
-    }
   }
 };
 

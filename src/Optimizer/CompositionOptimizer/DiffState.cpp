@@ -3,17 +3,17 @@
 #include <algorithm>
 #include <cassert>
 
-#include "Utils/StringUtils.h"
+#include "Utils/PrettyText.h"
 
 using namespace std;
 
 ostream& operator<<(ostream& os, const DiffState& d) {
   if (d.isPureInsertion()) {
-    os << "ins '" << makePrintable(d.insertedText) << "'";
+    os << "ins '" << VF::prettify(d.insertedText) << "'";
   } else if (d.isPureDeletion()) {
-    os << "del '" << makePrintable(d.deletedText) << "'";
+    os << "del '" << VF::prettify(d.deletedText) << "'";
   } else {
-    os << "'" << makePrintable(d.deletedText) << "'->'" << makePrintable(d.insertedText) << "'";
+    os << "'" << VF::prettify(d.deletedText) << "'->'" << VF::prettify(d.insertedText) << "'";
   }
   return os;
 }

@@ -142,13 +142,13 @@ std::expected<EditSuccess, Rejected> applyEdit(
   Lines simLines = currentLines;
   CursorPos simPos = cursor;
   Mode simMode = Mode::Normal;
-  string lastEditCmd;
+  DotRepeat lastEdit;
   auto parsed = Edit::parseEdits(text);
   if (!parsed) {
     return std::unexpected(Rejected{"applyEdit: edit text failed to parse"});
   }
   for (const ParsedEdit& e : *parsed) {
-    Edit::applyEdit(simLines, simPos, simMode, e, &lastEditCmd);
+    Edit::applyEdit(simLines, simPos, simMode, e, &lastEdit);
   }
 
   EditSuccess result{

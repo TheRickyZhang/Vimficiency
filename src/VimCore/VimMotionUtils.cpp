@@ -47,6 +47,299 @@ static void motionWord(CursorPos &pos, const Lines &lines,
   }
 }
 
+// Operator-pending variant: when forward word motion would fall off the end
+// of the buffer (motionWordCore returns POSITION_OUTSIDE_BOUNDARY), leave the
+// cursor at the past-EOL position (col == lines[lastLine].size()) so the
+// caller's `isPastEndPosition` check fires and the operator extends through
+// the buffer tail. Mirrors Neovim's fwd_word returning FAIL while leaving
+// cursor at the NUL/past-EOL position so the operator still applies.
+static void motionWordForOperator(CursorPos &pos, const Lines &lines,
+                                  bool forward, EdgeType edgeType, bool big,
+                                  bool skipCurrent) {
+  CursorPos result =
+      motionWordCore(pos, lines, forward, edgeType, big, skipCurrent);
+
+  if (result == POSITION_OUTSIDE_BOUNDARY) {
+    if (forward) {
+      int lastLine = lines.lastLine();
+      int len = static_cast<int>(lines[lastLine].size());
+      pos = CursorPos(lastLine, len);
+    } else {
+      pos = CursorPos(0, 0);
+    }
+  } else {
+    pos = result;
+  }
+}
+
+// =============================================================================
+// Direct port of Neovim's `fwd_word` (textobject.c) for operator-pending `w`.
+// =============================================================================
+//
+// The non-operator path (motionWordCore + motionW) handles cursor navigation
+// where multi-line scans are allowed and the result is a valid normal-mode
+// cursor position. The operator path needs different semantics:
+//   - When motion would cross a line boundary in eol mode (operator pending),
+//     stop on the first line crossing — this implements Vim's "for dw on last
+//     word of line, the newline is not included" rule.
+//   - When scanning forward through whitespace, STOP at an empty line so the
+//     operator only consumes through that empty line (not multiple).
+//   - When motion can't advance (cursor on last char of last line), leave
+//     cursor at the NUL/past-EOL position so the operator still consumes the
+//     buffer tail.
+//
+// Char classes (matching Neovim's `cls()`):
+//   0 - whitespace, NUL, blank chars
+//   1 - punctuation (any non-word non-whitespace)
+//   2 - word characters (alnum + '_'); collapsed to 1 for bigword `W`/`E`/`B`
+
+namespace {
+
+int wordCharClass(char c, bool big) {
+  CharMask m(c);
+  if (m.whitespace() || c == '\0') return 0;
+  if (big) return 1;  // Bigword: only whitespace vs non-whitespace
+  return m.smallWord() ? 2 : 1;
+}
+
+int wordCharClassAt(const Lines& lines, CursorPos pos, bool big) {
+  if (pos.line < 0 || pos.line >= static_cast<int>(lines.size())) return 0;
+  const string& line = lines[pos.line];
+  if (pos.col < 0 || pos.col >= static_cast<int>(line.size())) return 0;  // NUL position
+  return wordCharClass(line[pos.col], big);
+}
+
+// Port of Neovim's `inc`. Returns:
+//   -1: cursor was already past end of buffer
+//    0: advanced within line (or onto NUL position)
+//    1: crossed to start of next line
+int wordIncCursor(const Lines& lines, CursorPos& pos) {
+  if (lines.empty() || pos.line < 0) return -1;
+  if (pos.line >= static_cast<int>(lines.size())) return -1;
+  int len = static_cast<int>(lines[pos.line].size());
+  if (pos.col < len) {
+    pos.col++;
+    return 0;
+  }
+  if (pos.line + 1 >= static_cast<int>(lines.size())) return -1;
+  pos.line++;
+  pos.col = 0;
+  return 1;
+}
+
+bool atEmptyLine(const Lines& lines, CursorPos pos) {
+  if (pos.line < 0 || pos.line >= static_cast<int>(lines.size())) return false;
+  return pos.col == 0 && lines[pos.line].empty();
+}
+
+// Port of `dec` from Neovim's mark.c. Returns:
+//   -1: cursor at start of buffer (no movement)
+//    0: moved backward within line
+//    1: crossed to previous line (cursor at NUL position = col == size, which
+//       wordCharClassAt treats as class 0; this matches Vim's coladvance(MAXCOL)
+//       semantics where NUL is a visitable position)
+int wordDecCursor(const Lines& lines, CursorPos& pos) {
+  if (lines.empty() || pos.line < 0) return -1;
+  if (pos.col > 0) {
+    pos.col--;
+    return 0;
+  }
+  if (pos.line == 0) return -1;
+  pos.line--;
+  pos.col = static_cast<int>(lines[pos.line].size());  // NUL position
+  return 1;
+}
+
+// Skip a row of characters of the same class in the given direction.
+// Returns true if hit buffer edge (cursor stays at edge).
+bool wordSkipChars(int cclass, bool forward, const Lines& lines, CursorPos& pos, bool big) {
+  while (wordCharClassAt(lines, pos, big) == cclass) {
+    int i = forward ? wordIncCursor(lines, pos) : wordDecCursor(lines, pos);
+    if (i == -1) return true;
+  }
+  return false;
+}
+
+}  // namespace (close anonymous so the count-aware motion ports are reachable
+   //              from the VimCore::* scope declared in VimMotionUtils.h)
+
+// Port of fwd_word(count, bigword, eol=true) — operator-pending forward `w`.
+bool fwdWordOperator(CursorPos& pos, const Lines& lines, bool big, int count) {
+  while (--count >= 0) {
+    int sclass = wordCharClassAt(lines, pos, big);
+    bool lastLine = (pos.line == lines.lastLine());
+    int i = wordIncCursor(lines, pos);
+    if (i == -1 || (i >= 1 && lastLine)) return false;
+    if (i >= 1 && count == 0) return true;
+
+    if (sclass != 0) {
+      while (wordCharClassAt(lines, pos, big) == sclass) {
+        i = wordIncCursor(lines, pos);
+        if (i == -1 || (i >= 1 && count == 0)) return true;
+      }
+    }
+
+    while (wordCharClassAt(lines, pos, big) == 0) {
+      if (atEmptyLine(lines, pos)) break;
+      i = wordIncCursor(lines, pos);
+      if (i == -1 || (i >= 1 && count == 0)) return true;
+    }
+  }
+  return true;
+}
+
+// Port of bck_word(count, bigword, stop=false) — operator-pending backward `b`.
+// Vim calls bck_word with stop=false from nv_bck_word for both motion and
+// operator-pending use.
+bool bckWordOperator(CursorPos& pos, const Lines& lines, bool big, int count) {
+  bool stop = false;  // matches nv_bck_word(cap->count1, cap->arg, false)
+  while (--count >= 0) {
+    int sclass = wordCharClassAt(lines, pos, big);
+    if (wordDecCursor(lines, pos) == -1) return false;
+
+    if (!stop || sclass == wordCharClassAt(lines, pos, big) || sclass == 0) {
+      // Skip whitespace before the word. Stop on empty line.
+      while (wordCharClassAt(lines, pos, big) == 0) {
+        if (atEmptyLine(lines, pos)) goto finished;
+        if (wordDecCursor(lines, pos) == -1) return true;
+      }
+      // Move backward to start of this word.
+      if (wordSkipChars(wordCharClassAt(lines, pos, big), false, lines, pos, big)) return true;
+    }
+    wordIncCursor(lines, pos);  // overshot — forward one
+finished:
+    stop = false;
+  }
+  return true;
+}
+
+// Port of end_word(count, bigword, stop=false, empty=false) — `e`/`E`/`de`/`dE`.
+// Per Neovim's nv_wordcmd, `flag` (which becomes `stop`) is only true for the
+// `cw`/`cW` → `ce`/`cE` mapping. Plain `e`/`E` and operator-pending `de`/`dE`
+// use stop=false.
+bool endWordOperator(CursorPos& pos, const Lines& lines, bool big, int count) {
+  while (--count >= 0) {
+    int sclass = wordCharClassAt(lines, pos, big);
+    if (wordIncCursor(lines, pos) == -1) return false;
+
+    if (wordCharClassAt(lines, pos, big) == sclass && sclass != 0) {
+      if (wordSkipChars(sclass, true, lines, pos, big)) return false;
+    } else {  // stop=false: always enter the "end of next word" branch
+      while (wordCharClassAt(lines, pos, big) == 0) {
+        if (wordIncCursor(lines, pos) == -1) return false;
+      }
+      if (wordSkipChars(wordCharClassAt(lines, pos, big), true, lines, pos, big)) return false;
+    }
+    wordDecCursor(lines, pos);  // overshot — back one
+  }
+  return true;
+}
+
+// Port of bckend_word(count, bigword, eol=false) — `ge`/`gE`. Vim's nv_g_cmd
+// calls bckend_word with eol=false always (the early i==1 line-cross return
+// inside the function does not fire).
+bool bckEndWordOperator(CursorPos& pos, const Lines& lines, bool big, int count) {
+  while (--count >= 0) {
+    int sclass = wordCharClassAt(lines, pos, big);
+    if (wordDecCursor(lines, pos) == -1) return false;
+
+    if (sclass != 0) {
+      while (wordCharClassAt(lines, pos, big) == sclass) {
+        if (wordDecCursor(lines, pos) == -1) return true;
+      }
+    }
+
+    while (wordCharClassAt(lines, pos, big) == 0) {
+      if (atEmptyLine(lines, pos)) break;
+      if (wordDecCursor(lines, pos) == -1) return true;
+    }
+  }
+  return true;
+}
+
+namespace {
+
+// Port of `incl` from memline.c: like inc but skips the NUL position at end
+// of a non-empty line. Used by current_word.
+int wordIncl(const Lines& lines, CursorPos& pos) {
+  int r = wordIncCursor(lines, pos);
+  // wordIncCursor returns 0 for within-line advance; we need to detect when
+  // we landed on the NUL position (col == size) of a non-empty line.
+  if (r == 0 && pos.line >= 0 && pos.line < static_cast<int>(lines.size())) {
+    int len = static_cast<int>(lines[pos.line].size());
+    if (len > 0 && pos.col >= len) {
+      // At NUL of non-empty line — Vim's incl skips it.
+      return wordIncCursor(lines, pos);
+    }
+  }
+  return r;
+}
+
+// Port of `decl` from memline.c: like dec but skips NUL when crossing back
+// to a non-empty previous line.
+int wordDecl(const Lines& lines, CursorPos& pos) {
+  int r = wordDecCursor(lines, pos);
+  // wordDecCursor lands at col == size (NUL position) when crossing back.
+  // For non-empty prev line, that's col > 0 — Vim's decl re-decs to skip NUL.
+  if (r == 1 && pos.col > 0) {
+    return wordDecCursor(lines, pos);
+  }
+  return r;
+}
+
+// Port of `back_in_line` from textobject.c: move backward within the current
+// line to the start of the current character class run. Does NOT cross lines.
+void backInLine(CursorPos& pos, const Lines& lines, bool big) {
+  int sclass = wordCharClassAt(lines, pos, big);
+  while (pos.col > 0) {
+    pos.col--;
+    if (wordCharClassAt(lines, pos, big) != sclass) {
+      pos.col++;  // undo: we went one past
+      return;
+    }
+  }
+}
+
+// Port of `oneleft` from edit.c (non-virtual-edit branch only).
+// Returns true if cursor moved (col was > 0), false otherwise.
+bool oneLeftCursor(CursorPos& pos) {
+  if (pos.col == 0) return false;
+  pos.col--;
+  return true;
+}
+
+// General port of end_word from textobject.c. Parameterized over `stop` and
+// `empty`. current_word uses (stop=true, empty=true); plain `e`/`E`/`de`/`dE`
+// use (stop=false, empty=false). nv_wordcmd sets stop=true only for `cw`→`ce`.
+bool endWord(CursorPos& pos, const Lines& lines, bool big, int count,
+             bool stop, bool empty) {
+  while (--count >= 0) {
+    int sclass = wordCharClassAt(lines, pos, big);
+    if (wordIncCursor(lines, pos) == -1) return false;
+
+    bool finished = false;
+    if (wordCharClassAt(lines, pos, big) == sclass && sclass != 0) {
+      if (wordSkipChars(sclass, true, lines, pos, big)) return false;
+    } else if (!stop || sclass == 0) {
+      while (wordCharClassAt(lines, pos, big) == 0) {
+        if (empty && atEmptyLine(lines, pos)) {
+          finished = true;
+          break;
+        }
+        if (wordIncCursor(lines, pos) == -1) return false;
+      }
+      if (!finished) {
+        if (wordSkipChars(wordCharClassAt(lines, pos, big), true, lines, pos, big)) return false;
+      }
+    }
+    if (!finished) wordDecCursor(lines, pos);
+    stop = false;
+  }
+  return true;
+}
+
+}  // namespace
+
 // =============================================================================
 // Named word motion forwarders
 // =============================================================================
@@ -78,6 +371,95 @@ void motionGe(CursorPos &pos, const Lines &lines, bool big) {
   // For backward direction, Next gives edge in travel direction = rightmost =
   // END skipCurrent needed so ge from word end goes to PREVIOUS word end
   motionWord(pos, lines, false, EdgeType::NextEdge, big, true);
+}
+
+void motionWForOperator(CursorPos& pos, const Lines& lines, bool big) {
+  // FAIL: cursor stays where fwd_word left it (typically past-EOL on last
+  // line). The interpreter's isPastEndPosition / shouldStopAtEndOfLine
+  // checks see this and apply the operator through the buffer tail.
+  fwdWordOperator(pos, lines, big, 1);
+}
+
+void motionEForOperator(CursorPos& pos, const Lines& lines, bool big) {
+  endWordOperator(pos, lines, big, 1);
+}
+
+void motionBForOperator(CursorPos& pos, const Lines& lines, bool big) {
+  bckWordOperator(pos, lines, big, 1);
+}
+
+void motionGeForOperator(CursorPos& pos, const Lines& lines, bool big) {
+  bckEndWordOperator(pos, lines, big, 1);
+}
+
+CurrentWordResult currentWord(CursorPos cursor, const Lines& lines,
+                              bool include, bool big) {
+  // Port of Vim's `current_word` (textobject.c). Returns the text object
+  // span as (start, cursor-at-end, inclusive). The caller converts that
+  // inclusive [start, cursor] range to a half-open CharRange.
+  //
+  // Empty cursor line: Vim's current_word doesn't have an explicit early
+  // return for this — it goes through the same path. `back_in_line` is a
+  // no-op (col is already 0), startPos = cursor. `(cls() == 0) == include`:
+  // empty line has cls=0 (NUL is class 0). For `iw` (include=false), this
+  // is `true == false` → false → take the `fwd_word` branch. For `aw`
+  // (include=true), it's `true == true` → end_word. We follow Vim's flow
+  // and let the algorithm produce whatever Vim's algorithm produces.
+
+  CurrentWordResult result;
+  result.ok = true;
+  result.inclusive = true;
+
+  // Step 1: Go to start of current word or white space.
+  backInLine(cursor, lines, big);
+  CursorPos startPos = cursor;
+
+  // Step 2: Find the end of the text object.
+  bool curOnWhite = wordCharClassAt(lines, cursor, big) == 0;
+  bool includeWhite = false;
+  if (curOnWhite == include) {
+    // (on white && include white) OR (on word && exclude white): find end of word
+    if (!endWord(cursor, lines, big, 1, /*stop=*/true, /*empty=*/true)) {
+      // Match Vim's behavior on FAIL: cursor stays where endWord left it.
+      result.ok = false;
+      result.start = startPos;
+      result.end = cursor;
+      return result;
+    }
+  } else {
+    // (on word && include white) OR (on white && exclude white): find next word start
+    fwdWordOperator(cursor, lines, big, 1);
+    // Vim: "If we end up in the first column of the next line (single char
+    // word), back up to end of the line."
+    if (cursor.col == 0) {
+      wordDecl(lines, cursor);
+    } else {
+      oneLeftCursor(cursor);
+    }
+    if (include) {
+      includeWhite = true;
+    }
+  }
+
+  // Step 3: include_white extension — for "daw" on last word, extend start
+  // backward to include leading whitespace, but NOT indent at line start.
+  if (includeWhite &&
+      (wordCharClassAt(lines, cursor, big) != 0 ||
+       (cursor.col == 0 && !result.inclusive))) {
+    CursorPos savedEnd = cursor;
+    cursor = startPos;
+    if (oneLeftCursor(cursor)) {
+      backInLine(cursor, lines, big);
+      if (wordCharClassAt(lines, cursor, big) == 0 && cursor.col > 0) {
+        startPos = cursor;
+      }
+    }
+    cursor = savedEnd;
+  }
+
+  result.start = startPos;
+  result.end = cursor;
+  return result;
 }
 
 // =============================================================================
@@ -294,6 +676,18 @@ CursorPos sentenceScanToCursor(const Lines& lines, SentenceScanPos pos) {
   return {pos.line, clamp(pos.col, 0, len - 1)};
 }
 
+// Like sentenceScanToCursor but preserves the past-EOL position (col == size)
+// that Neovim's findsent leaves on the NUL terminator. Operator endpoints need
+// the raw position to construct the exclusive range correctly; cursor display
+// needs the clamped variant above.
+CursorPos sentenceScanToCursorRaw(const Lines& lines, SentenceScanPos pos) {
+  if (lines.empty()) return {0, 0};
+  pos.line = clamp(pos.line, 0, static_cast<int>(lines.size()) - 1);
+  int len = static_cast<int>(lines[pos.line].size());
+  if (len == 0) return {pos.line, 0};
+  return {pos.line, clamp(pos.col, 0, len)};
+}
+
 // Port of Neovim's `findsent()` from textobject.c — the MOTION path for `)` / `(`.
 //
 // Looks duplicative of `sentenceExtentAtOrAfter` / `sentenceGapEndpoint` in
@@ -321,7 +715,11 @@ bool findSentenceLikeNeovim(CursorPos& cursor, const Lines& lines, bool forward,
       cursor.col,
   };
   int len = static_cast<int>(lines[pos.line].size());
-  pos.col = len == 0 ? 0 : clamp(pos.col, 0, len - 1);
+  // Allow col up to len (NUL position) — Vim's findsent operates on NUL too,
+  // and the sentence text object port (current_sent in VimEndpointUtils) calls
+  // findsent with post-incl cursors that legitimately sit at NUL. Out-of-range
+  // values are still clamped.
+  pos.col = clamp(pos.col, 0, len);
 
   bool noskip = false;
   while (count > 0) {
@@ -437,18 +835,36 @@ found:
     }
   }
 
-  cursor = sentenceScanToCursor(lines, pos);
+  cursor = sentenceScanToCursorRaw(lines, pos);
   return true;
+}
+
+CursorPos clampCursorToValidLine(CursorPos pos, const Lines& lines) {
+  if (lines.empty()) return {0, 0};
+  if (pos.line >= static_cast<int>(lines.size())) {
+    int lastLine = lines.lastLine();
+    int lastLen = static_cast<int>(lines[lastLine].size());
+    return {lastLine, lastLen == 0 ? 0 : lastLen - 1};
+  }
+  int len = static_cast<int>(lines[pos.line].size());
+  if (len == 0) return {pos.line, 0};
+  return {pos.line, std::min(pos.col, len - 1)};
 }
 
 }  // namespace
 
 void motionSentenceNext(CursorPos &pos, const Lines &lines) {
   findSentenceLikeNeovim(pos, lines, true, 1);
+  pos = clampCursorToValidLine(pos, lines);
 }
 
 void motionSentencePrev(CursorPos &pos, const Lines &lines) {
   findSentenceLikeNeovim(pos, lines, false, 1);
+  pos = clampCursorToValidLine(pos, lines);
+}
+
+bool findSentenceForOperator(CursorPos& cursor, const Lines& lines, bool forward, int count) {
+  return findSentenceLikeNeovim(cursor, lines, forward, count);
 }
 
 // =============================================================================

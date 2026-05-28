@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cassert>
+#include <string_view>
+#include <vector>
 
 using namespace std;
 
@@ -38,17 +40,6 @@ CharDeletionBufferEffect applyCharDeletionToBuffer(
     int beginCol = std::clamp(r.begin.col, 0, static_cast<int>(ln.size()));
     int endCol = std::clamp(r.end.col, beginCol, static_cast<int>(ln.size()));
     ln.erase(beginCol, endCol - beginCol);
-
-    if (ln.empty() && beginCol == 0 &&
-        realBufferHasAnotherLine(lines, context) && !cursorOnDeletionLine
-        && mode != Mode::Insert) {
-      lines.erase(lines.begin() + r.begin.line);
-      effect.removedAnchorLine = true;
-      effect.removedAllVisibleLines = lines.empty();
-      if (lines.empty()) {
-        lines.push_back("");
-      }
-    }
     return effect;
   }
 
@@ -136,11 +127,16 @@ void placeCursorAfterCharDeletion(const Lines& lines, int anchorLine, int anchor
 
 int charDeletionAnchorCol(CharRange range, const CursorPos& originalPos) {
   range.normalize();
-  if (range.begin.line == originalPos.line &&
-      range.end.line > range.begin.line &&
-      range.begin.col == 0 &&
+  if (range.begin.col == 0 &&
       originalPos.col > 0) {
-    return originalPos.col;
+    if (range.begin.line == originalPos.line &&
+        range.end.line > range.begin.line) {
+      return originalPos.col;
+    }
+    if (range.begin.line < originalPos.line &&
+        range.end.line == originalPos.line) {
+      return originalPos.col;
+    }
   }
   return range.begin.col;
 }
@@ -176,6 +172,15 @@ bool linewiseDeleteLandsOnFollowingVisibleLine(
 
 bool shouldUseExclusiveLinewiseFirstNonBlank(
     const Lines& lines, const ResolvedDeleteRange& resolved) {
+  // Legacy Vim `'startofline'` behavior: post-exclusive-linewise the `d`
+  // operator goes to first-non-blank of the resulting line. With
+  // `'nostartofline'` (Neovim default), cursor preserves targetCol clamped —
+  // which `deleteLineRangeAndUpdatePos` already supplies through its
+  // startofline-conditional branch. Trip wire:
+  // `TransformOptimizerGeneratedPropertyTest.MultiLineEmbeddedChangeTopResultsReplay`
+  // (`d(` from (2, 2) over `["~d! ", " J<", " C ", " C p"]` — Vim leaves
+  // cursor at (1, 2); first-non-blank override placed it at (1, 1)).
+  if constexpr (!VimOptions::startOfLine()) return false;
   CursorPos begin = resolved.linewiseMotionBegin;
   return resolved.kind == ResolvedDeleteRangeKind::Linewise &&
          resolved.linewiseCursorPolicy == LinewiseDeleteCursorPolicy::ExclusiveMotion &&
@@ -198,9 +203,13 @@ void applyExclusiveLinewiseCursorPolicy(
     if (backwardExclusive) {
       int lastCol = lines[pos.line].lastCol();
       pos.setCol(originalPos.col == 0 ? lastCol : min(originalPos.col, lastCol));
-    } else {
+    } else if constexpr (VimOptions::startOfLine()) {
       pos.setCol(0);
     }
+    // nostartofline (Neovim default): forward exclusive-linewise leaves the
+    // cursor where deleteOperatorLineRangeAndUpdatePos clamped it (targetCol
+    // clamped to lastCol). Trip wire: `d}` from `(1, 2)` over
+    // `["  ", "   K6~ ", "zg~"]` — Vim keeps cursor at (0, 1), not (0, 0).
     return;
   }
   if (adjustToFirstNonBlank) {
@@ -276,10 +285,12 @@ size_t firstJoinContentCol(const string& line, bool addSpace) {
 
 bool endsWithDashBeforeJoinWhitespace(const string& line) {
   int col = static_cast<int>(line.size()) - 1;
+  bool sawWhitespace = false;
   while (col >= 0 && isJoinWhitespace(line[col])) {
+    sawWhitespace = true;
     col--;
   }
-  return col >= 0 && line[col] == '-';
+  return sawWhitespace && col >= 0 && line[col] == '-';
 }
 
 size_t skipJoinCommentLeader(const string& currentLine,
@@ -391,6 +402,26 @@ void deleteResolvedRangeAndUpdatePos(
       {
         bool adjustToFirstNonBlank =
             shouldUseExclusiveLinewiseFirstNonBlank(lines, resolved);
+        // TRUE exclusive-linewise (`:help exclusive-linewise`) for FORWARD
+        // motions where the delete leaves lines AFTER the deleted range:
+        // the post-delete cursor lands on the shifted-in line, and Vim's
+        // motion sets curswant to the endpoint's column before the operator
+        // runs. We collapse motion+operator into one apply, so override
+        // pos.targetCol here. When the delete CONSUMES the buffer tail, the
+        // cursor falls back to the line ABOVE the deleted range and Vim
+        // preserves the original cursor's curswant — skip the override.
+        if (resolved.linewiseCursorPolicy ==
+                LinewiseDeleteCursorPolicy::ExclusiveMotion &&
+            resolved.exclusiveMotionEndCol >= 0) {
+          LineRange r = resolved.lineRange;
+          r.normalize();
+          bool backwardExclusive = originalPos.line >= r.endLine - 1;
+          bool deleteConsumesTail =
+              r.endLine >= static_cast<int>(lines.size());
+          if (!backwardExclusive && !deleteConsumesTail) {
+            pos.targetCol = resolved.exclusiveMotionEndCol;
+          }
+        }
         if (resolved.linewiseCursorPolicy ==
             LinewiseDeleteCursorPolicy::LinewiseCommand) {
           deleteLineRangeAndUpdatePos(lines, resolved.lineRange, pos, context);
@@ -470,8 +501,16 @@ void deleteOperatorLineRangeAndUpdatePos(Lines& lines, const LineRange& range,
   LineRange r = range;
   r.normalize();
   int originalLine = pos.line;
+  // Special case: `dw` from a truly empty line crosses to the next line.
+  // The motion endpoint is at col 0 of the next line, producing a linewise
+  // range. Vim places the cursor at first-non-blank of the remaining line —
+  // unlike the normal forward-exclusive-linewise cursor preservation that
+  // applies when the original line had whitespace content.
+  bool originalLineWasEmpty =
+      originalLine >= 0 && originalLine < static_cast<int>(lines.size()) &&
+      lines[originalLine].empty();
   deleteLineRangeAndUpdatePos(lines, range, pos, context);
-  if (r.endLine > originalLine) {
+  if (r.endLine > originalLine && !originalLineWasEmpty) {
     return;
   }
   if (!context.hasLinesBelow && r.beginLine >= static_cast<int>(lines.size())) {
@@ -530,80 +569,107 @@ void insertText(Lines& lines, CursorPos& pos, string_view text) {
   }
 }
 
-void joinLines(Lines& lines, CursorPos& pos, bool addSpace) {
-  assert (pos.line+1 < lines.size());
+namespace {
 
-  string& currentLine = lines[pos.line];
-  // Vim places cursor at original first line length (where join occurred)
-  int originalLen = static_cast<int>(currentLine.size());
+// Port of Neovim's `do_join` (src/nvim/ops.c). Joins `count` consecutive lines
+// starting at pos.line into a single line, updating pos.col per Vim's rule:
+//
+//   col = sumsize - currsize - spaces[count - 1]
+//
+// where sumsize is the total joined length, currsize is the length of the
+// last joined segment (after skipwhite for J), and spaces[i] is the number
+// of spaces inserted before segment i (1 for normal J between non-empty
+// content, +1 more under joinspaces+sentence-end, 0 elsewhere).
+//
+// **Comment-leader stripping is intentionally NOT modeled.** Real Vim's
+// `'comments'` option (default: `s1:/*,mb:*,ex:*/,b:#,fb:-,:%,:#,...`) causes
+// J/gJ to strip recognized leaders (`#`, `%`, `>`, `*`, etc.) and surrounding
+// whitespace from the next line. We don't reproduce that here because the
+// full format is flag-rich and porting it faithfully is significant work for
+// limited optimizer benefit. To keep our model and the oracle consistent,
+// NeovimOracle sets `comments=` (empty). Trade-off: optimizer output may
+// differ from real Vim when the user's buffer joins onto a comment-leader
+// line. See dev/decisions.md (J comment-leader stripping).
+void doJoin(Lines& lines, CursorPos& pos, int count, bool insertSpace) {
+  assert(count >= 2);
+  assert(pos.line + count <= static_cast<int>(lines.size()));
 
-  // Get next line
-  string nextLine = lines[pos.line + 1];
-  size_t start = firstJoinContentCol(nextLine, addSpace);
-  start = skipJoinCommentLeader(currentLine, nextLine, start, addSpace);
+  std::vector<int> spaces(count, 0);
+  std::vector<string_view> segments(count);
+  int currsize = 0;
+  int sumsize = 0;
+  char endcurr1 = '\0';
+  char endcurr2 = '\0';
 
-  if (addSpace && !currentLine.empty() && start < nextLine.size() &&
-      nextLine[start] != ')') {
-    if (!endsJoinWhitespace(currentLine)) {
-      appendJoinSpace(currentLine);
+  for (int t = 0; t < count; t++) {
+    string_view curr = lines[pos.line + t];
+
+    // Skip leading whitespace on continuation segments for J (not gJ).
+    if (insertSpace && t > 0) {
+      while (!curr.empty() && isJoinWhitespace(curr.front())) {
+        curr.remove_prefix(1);
+      }
+    }
+
+    // Decide whether to insert a separator space before this segment.
+    if (insertSpace && t > 0) {
+      bool nonEmpty = !curr.empty();
+      bool notCloseParen = nonEmpty && curr.front() != ')';
+      bool prevNotTab = endcurr1 != '\t';
+      if (nonEmpty && notCloseParen && sumsize != 0 && prevNotTab) {
+        if (endcurr1 == ' ') {
+          // Previous segment already ends in a space; don't add another, but
+          // for sentence-end double-spacing we look one step further back.
+          endcurr1 = endcurr2;
+        } else {
+          spaces[t]++;
+        }
+        if (VimOptions::joinSpaces() &&
+            (endcurr1 == '.' || endcurr1 == '!' || endcurr1 == '?')) {
+          spaces[t]++;
+        }
+      }
+    }
+
+    segments[t] = curr;
+    currsize = static_cast<int>(curr.size());
+    sumsize += currsize + spaces[t];
+
+    endcurr1 = endcurr2 = '\0';
+    if (insertSpace && currsize > 0) {
+      endcurr1 = curr.back();
+      if (currsize > 1) endcurr2 = curr[currsize - 2];
     }
   }
-  currentLine += nextLine.substr(start);
 
-  // Remove the next line
-  lines.erase(lines.begin() + pos.line + 1);
+  // Build the joined line.
+  string joined;
+  joined.reserve(static_cast<size_t>(sumsize));
+  for (int t = 0; t < count; t++) {
+    joined.append(static_cast<size_t>(spaces[t]), ' ');
+    joined.append(segments[t]);
+  }
 
-  // Both J and gJ: cursor at original first line length (position where join occurred).
-  // Clamp to last valid normal-mode column (join with empty next line leaves cursor at end).
-  int lastCol = currentLine.empty() ? 0 : static_cast<int>(currentLine.size()) - 1;
-  pos.setCol(min(originalLen, lastCol));
+  int col = sumsize - currsize - spaces[count - 1];
+
+  lines[pos.line] = std::move(joined);
+  lines.erase(
+      lines.begin() + pos.line + 1,
+      lines.begin() + pos.line + count);
+
+  const string& result = lines[pos.line];
+  int lastCol = result.empty() ? 0 : static_cast<int>(result.size()) - 1;
+  pos.setCol(std::min(col, lastCol));
+}
+
+}  // namespace
+
+void joinLines(Lines& lines, CursorPos& pos, bool addSpace) {
+  doJoin(lines, pos, 2, addSpace);
 }
 
 void joinLineRange(Lines& lines, CursorPos& pos, int lineCount, bool addSpace) {
-  assert(lineCount >= 2);
-  assert(pos.line + lineCount <= static_cast<int>(lines.size()));
-
-  string joinedLine = lines[pos.line];
-  int cursorCol = static_cast<int>(joinedLine.size());
-  bool trailingWhitespaceFromContent = endsJoinWhitespace(joinedLine);
-
-  for (int line = pos.line + 1; line < pos.line + lineCount; line++) {
-    const string& nextLine = lines[line];
-    size_t start = firstJoinContentCol(nextLine, addSpace);
-    start = skipJoinCommentLeader(joinedLine, nextLine, start, addSpace);
-    bool nextHasContent = start < nextLine.size();
-
-    if (!addSpace) {
-      cursorCol = static_cast<int>(joinedLine.size());
-    } else if (!joinedLine.empty()) {
-      if (!nextHasContent) {
-        if (endsJoinWhitespace(joinedLine)) {
-          cursorCol = static_cast<int>(joinedLine.size());
-          joinedLine += ' ';
-          trailingWhitespaceFromContent = false;
-        }
-      } else if (nextLine[start] != ')' && !endsJoinWhitespace(joinedLine)) {
-        cursorCol = static_cast<int>(joinedLine.size());
-        appendJoinSpace(joinedLine);
-      } else if (trailingWhitespaceFromContent) {
-        cursorCol = static_cast<int>(joinedLine.size());
-      }
-    }
-    joinedLine += nextLine.substr(start);
-    if (nextHasContent) {
-      trailingWhitespaceFromContent = endsJoinWhitespace(nextLine);
-    }
-  }
-
-  lines[pos.line] = joinedLine;
-  lines.erase(
-      lines.begin() + pos.line + 1,
-      lines.begin() + pos.line + lineCount);
-
-  int lastCol = joinedLine.empty()
-      ? 0
-      : static_cast<int>(joinedLine.size()) - 1;
-  pos.setCol(min(cursorCol, lastCol));
+  doJoin(lines, pos, lineCount, addSpace);
 }
 
 void openLineBelow(Lines& lines, CursorPos& pos) {

@@ -6,12 +6,6 @@
 
 #include <string>
 
-// Matches TransformOptimizer result indexing: text positions only, with empty
-// lines contributing one position.
-int toFlatIndex(int row, int col, const Lines& lines);
-
-CursorPos fromFlatIndex(int flatIdx, const Lines& lines);
-
 // Edit slice plus surrounding full-buffer context used to verify boundaries.
 struct EmbeddedEditRegion {
   Lines fullBuffer;

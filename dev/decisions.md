@@ -32,3 +32,66 @@ to deeper docs when needed.
 - One line per region (was three: `range=...`, `del=...`, `ins=...`) — `[0] replace (1,20)->(1,21) flat=[34,35) "+" → "-"`. Denser without losing information.
 - Uses `→` (U+2192) instead of `->` for visual distinction from ASCII content in `del`/`ins`.
 - Insert/delete regions skip the redundant empty side (no `"" → "x"`) — just print the non-empty side.
+
+## Join-plan inter-group navigation uses `j0`, not `j`
+- `computeJoinPlanForDiff` (`PlannedEditArtifacts.cpp`) builds multi-group join+residual plans. Between groups, it must move the cursor to the next group's first line at col 0.
+- Originally emitted `j` between groups, which **preserves curswant** — so the cursor lands at the prior group's exit column, not col 0. That broke two downstream assumptions:
+  - `JoinSimulation::simulate` models J-chains from slice-local `(0, 0)`. With cursor at the wrong column on entry, real-buffer joins diverged from the simulation.
+  - The residual `TransformOptimizer` is called with `cursorCol = 0` for non-join groups (or with `sim.cursorCols.back()` for join groups, which is also tracked relative to col-0 entry). The residual plan assumed cursor at col 0; `j` alone didn't deliver that.
+- Now emits `j0` between groups. One extra keystroke per inter-group transition; correctness across all join+residual compositions. Trip wire: `CompositionOptimizerGeneratedPropertyTest.ShrinkableBufferMutationsTopResultsReplay`.
+
+## op_delete result-is-blank uses `nostartofline` cursor (Neovim default)
+- `:help startofline`: with `nostartofline` (Neovim default), the `d` operator does NOT jump to first non-blank; cursor keeps the same column.
+- Vim's `op_delete` calls `beginline(BL_WHITE | BL_FIX)` after linewise delete, which *would* go to first non-blank — but `nostartofline` overrides that for the `d` operator.
+- Two linewise-promotion rules with different cursor handling:
+  - **Exclusive-linewise** (`:help exclusive-linewise`, e.g. `d)` `d}` `db` when end at col 0 of another line): cursor goes to first non-blank regardless of `'startofline'`.
+  - **Result-is-blank** (`op_delete` ops.c:741-757, e.g. `dge` when join would be blank): cursor honors `'startofline'`. With `nostartofline`, preserves targetCol.
+- In our resolvers: result-is-blank promotion in both `resolveBackwardInclusiveWordEndDeleteRange` (`dge`/`dgE`) and `resolveForwardInclusiveWordEndDeleteRange` (`de`/`dE`) uses `LinewiseDeleteCursorPolicy::LinewiseCommand`, which routes to `deleteLineRangeAndUpdatePos` — that function already branches on `VimOptions::startOfLine()`. Exclusive-linewise paths continue using `OperatorMotion` policy.
+- Trip wires: `VerifyWordOperator.WordOperatorMatchesOracle` (e.g. `dge` on `[" ", "", " ,"]` cursor (1, 0) — Vim lands at (0, 0), not (0, 1)). `TransformOptimizerGeneratedPropertyTest.MultiLineFullBufferChangeTopResultsReplay` (de from blank-line start over `["", "E", "      ^"]`: the OperatorMotion cursor placement at (0, 6) caused the optimizer to emit a downstream `d{` that no longer matched Neovim's cursor; LinewiseCommand keeps cursor at (0, 0) and the planner converges).
+
+## Exclusive-linewise forward cursor on blank line honors `'nostartofline'`
+- `applyExclusiveLinewiseCursorPolicy` (`src/VimCore/VimEditUtils.cpp`) previously did `pos.setCol(0)` whenever forward exclusive-linewise delete (`d}`, `d)`) left the cursor on a blank line. That's the `'startofline'`-on behavior: Vim's `d` operator goes to first-non-blank (which on a blank line means col 0).
+- With `'nostartofline'` (Neovim default), the cursor stays at the targetCol clamped to lastCol — exactly what `deleteOperatorLineRangeAndUpdatePos` produces via its `VimOptions::startOfLine()` branch. The forward-exclusive override was clobbering that.
+- Now the unconditional `setCol(0)` is wrapped in `if constexpr (VimOptions::startOfLine())`. The backward-exclusive branch was already curswant-aware (`min(originalPos.col, lastCol)`) and stays as-is.
+- Trip wire: `TransformOptimizerGeneratedPropertyTest.MultiLineFullBufferTopResultsReplay` (`d}D` from `(1, 2)` over `["  ", "   K6~ ", "zg~"]` — Vim leaves cursor at `(0, 1)`, then `D` deletes only `[1, EOL)`; old behavior placed cursor at `(0, 0)` and `D` deleted the whole line).
+
+## Same-line delete clearing an off-cursor line does not remove the line
+- `applyCharDeletionToBuffer` (`src/VimCore/VimEditUtils.cpp`) used to remove the entire line when (a) the delete was same-line, (b) it cleared the line, (c) `begin.col == 0`, (d) the cursor was on a *different* line. The branch was added in early `db`/`dB` development; the actual `db`/`dB` cases that needed it are now multi-line and go through a different path.
+- The branch was firing incorrectly for text-object deletes (e.g., `da]` over `[]` on a line away from the cursor), removing the empty line where Vim leaves it. Removed entirely. All 470 unit tests still pass.
+- Trip wire: `VerifyBracketObjects.BracketObjectsMatchOracle` (`da]` over `["(", "[]", "["]` from `(0, 0)` — Vim leaves `["(", "", "["]`; old behavior produced `["(", "["]`).
+
+## TransformExplorer skips sentence ops when findsent's decl-prelude can't see surrounding context
+- `findsent`'s opening scan walks BACKWARD over closing chars / end-punct / whitespace from the cursor to find the anchor it starts its forward scan from. On the boundary slice the scan terminates early because it can't see `linesAbove`; the resulting endpoint diverges from what the same `)` would compute on the full buffer. Symmetric problem for `(` with `linesBelow`.
+- The explorer can't compute the right answer without that context, so it gates emission: `Forward && hasLinesAbove && cursor.line == 0`, or `!Forward && hasLinesBelow && cursor.line == lastLine`, are treated as ambiguous and not emitted. Lose some valid emissions, never emit an unsafe one.
+- Trip wire: `TransformExplorerBoundaryPropertyTest.EmittedDeletesPreserveBoundaries` (`d)` from `(0, 0)` over editRegion=`[".", "ccb."]` with linesAbove=`["aa,."]`, suffix=`"V"` — full-buffer `)` overshoots through `"ccb.V"` because no whitespace after the `.`).
+
+## op_delete result-is-blank linewise promotion
+- Vim's `op_delete` (ops.c:741-757) promotes a multi-line char-wise OP_DELETE to linewise when the join-result would be a blank line — i.e., `hasOnlyBlankPrefix(begin.line, begin.col) AND hasOnlyBlankSuffix(end.line, end.col)`. Without this promotion, you delete only a slice of two non-blank lines and the residual is a partially-blank line, which doesn't match Vim's user-visible behavior.
+- Two resolvers must apply this rule:
+  - `exclusiveDeletePromotesToLinewise` — for `d)`/`d(`/`d}`/`d{` and similar exclusive motions.
+  - `resolveBackwardInclusiveWordEndDeleteRange` — for `dge`/`dgE`.
+- Both were earlier using STRICTER ad-hoc checks (e.g. `end.col >= line.size()` or per-line "isBlankLine" combos) added as patches for specific test failures. Unified to Vim's actual rule.
+- Trip wire: `VerifySentenceCommands.SentenceCommandsMatchOracle` (d() and `TransformOptimizerGeneratedPropertyTest.MultiLineEmbeddedTopResultsReplay` (dgE).
+
+## J/gJ comment-leader stripping (NOT modeled)
+- `VimCore::doJoin` does not implement Vim's comment-leader stripping (the `'comments'` option + `formatoptions+=j` behavior that drops `#`/`%`/`>`/`*` etc. from the joined-from line). Faithful porting requires `get_leader_len`, `get_last_leader_offset`, `skip_comment`, and a `'comments'` format parser — ~300 lines plus configuration plumbing — and the gain for the optimizer is small (J/gJ is a minor emission strategy).
+- A naive "always strip these chars" version would silently strip when Vim wouldn't (Vim only strips when the joined-from line is also a comment, tracked via `prev_was_comment`), so it would introduce a new failure mode rather than reduce divergence.
+- `NeovimOracle` sets `comments=` (empty) so the test oracle agrees with our model. Real users with default `'comments'` and `formatoptions` may see optimizer-emitted J/gJ sequences that diverge from actual Vim output when the buffer joins onto a comment-leader line. Documented as a known gap; revisit if user feedback specifically calls it out.
+
+## TRUE exclusive-linewise forward motion uses motion-endpoint curswant on shifted-in cursor
+- `:help exclusive-linewise` promotion (begin blank prefix + endAtLineStart or consumesBufferTail): Vim's motion sets curswant to the endpoint's column BEFORE the operator runs. Our optimizer collapses motion + operator into one apply, so we must explicitly propagate the motion-endpoint column to the post-delete cursor's `targetCol`.
+- Distinct from `op_delete` result-is-blank promotion (begin blank prefix + end blank suffix, both sides non-zero): that's a pseudo-linewise cleanup inside `op_delete` that preserves the ORIGINAL cursor's curswant. We tag the two cases with `classifyExclusiveDeleteLinewisePromotion` and only populate `ResolvedDeleteRange::exclusiveMotionEndCol` for the TRUE-exclusive case.
+- Cursor placement rule: when the delete leaves lines AFTER the deleted range (cursor lands on a shifted-in line), apply `pos.targetCol = exclusiveMotionEndCol`. When the delete consumes the buffer tail (cursor falls back to the line ABOVE the deleted range), preserve the original cursor's `targetCol`.
+- Trip wires: `TransformOptimizerGeneratedPropertyTest.MultiLineEmbeddedTopResultsReplay` (`d)` from `(1, 1)` over `[">y~ $", " I| ", "~\"M~!", "^~[ ]^_"]` — cursor (1, 0), motion endpoint col was 0). `TransformOptimizer_ManualTest.ExclusiveLineAdjust_ForwardSentence_Linewise` (`d)` on `["dfacbfab", "  ", "eaed"]` from `(1, 1)` — cursor (0, 1), tail-consumed so original curswant preserved).
+
+## Dot repeat uses a structured `DotRepeat`, not a re-parsed text command
+- `Edit::applyEdit` previously took `std::string* lastEditCmd` holding a formatted text command like `"5de"`. On every `.`, it called `parseEdits(*lastEditCmd)` to split count and base again. The optimizer side already carried `(lastEditCount_, lastEditBase_)` as separate fields, so the two sides described the same concept in two incompatible shapes — and `formatCountedCommand` + `matchesCountedCmd` existed solely to bridge them via text.
+- Now there's one shape: `struct DotRepeat { std::string base; int count; }` in `EditInterpreter.h` (next to `ParsedEdit`). `applyEdit` takes `DotRepeat* lastEdit`; on `.`, it constructs `ParsedEdit{base, count}` directly via `asEdit()` — no parse round-trip. `TransformState`/`TransformPathStep` store a `DotRepeat lastEdit_`. `ChangeGoalHandler::isDotRepeat`, `SuffixCache::canUseDot`, `TransformTransitionDispatcher::continueWithEdit`, and `afterCommandWithLastEdit` all consume `DotRepeat` instead of `(int, string_view)` pairs.
+- `formatCountedCommand` stays — `SuffixCache::matchesCountedCmd` still compares against an existing text token inside the program. That's a text↔text comparison, not a parse round-trip.
+- Verified by `Verify_DotRepeat.cpp` (oracle-pinned `.` after each of `x/dw/dW/de/dE/db/dB/dge/dgE` + controlled motion).
+
+## Composition join plan picks J vs gJ per group via match score
+- `computeJoinPlanForDiff` (`PlannedEditArtifacts.cpp`) used to hardcode `J` (addSpace=true) for every join in every partition group. For pure-newline-deletion goals (e.g. `["abc","def"] → ["abcdef"]`) this forced a residual edit to delete the inserted space — and on top of TransformOptimizer's start-position iteration skipping the diff's `(L, lineEnd)` slot, the plan settled on heavy `J + ciw` cleanup instead of a bare `gJ`.
+- Now `JoinSimulation::simulate` takes an `addSpace` flag, and both the partition-feasibility loop and the emission loop simulate J and gJ separately and pick the variant whose joined line has higher `joinSimMatchScore` against the target (exact match wins decisively). The chosen variant is emitted uniformly for that group's `numJoins`.
+- Trip wire: `CompositionOptimizer_ManualTest.GJEmittedForPureNewlineDeletion` (`["abc","def"] → ["abcdef"]` must surface a `gJ` result).
+- The bare-`J` shortcut in `CompositionFrontier::emitJoinAction` is unaffected — it's the Explore navigate-phase single-action emitter, not the composition optimizer's plan, and its existing disjointness comment about TransformFrontier's J lane still applies.

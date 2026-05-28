@@ -21,7 +21,7 @@
 #include "Effort/RunningEffort.h"
 #include "Optimizer/CompositionOptimizer/CompositionState.h"
 #include "Utils/Debug.h"
-#include "Utils/StringUtils.h"
+#include "Utils/PrettyText.h"
 
 using namespace std;
 
@@ -448,7 +448,7 @@ optimizeImpl(
     // optimizer never drift.
     if (nextEdit.isPureInsertion()) {
       debug("  pure insertion at", nextEdit.beginPos,
-            "text='" + makePrintable(nextEdit.insertedText) + "'");
+            "text='" + VF::prettify(nextEdit.insertedText) + "'");
 
       // Dispatch one strategy: enqueue zero-prefix edit when cursor is already
       // in range, otherwise run NavOptimizer to find motion prefixes and
@@ -751,7 +751,7 @@ ostream& operator<<(ostream& os, const CompositionResult& cr) {
 
   for (size_t i = 0; i < results.size(); i++) {
     os << "  [" << i << "] "
-       << makePrintable(results[i].getSequence().view())
+       << VF::prettify(results[i].getSequence().view())
        << " " << results[i].getCost() << "\n";
   }
 
