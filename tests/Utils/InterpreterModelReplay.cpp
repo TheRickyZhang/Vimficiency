@@ -9,7 +9,7 @@
 #include "Interpreter/EditInterpreter.h"
 #include "Interpreter/MovementInterpreter.h"
 #include "Interpreter/SequenceParser.h"
-#include "Keyboard/KeyNotation.h"
+#include "Types/KeyNotation.h"
 #include "Types/Mode.h"
 #include "VimCore/VimEditUtils.h"
 

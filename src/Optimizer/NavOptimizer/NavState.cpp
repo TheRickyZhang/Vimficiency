@@ -24,7 +24,7 @@ void NavState::applyCountedMotionImpl(const KeyedSequence& baseMotion, int cnt,
   assert(abs(cnt) <= CountPrefixLimits::MAX_PREFIX_COUNT);
   pos = endpoint;
   if (cnt > 0) {
-    movementSequence.append(to_string(cnt));
+    movementSequence.append(CountToKeys::textForCount(cnt));
   }
   movementSequence.append(baseMotion.seq.view());
   if (abs(cnt) <= 1) {

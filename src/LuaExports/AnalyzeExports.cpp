@@ -95,7 +95,7 @@ VF::LuaExports::Result<string> analyzeImpl(
         navigationContext).getResults();
     results.reserve(navResults.size());
     for (const auto& r : navResults) {
-      results.emplace_back(r.getSequence().str(), r.getCost());
+      results.emplace_back(r.getSequence(), r.getCost());
     }
   } else {
     CompositionOptimizer opt(g_config_internal);

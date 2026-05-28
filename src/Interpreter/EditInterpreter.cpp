@@ -7,7 +7,7 @@
 #include "VimCore/VimMotionUtils.h"
 #include "VimCore/VimOptions.h"
 #include "VimCore/VimCore.h"
-#include "Keyboard/KeyNotation.h"
+#include "Types/KeyNotation.h"
 #include "Utils/Debug.h"
 #include "Types/Lines.h"
 

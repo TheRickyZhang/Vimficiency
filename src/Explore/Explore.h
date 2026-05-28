@@ -150,6 +150,8 @@ public:
   };
   HeaderRows headerRows() const;
 
+  // Sequence-text inputs are Vim key notation. Lua normalizes raw input with
+  // `vim.fn.keytrans` before crossing the FFI.
   Outcome applyMovement(std::string_view movementText);
   Outcome acceptCursorMove(CursorPos newCursor, std::string_view rawKeys);
   Outcome applyEdit(std::string_view text);

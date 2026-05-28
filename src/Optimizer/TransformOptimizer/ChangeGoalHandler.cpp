@@ -480,7 +480,7 @@ Result ChangeGoalHandler::resultFromClearedGoal(const TransformState& base) cons
   RunningEffort totalEffort =
       RunningEffort::merge(base.getRunningEffort(), completionEffort);
 
-  Sequence seq(base.getSeq());
+  Sequence seq = Sequence(base.getSeq());
   seq.append(completion.seq.view());
   return Result(seq, totalEffort.getEffort(config));
 }
@@ -609,7 +609,7 @@ SuffixCacheResult ChangeGoalHandler::tryUseSuffixCache(
   double totalEffort = mergedEffort.getEffort(config);
 
   bool firstForStart = bucket.empty();
-  bucket.emplace_back(seqStr, totalEffort);
+  bucket.emplace_back(Sequence(seqStr), totalEffort);
   resultsFound++;
   if (firstForStart) uniquePositionsCovered++;
   bool capped = (static_cast<int>(bucket.size()) == maxResultsPerStart);

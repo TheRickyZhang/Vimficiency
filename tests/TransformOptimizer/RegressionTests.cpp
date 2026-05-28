@@ -19,11 +19,8 @@
 #include "Optimizer/TransformOptimizer/TransformPostExplorerEmissions.h"
 #include "Types/Mode.h"
 #include "Types/CursorPos.h"
-#include "TransformOptimizer/EmbeddedRegionTestUtils.h"
 #include "Utils/NeovimOracle.h"
 #include "Utils/OracleReplay.h"
-#include "Utils/RandomBufferHelpers.h"
-#include "Utils/RandomGeneration.h"
 #include "Types/Lines.h"
 #include "VimCore/VimEndpointUtils.h"
 
@@ -40,24 +37,25 @@ struct EmbeddedCase {
   CursorPos endPos;  // exclusive
 };
 
-EmbeddedCase buildSmallEmbeddedCaseSeed465950() {
-  // Reproduces the benchmark shape from EditOpt/SmallEmbeddedChange/3.
-  RandomGen::seed(465950);
+// Hardcoded snapshot of the original `RandomGen::seed(465950)` fixture so
+// the test is deterministic across libstdc++ and libc++.
+// `std::uniform_int_distribution` is not specified to produce identical
+// output across implementations even with an identical Mersenne Twister
+// state, so seed-driven fixtures diverge between Linux and macOS.
+EmbeddedCase buildSmallEmbeddedCase() {
+  Lines fullBuffer = {
+      "ee,.  c.",
+      "d.eeb,b.,ac., a",
+      "c.debfefb bcc,.",
+      "f aa,, ad.a.e",
+  };
 
-  int numLines = 3;
-  Lines fullBuffer = randomLines(numLines + 1, 8, 15);
-
-  int prefixLen = min(4, static_cast<int>(fullBuffer[0].size()) / 2);
-  int lastLine = static_cast<int>(fullBuffer.size()) - 1;
-  int suffixLen = min(4, static_cast<int>(fullBuffer[lastLine].size()) / 2);
-
-  CursorPos firstPos(0, prefixLen);
-  CursorPos endPos(lastLine, static_cast<int>(fullBuffer[lastLine].size()) - suffixLen);
-  if (endPos.col <= 0) endPos.col = static_cast<int>(fullBuffer[lastLine].size());
+  CursorPos firstPos(0, 4);   // prefixLen = min(4, 8/2) = 4
+  CursorPos endPos(3, 9);     // (lastLine, len - min(4, 13/2)) = (3, 13 - 4)
 
   Lines editRegion = fullBuffer.getSpan(firstPos, endPos);
   TransformBoundary boundary(fullBuffer, firstPos, endPos);
-  Lines goalLines = randomLines(static_cast<int>(editRegion.size()), 4, 8);
+  Lines goalLines;  // unused by the only consumer; kept for struct shape
 
   return {fullBuffer, editRegion, goalLines, boundary, firstPos, endPos};
 }
@@ -97,7 +95,7 @@ void expectResolvedBackwardWordDeleteMatchesOracle(
 }  // namespace
 
 TEST(TransformOptimizerRegression, BoundaryAwareReplayPrefixKeepsXApplicable) {
-  EmbeddedCase test = buildSmallEmbeddedCaseSeed465950();
+  EmbeddedCase test = buildSmallEmbeddedCase();
 
   // For this benchmark-derived shape, effective lines equal fullBuffer.
   Lines replayLines = test.editRegion;

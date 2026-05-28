@@ -4,8 +4,8 @@
 #include <string>
 #include <string_view>
 
-// Represents a sequence of Vim commands/keys as a string.
-// Used by state classes to track the command history.
+// Represents a sequence of Vim commands/keys in notation form (e.g.
+// `<Space>`, `<CR>`, `<lt>`). See `Types/KeyNotation.h` for the convention.
 class Sequence {
   std::string keys;
 public:
@@ -30,7 +30,7 @@ public:
   bool operator!=(const char* s) const { return keys != s; }
   bool operator<(const Sequence& other) const { return keys < other.keys; }
 
-  // Preferred: non-owning view of the underlying string.
+  // Non-owning view for read-side consumers (streams, FFI, comparison).
   std::string_view view() const { return keys; }
 
   // Use when const string& is needed (string concatenation with +,

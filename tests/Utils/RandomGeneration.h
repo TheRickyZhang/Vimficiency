@@ -2,10 +2,9 @@
 
 #pragma once
 
+#include <cstdint>
 #include <initializer_list>
-#include <map>
 #include <random>
-#include <utility>
 
 template <typename T>
 concept Indexable = requires(T t, size_t i) {
@@ -18,11 +17,20 @@ public:
   static void seed(uint32_t s) { rng().seed(s); }
 
   static bool chance(int num, int denom) {
-    return dist(1, denom)(rng()) <= num;
+    return range(1, denom) <= num;
   }
 
-  // Returns random int in [min, max] inclusive
-  static int range(int min, int max) { return dist(min, max)(rng()); }
+  // Returns random int in [min, max] inclusive. Portable across stdlib
+  // implementations: std::uniform_int_distribution's mapping algorithm is
+  // implementation-defined, and libstdc++ vs libc++ produce different
+  // outputs from the same mt19937 state. Lemire's nearly-divisionless
+  // bounded range gives us identical output everywhere. Residual bias is
+  // ~range/2^32, negligible for any test-relevant range.
+  static int range(int min, int max) {
+    uint32_t span = static_cast<uint32_t>(max - min + 1);
+    uint64_t product = static_cast<uint64_t>(rng()()) * span;
+    return min + static_cast<int>(product >> 32);
+  }
 
   // Pick random element from any indexable container (equal weight)
   template <Indexable Container>
@@ -59,25 +67,5 @@ public:
   static std::mt19937& rng() {
     static std::mt19937 instance;
     return instance;
-  }
-
-private:
-  using DistKey = std::pair<int, int>;
-  using DistMap = std::map<DistKey, std::uniform_int_distribution<int>>;
-
-  static DistMap& cache() {
-    static DistMap instance;
-    return instance;
-  }
-
-  static std::uniform_int_distribution<int>& dist(int min, int max) {
-    DistKey key{min, max};
-    auto it = cache().find(key);
-    if (it == cache().end()) {
-      it = cache()
-               .emplace(key, std::uniform_int_distribution<int>(min, max))
-               .first;
-    }
-    return it->second;
   }
 };

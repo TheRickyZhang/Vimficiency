@@ -54,8 +54,7 @@ std::expected<MotionSuccess, Rejected> acceptCursorMove(
     CursorPos newCursor,
     std::string_view rawKeys,
     const NavBoundary& boundary) {
-  string appendedSeq(rawKeys);
-  return finishMove(lines, newCursor, std::move(appendedSeq), boundary);
+  return finishMove(lines, newCursor, string(rawKeys), boundary);
 }
 
 } // namespace Explore::MovementHandler

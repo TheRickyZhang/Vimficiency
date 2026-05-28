@@ -572,13 +572,14 @@ Outcome View::applyMovement(string_view movementText) {
     return unexpected(std::move(gated.error()));
 
   auto eff = MovementHandler::applyMovement(
-      state_.lines, state_.cursor, movementText, boundary_, navContext_);
+      state_.lines, state_.cursor, movementText,
+      boundary_, navContext_);
   if (!eff)
     return unexpected(std::move(eff.error()));
 
   State next = state_;
   next.cursor = eff->newCursor;
-  next.seq.append(std::move(eff->appendedSeq));
+  next.seq.append(eff->appendedSeq);
   next.cost = getEffort(next.seq, config_);
   next.phase = phaseForCursor(*gated, next.lines, next.cursor);
   return commit(std::move(next));
@@ -597,7 +598,7 @@ Outcome View::acceptCursorMove(CursorPos newCursor, string_view rawKeys) {
   State next = state_;
   next.cursor = eff->newCursor;
   if (!eff->appendedSeq.empty()) {
-    next.seq.append(std::move(eff->appendedSeq));
+    next.seq.append(eff->appendedSeq);
     next.cost = getEffort(next.seq, config_);
   }
   next.phase = phaseForCursor(*gated, next.lines, next.cursor);

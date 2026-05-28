@@ -124,6 +124,16 @@ if [ -d "$WORK_REPO/.git" ]; then
   rm -rf "$WORK_REPO"
 fi
 
+# Detect a dangling worktree gitlink: under CI, actions/checkout can
+# recreate the runner's parent .git/ between jobs, which orphans the
+# cached worktree's gitlink (.git file) pointing into the now-missing
+# .git/worktrees/repo/ directory. `git worktree prune` above only cleans
+# the parent side; we have to remove and re-add the worktree itself.
+if [ -e "$WORK_REPO/.git" ] && ! git -C "$WORK_REPO" rev-parse --git-dir >/dev/null 2>&1; then
+  echo "[migrate] worktree gitlink dangling at $WORK_REPO, recreating"
+  rm -rf "$WORK_REPO"
+fi
+
 if [ ! -e "$WORK_REPO/.git" ]; then
   git -C "$REPO_ROOT" worktree add --detach --force "$WORK_REPO" "$PUSHED_SHA"
 else
@@ -167,6 +177,12 @@ fi
 # Migrate prior clone-based layout if present.
 if [ -d "$GHPAGES_REPO/.git" ]; then
   echo "[migrate] replacing prior gh-pages-clone with worktree at $GHPAGES_REPO"
+  rm -rf "$GHPAGES_REPO"
+fi
+
+# Same dangling-gitlink check as $WORK_REPO above.
+if [ -e "$GHPAGES_REPO/.git" ] && ! git -C "$GHPAGES_REPO" rev-parse --git-dir >/dev/null 2>&1; then
+  echo "[migrate] gh-pages worktree gitlink dangling, recreating"
   rm -rf "$GHPAGES_REPO"
 fi
 

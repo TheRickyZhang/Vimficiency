@@ -392,7 +392,7 @@ optional<JoinPlan> computeJoinPlanForDiff(
     auto simGJ = JoinSimulation::simulate(srcLines, begin, end, /*addSpace=*/false);
     bool useGJ = joinSimMatchScore(simGJ.joinedLine, fullTargetLines[g]) >
                  joinSimMatchScore(simJ.joinedLine, fullTargetLines[g]);
-    string_view joinCmd = useGJ ? "gJ" : "J";
+    std::string_view joinCmd = useGJ ? "gJ" : "J";
     for (int j = 0; j < numJoins; j++) fullSeq.append(joinCmd);
 
     const auto& sim = useGJ ? simGJ : simJ;

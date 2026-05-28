@@ -65,7 +65,7 @@ LandingNavResult NavOptimizer::optimize(
   if (range.containsPos(startPos)) {
     NavSearchStats stats;
     std::vector<LandingResult> results;
-    results.emplace_back(std::string{}, 0.0, startPos);
+    results.emplace_back(Sequence{}, 0.0, startPos);
     stats.finalizeRangeGoal(
         static_cast<int>(results.size()),
         /*uniquePositions=*/1,
@@ -125,7 +125,7 @@ LandingNavResult NavOptimizer::optimize(
       double effort = s.getRunningEffort().getEffort(config);
 
       if ((params.maxResultsPerEndPos > 1)) {
-        allResults.emplace_back(s.getSequence().str(), effort, pos);
+        allResults.emplace_back(s.getSequence(), effort, pos);
         uniquePositionsSeen.insert(stateKey);
         if (allResults.size() >= static_cast<size_t>(params.maxResults)) {
           debug("optimize: max results reached");
@@ -134,13 +134,13 @@ LandingNavResult NavOptimizer::optimize(
       } else {
         auto it = bestResultByPos.find(stateKey);
         if (it == bestResultByPos.end()) {
-          bestResultByPos.emplace(stateKey, LandingResult(s.getSequence().str(), effort, pos));
+          bestResultByPos.emplace(stateKey, LandingResult(s.getSequence(), effort, pos));
           if (static_cast<int>(bestResultByPos.size()) >= maxResults) {
             debug("optimize: max unique positions reached (", bestResultByPos.size(), "/", rangeSize, ")");
             break;
           }
         } else if (effort < it->second.getCost()) {
-          it->second = LandingResult(s.getSequence().str(), effort, pos);
+          it->second = LandingResult(s.getSequence(), effort, pos);
         }
       }
       continue;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "PhysicalKeys.h"
-#include "Keyboard/KeyNotation.h"
+#include "Types/KeyNotation.h"
 #include "Keyboard/ToKeys/CountToKeys.h"
 #include "Keyboard/ToKeys/CharToKeys.h"
 #include "XMacroKeyedSequence.h"

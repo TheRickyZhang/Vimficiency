@@ -392,7 +392,7 @@ optimizeImpl(
       double effort = s.getRunningEffort().getEffort(config);
       debug("GOAL #" + to_string(results.size()) + ":",
             "\"" + s.getSequence().str() + "\"", "effort:", effort);
-      results.emplace_back(s.getSequence().str(), effort);
+      results.emplace_back(s.getSequence(), effort);
       // Single load-bearing `collecting` check left in optimizeImpl: NoTrace
       // emits empty span vectors that would otherwise pollute resultSpans.
       // All other tracer event sites go through unconditional method calls.
