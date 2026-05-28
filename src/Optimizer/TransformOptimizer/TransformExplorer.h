@@ -432,6 +432,18 @@ void TransformExplorer::exploreSentenceEdits(
   int lastLine = lines.lastLine();
   int boundaryOffset = Forward ? rightColOffset_ : leftColOffset_;
   bool hasLinesOutside = Forward ? boundary_.hasLinesBelow() : boundary_.hasLinesAbove();
+  // findsent's prelude scans BACKWARD over closing/end-punct/whitespace from
+  // the cursor to find the true sentence-start anchor. On the slice that scan
+  // can't see linesAbove, so it terminates early and the endpoint diverges
+  // from the full-buffer answer. Symmetrically for backward motion + cursor
+  // at the slice's tail + linesBelow. Treat those cases as ambiguous so the
+  // explorer doesn't emit a `d)` / `d(` that overshoots on the real buffer.
+  // Trip wire: TransformExplorerBoundaryPropertyTest.EmittedDeletesPreserveBoundaries
+  // (`d)` on editRegion=[".","ccb."] with linesAbove=["aa,."], suffix="V").
+  bool ambiguousAnchor = Forward
+      ? (boundary_.hasLinesAbove() && cursor.line == 0)
+      : (boundary_.hasLinesBelow() && cursor.line == lastLine);
+  if (ambiguousAnchor) return;
   CursorPos endpoint = VimCore::sentenceOperatorEndpoint(
       cursor, lines, Forward, boundaryOffset, hasLinesOutside);
 

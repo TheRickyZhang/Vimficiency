@@ -101,6 +101,12 @@ struct ChangeGoalHandler {
   static KeyedSequence deleteToChangeLine(const SequenceBinding& sourceCmd,
                                           std::string_view lineContent);
 
+  // Cleared-shell collapse helpers — exposed so primitive property tests can
+  // verify the entry+collapse contract directly against the oracle. See the
+  // implementation in ChangeGoalHandler.cpp for the cleared-shell invariant.
+  static KeyedSequence buildCollapseSequence(int totalLines, int cursorLine);
+  static KeyedSequence buildClearedShellEntry(int totalLines, int cursorLine, int cursorCol);
+
   struct SuffixCommandInfo {
     bool isDotRepeat = false;
     bool updatesDotRepeat = false;
@@ -120,7 +126,6 @@ private:
   bool isDotRepeat(const TransformState& base, const SequenceBinding& sourceCmd) const;
 
   // Static helpers
-  static KeyedSequence buildCollapseSequence(int totalLines, int cursorLine);
   static void appendOptionalCount(KeyedSequence& out, int count, const KeyedSequence& base);
   static KeyedSequence withOptionalCount(int count, const KeyedSequence& base);
   static std::string formatCountedCommand(int count, std::string_view baseCmd);
@@ -150,8 +155,7 @@ private:
       const std::vector<SuffixCommandInfo>& commandInfos,
       const std::vector<RunningEffort>& rawSuffixEfforts,
       int nextIndex,
-      int lastEditCount,
-      std::string_view lastEditBase) const;
+      const DotRepeat& lastEdit) const;
   void cacheSuffixesForPath(const TransformState& base,
                             const KeyedSequence& completionSuffix,
                             double completionPenalty,

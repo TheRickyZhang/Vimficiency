@@ -17,6 +17,7 @@
 #include "Types/CharRange.h"
 #include "Effort/RunningEffort.h"
 #include "Types/Lines.h"
+#include "Interpreter/EditInterpreter.h"
 #include "VimCore/VimCore.h"
 #include "VimCore/VimEditUtils.h"
 
@@ -133,16 +134,14 @@ struct TransformPathStep {
   int lineCountAfter = 0;
   CursorPos posAfter;
   Mode modeAfter = Mode::Normal;
-  int lastEditCountAfter = 0;
-  std::string lastEditBaseAfter;
+  DotRepeat lastEditAfter;
   std::string command;
   bool isDotRepeat = false;
   bool updatesDotRepeat = false;
 
   TransformPathStep(std::shared_ptr<const TransformPathStep> prev,
                     const TransformEditorState& editorAfter,
-                    int lastEditCountAfter,
-                    std::string lastEditBaseAfter,
+                    DotRepeat lastEditAfter,
                     std::string command,
                     bool isDotRepeat,
                     bool updatesDotRepeat)
@@ -151,8 +150,7 @@ struct TransformPathStep {
         lineCountAfter(static_cast<int>(editorAfter.getLines().size())),
         posAfter(editorAfter.getPos()),
         modeAfter(editorAfter.getMode()),
-        lastEditCountAfter(lastEditCountAfter),
-        lastEditBaseAfter(std::move(lastEditBaseAfter)),
+        lastEditAfter(std::move(lastEditAfter)),
         command(std::move(command)),
         isDotRepeat(isDotRepeat),
         updatesDotRepeat(updatesDotRepeat) {}
@@ -278,8 +276,13 @@ public:
   [[nodiscard]] static TransformEditorState afterMultiJoin(
       const TransformEditorState& state, int count, bool addSpace) {
     TransformEditorState newState = state;
-    VimCore::joinLineRange(
-        newState.lines_, newState.pos_, std::max(count, 2), addSpace);
+    int lineCount = std::max(count, 2);
+    if (lineCount == 2) {
+      VimCore::joinLines(newState.lines_, newState.pos_, addSpace);
+    } else {
+      VimCore::joinLineRange(
+          newState.lines_, newState.pos_, lineCount, addSpace);
+    }
     newState.refreshHash();
     return newState;
   }
@@ -299,8 +302,7 @@ class TransformState {
   int startIndex;                 // Which starting position this search is for
 
   std::string seq_{};             // Sequence of operations taken
-  int lastEditCount_ = 0;         // Count prefix of last edit for dot repeat (0 = uncounted)
-  std::string lastEditBase_{};    // Base command of last edit for dot repeat (not in TransformStateKey)
+  DotRepeat lastEdit_;            // Last edit for dot repeat (not in TransformStateKey)
   std::shared_ptr<const TransformPathStep> pathTail_;
   RunningEffort runningEffort{};  // Typing effort tracker (internal)
   double effort_ = 0.0;           // Cached effort value
@@ -332,9 +334,8 @@ public:
   double getEffort() const { return effort_; }
   double getCost() const { return cost_; }
   const std::string& getSeq() const { return seq_; }
-  int getLastEditCount() const { return lastEditCount_; }
-  const std::string& getLastEditBase() const { return lastEditBase_; }
-  bool hasLastEdit() const { return !lastEditBase_.empty(); }
+  const DotRepeat& getLastEdit() const { return lastEdit_; }
+  bool hasLastEdit() const { return !lastEdit_.empty(); }
   const RunningEffort& getRunningEffort() const { return runningEffort; }
   std::shared_ptr<const TransformPathStep> getPathTail() const { return pathTail_; }
 
@@ -370,9 +371,8 @@ class TransformStateFactory {
                              bool updatesDotRepeat) {
     bool isDotRepeat = command == ".";
     state.pathTail_ = std::make_shared<TransformPathStep>(
-        base.pathTail_, state.editor, state.lastEditCount_,
-        state.lastEditBase_, std::move(command),
-        isDotRepeat, updatesDotRepeat);
+        base.pathTail_, state.editor, state.lastEdit_,
+        std::move(command), isDotRepeat, updatesDotRepeat);
   }
 
   void appendCommand(TransformState& state, std::string_view cmd,
@@ -430,8 +430,7 @@ public:
     TransformState state = base;
     state.editor = std::move(editor);
     appendCountedCommand(state, count, baseCmd, precomputed, heuristicCost);
-    state.lastEditCount_ = count;
-    state.lastEditBase_ = baseCmd;
+    state.lastEdit_ = DotRepeat{std::string(baseCmd), count};
     recordPathStep(state, base, countedCommandString(count, baseCmd), true);
     return state;
   }
@@ -442,17 +441,15 @@ public:
       std::string_view cmd,
       const RunningEffort& precomputed,
       double heuristicCost,
-      int lastEditCount,
-      std::string_view lastEditBase) const {
+      DotRepeat lastEdit) const {
     TransformState state = base;
     state.editor = std::move(editor);
     appendCommand(state, cmd, precomputed, heuristicCost);
-    state.lastEditCount_ = lastEditCount;
-    state.lastEditBase_ = lastEditBase;
+    bool hasEdit = !lastEdit.empty();
+    state.lastEdit_ = std::move(lastEdit);
     state.pathTail_ = std::make_shared<TransformPathStep>(
-        base.pathTail_, state.editor, state.lastEditCount_,
-        state.lastEditBase_, std::string(cmd), cmd == ".",
-        !lastEditBase.empty());
+        base.pathTail_, state.editor, state.lastEdit_,
+        std::string(cmd), cmd == ".", hasEdit);
     return state;
   }
 };

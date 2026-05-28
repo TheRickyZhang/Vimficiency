@@ -2,7 +2,7 @@
 
 #include "SequenceParser.h"
 #include "Interpreter/ParserChar.h"
-#include "Interpreter/SequenceFormatting.h"
+#include "Keyboard/KeyNotation.h"
 #include "Keyboard/ToKeys/MovementToKeys.h"
 
 #include <cassert>

@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include "Interpreter/EditInterpreter.h"
 #include "Interpreter/MovementInterpreter.h"
 #include "Types/NavContext.h"
 #include "Optimizer/BuildTypedCommands.h"
@@ -243,6 +244,34 @@ TEST_F(VimOptionsTest, J_AfterNormalChar_SingleSpaceBothModes) {
   EXPECT_EQ(ourLines[0], "hello world"); // 1 space in both modes
 }
 
+TEST_F(VimOptionsTest, J_InterpreterUsesSingleJoinCursorPolicy) {
+  Lines lines = {"aaa", "bbb", "ccc"};
+  auto result = oracleSimulate(lines, 0, 0, "J");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(0, 0);
+  Mode mode = Mode::Normal;
+  Edit::applyEdit(ourLines, ourPos, mode, ParsedEdit("J"));
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+}
+
+TEST_F(VimOptionsTest, Counted2J_InterpreterUsesSingleJoinCursorPolicy) {
+  Lines lines = {"aaa", "bbb", "ccc"};
+  auto result = oracleSimulate(lines, 0, 0, "2J");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(0, 0);
+  Mode mode = Mode::Normal;
+  Edit::applyEdit(ourLines, ourPos, mode, ParsedEdit("J", 2));
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+}
+
 TEST_F(VimOptionsTest, J_NextLineLeadingWhitespace) {
   Lines lines = {"first.", "   second"};
   auto result = oracleSimulate(lines, 0, 0, "J");
@@ -290,6 +319,34 @@ TEST_F(VimOptionsTest, CountedJ_PreservesSeparatorForWhitespaceLineAfterSpace) {
   EXPECT_EQ(ourLines[0], "a  b");
 }
 
+TEST_F(VimOptionsTest, CountedJ_CursorLandsOnContentBeforeTrailingEmptyLines) {
+  Lines lines = {"c", "n", "", ""};
+  auto result = oracleSimulate(lines, 0, 0, "4J");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(0, 0);
+  VimCore::joinLineRange(ourLines, ourPos, 4, true);
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+  EXPECT_EQ(ourLines[0], "c n");
+}
+
+TEST_F(VimOptionsTest, CountedJ_CursorStaysOnSeparatorAfterMultiEmptyGap) {
+  Lines lines = {"c", "", "", "n"};
+  auto result = oracleSimulate(lines, 0, 0, "4J");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(0, 0);
+  VimCore::joinLineRange(ourLines, ourPos, 4, true);
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+  EXPECT_EQ(ourLines[0], "c n");
+}
+
 TEST_F(VimOptionsTest, BareJ_DoesNotPreserveEmptyLineSeparator) {
   Lines lines = {"a ", ""};
   auto result = oracleSimulate(lines, 0, 0, "J");
@@ -317,6 +374,34 @@ TEST_F(VimOptionsTest, CountedGJ_CursorLandsAtLastJoinPoint) {
   EXPECT_EQ(ourPos.col, result.col);
 }
 
+TEST_F(VimOptionsTest, BackwardWordEndDeleteKeepsCursorColumnAfterAnchorLineRemoval) {
+  Lines lines = {";   ", "~~", " ?y"};
+  auto result = oracleSimulate(lines, 1, 1, "dge");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(1, 1);
+  Mode mode = Mode::Normal;
+  Edit::applyEdit(ourLines, ourPos, mode, ParsedEdit("dge"));
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+}
+
+TEST_F(VimOptionsTest, ForwardSentenceDeleteIncludesLineEndCloser) {
+  Lines lines = {"MM ~ ~", "o 0", "S!)", "~   -]"};
+  auto result = oracleSimulate(lines, 0, 2, "d)");
+
+  Lines ourLines = lines;
+  CursorPos ourPos(0, 2);
+  Mode mode = Mode::Normal;
+  Edit::applyEdit(ourLines, ourPos, mode, ParsedEdit("d)"));
+
+  EXPECT_EQ(ourLines, result.lines);
+  EXPECT_EQ(ourPos.line, result.row);
+  EXPECT_EQ(ourPos.col, result.col);
+}
+
 TEST_F(VimOptionsTest, CountedJ_CursorUsesTrailingWhitespaceFromContentLine) {
   Lines lines = {"m~;b", "~ ~", "~~ ", " ~~( ~z"};
   auto result = oracleSimulate(lines, 0, 1, "4J");
@@ -330,7 +415,9 @@ TEST_F(VimOptionsTest, CountedJ_CursorUsesTrailingWhitespaceFromContentLine) {
   EXPECT_EQ(ourPos.col, result.col);
 }
 
-TEST_F(VimOptionsTest, J_StripsHashCommentLeaderAfterDashLeader) {
+TEST_F(VimOptionsTest, J_DoesNotStripCommentLeaders) {
+  // We deliberately do not model Vim's `'comments'` option (NeovimOracle
+  // clears it). J/gJ preserve comment-leader chars on the joined-from line.
   Lines lines = {"x- ", "#  1"};
   auto result = oracleSimulate(lines, 0, 0, "J");
 
@@ -341,7 +428,6 @@ TEST_F(VimOptionsTest, J_StripsHashCommentLeaderAfterDashLeader) {
   EXPECT_EQ(ourLines, result.lines);
   EXPECT_EQ(ourPos.line, result.row);
   EXPECT_EQ(ourPos.col, result.col);
-  EXPECT_EQ(ourLines[0], "x- 1");
 }
 
 TEST_F(VimOptionsTest, J_DoesNotInsertSpaceBeforeClosingParen) {

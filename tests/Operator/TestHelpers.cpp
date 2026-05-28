@@ -150,20 +150,10 @@ RandomBufferTest generateRandomBuffer(int numLines) {
 // Boundary Crossing Verification
 // =============================================================================
 
-// Flatten Lines to string for comparison
-static string flattenToString(const Lines& lines) {
-  string result;
-  for (size_t i = 0; i < lines.size(); i++) {
-    if (i > 0) result += '\n';
-    result += lines[i];
-  }
-  return result;
-}
-
 bool leftBoundaryCrossed(const RandomBufferTest& test, const Lines& result) {
   if (!test.hasLeftBoundary) return false;
 
-  string resultStr = flattenToString(result);
+  string resultStr = result.flatten();
 
   // Prefix should still be at the start
   if (resultStr.size() < test.prefix.size()) return true;
@@ -173,7 +163,7 @@ bool leftBoundaryCrossed(const RandomBufferTest& test, const Lines& result) {
 bool rightBoundaryCrossed(const RandomBufferTest& test, const Lines& result) {
   if (!test.hasRightBoundary) return false;
 
-  string resultStr = flattenToString(result);
+  string resultStr = result.flatten();
 
   // Suffix should still be at the end
   if (resultStr.size() < test.suffix.size()) return true;

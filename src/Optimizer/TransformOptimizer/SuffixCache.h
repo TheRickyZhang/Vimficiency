@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "Types/Mode.h"
+#include "Interpreter/EditInterpreter.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Effort/RunningEffort.h"
 #include "Types/CursorPos.h"
@@ -147,9 +148,9 @@ struct SuffixValue {
         DotOverride{std::move(dotMatchCmd), dotStartIndex, dotEffort});
   }
 
-  bool canUseDot(int lastEditCount, std::string_view lastEditBase) const {
+  bool canUseDot(const DotRepeat& lastEdit) const {
     if (!dotOverride) return false;
-    return matchesCountedCmd(dotOverride->matchCmd, lastEditCount, lastEditBase);
+    return matchesCountedCmd(dotOverride->matchCmd, lastEdit.count, lastEdit.base);
   }
 
   const KeyedSequence& suffix(bool useDot = false) const {

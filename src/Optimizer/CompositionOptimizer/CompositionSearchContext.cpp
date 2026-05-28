@@ -7,7 +7,7 @@
 #include "PlannedEditArtifacts.h"
 #include "TreeDiff.h"
 #include "Utils/Debug.h"
-#include "Utils/StringUtils.h"
+#include "Utils/PrettyText.h"
 
 using namespace std;
 
@@ -93,8 +93,8 @@ CompositionSearchContext::CompositionSearchContext(
     debug("  diff[" + to_string(i) + "]:", kind,
           "at [" + to_string(d.beginPos.line) + "," + to_string(d.beginPos.col) + ")-["
           + to_string(d.endPos.line) + "," + to_string(d.endPos.col) + ")",
-          "del='" + makePrintable(d.deletedText) + "'",
-          "ins='" + makePrintable(d.insertedText) + "'");
+          "del='" + VF::prettify(d.deletedText) + "'",
+          "ins='" + VF::prettify(d.insertedText) + "'");
   }
 
   // Build intermediate buffer states

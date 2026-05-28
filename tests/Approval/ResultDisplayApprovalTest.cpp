@@ -7,7 +7,7 @@ namespace {
 
 // Note these currently don't really test anything besides for how the C++ formatter works;
 TEST(ResultDisplayApproval, EditedFunctionSavedReport) {
-  verifyText(joinLines(VF::SessionView::formatSavedLines(
+  verifyText(VF::SessionView::formatSavedLines(
       "rename_int_n_to_m",
       VF::SessionView::Result{
           .lines = {
@@ -26,11 +26,11 @@ TEST(ResultDisplayApproval, EditedFunctionSavedReport) {
               {.seq = "jciwm<Esc>", .cost = 4.25},
               {.seq = "2jfndw", .cost = 7.5},
           },
-      })));
+      }));
 }
 
 TEST(ResultDisplayApproval, MovementOnlyNoRecommendations) {
-  verifyText(joinLines(VF::SessionView::formatSavedLines(
+  verifyText(VF::SessionView::formatSavedLines(
       "movement_only",
       VF::SessionView::Result{
           .lines = {
@@ -42,7 +42,7 @@ TEST(ResultDisplayApproval, MovementOnlyNoRecommendations) {
           .endRow = 0,
           .endCol = 6,
           .userCost = 0.0,
-      })));
+      }));
 }
 
 }  // namespace

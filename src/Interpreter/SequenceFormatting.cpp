@@ -3,27 +3,7 @@
 #include "Types/Sequence.h"
 
 #include "Interpreter/SequenceParser.h"
-#include "Utils/StringUtils.h"
-
-std::string displayChar(char c) {
-  switch (c) {
-    case ' ':  return "<Space>";
-    case '\t': return "<Tab>";
-    case '\n':
-    case '\r': return "<CR>";
-    case '<':  return "<lt>";
-    default:   return std::string(1, c);
-  }
-}
-
-std::optional<char> parseDisplayChar(std::string_view s) {
-  if (s.size() == 1) return s[0];
-  if (s == "<Space>") return ' ';
-  if (s == "<Tab>")   return '\t';
-  if (s == "<CR>")    return '\n';
-  if (s == "<lt>" || s == "<LT>") return '<';
-  return std::nullopt;
-}
+#include "Utils/PrettyText.h"
 
 // Note this is defined elsewhere from Sequence.h because it relies on higher-order parsing logic
 std::ostream& operator<<(std::ostream& os, const Sequence& seq) {
@@ -31,13 +11,13 @@ std::ostream& operator<<(std::ostream& os, const Sequence& seq) {
 
   auto parsed = parseSequence(seq.view());
   if (!parsed) {
-    os << makePrintable(seq.str());
+    os << VF::prettify(seq.str());
     return os;
   }
   std::vector<TaggedToken> tokens = *parsed;
 
   for (size_t i = 0; i < tokens.size(); i++) {
-    os << makePrintable(tokens[i].token);
+    os << VF::prettify(tokens[i].token);
 
     if (i + 1 < tokens.size()) {
       auto cur = tokens[i].kind;

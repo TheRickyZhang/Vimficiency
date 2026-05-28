@@ -18,6 +18,7 @@
 #include "Optimizer/CompositionOptimizer/TreeDiff.h"
 #include "Keyboard/Config.h"
 #include "Types/Lines.h"
+#include "Utils/PrettyText.h"
 
 using namespace std;
 
@@ -36,18 +37,6 @@ static string unescapeNewlines(const string& s) {
   return result;
 }
 
-// Make newlines visible in output
-static string printable(const string& s) {
-  string result;
-  for (char c : s) {
-    if (c == '\n')
-      result += "\\n";
-    else
-      result += c;
-  }
-  return result;
-}
-
 static void printDiffs(
     const char* name,
     const vector<DiffState>& diffs,
@@ -62,8 +51,8 @@ static void printDiffs(
     cout << "  [" << i << "] " << kind << endl;
     cout << "      range: (" << d.beginPos.line << "," << d.beginPos.col << ")"
          << " -> (" << d.endPos.line << "," << d.endPos.col << ")" << endl;
-    cout << "      del: \"" << printable(d.deletedText) << "\"" << endl;
-    cout << "      ins: \"" << printable(d.insertedText) << "\"" << endl;
+    cout << "      del: \"" << VF::prettify(d.deletedText) << "\"" << endl;
+    cout << "      ins: \"" << VF::prettify(d.insertedText) << "\"" << endl;
     cout << "      boundary: pre=\"" << d.boundary.prefix()
          << "\" suf=\"" << d.boundary.suffix() << "\""
          << " above=" << d.boundary.hasLinesAbove()
@@ -73,14 +62,14 @@ static void printDiffs(
   Lines reconstructed = Myers::applyAllDiffState(diffs, initial);
   if (reconstructed.flatten() != goal.flatten()) {
     cout << endl << "WARNING: round-trip mismatch!" << endl;
-    cout << "  expected: " << printable(goal.flatten()) << endl;
-    cout << "  got:      " << printable(reconstructed.flatten()) << endl;
+    cout << "  expected: " << VF::prettify(goal.flatten()) << endl;
+    cout << "  got:      " << VF::prettify(reconstructed.flatten()) << endl;
   }
 }
 
 static void printDiffs(const Lines& initial, const Lines& goal) {
-  cout << "initial: " << initial << "  [" << printable(initial.flatten()) << "]" << endl;
-  cout << "goal:    " << goal << "  [" << printable(goal.flatten()) << "]" << endl;
+  cout << "initial: " << initial << "  [" << VF::prettify(initial.flatten()) << "]" << endl;
+  cout << "goal:    " << goal << "  [" << VF::prettify(goal.flatten()) << "]" << endl;
   cout << endl;
 
   printDiffs("Myers", Myers::calculate(initial, goal), initial, goal);

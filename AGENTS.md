@@ -71,6 +71,8 @@ Lua (User concepts):
 
 ## Important Principles
 - Always use tests/Debug to investigate complex issues through direct, side-by-side comparison using NeovimOracle, finding the exact point our state differs from expectation.
+- Don't do post-hoc correction when attempting to fix vim semantics bugs. Our flow should be: determine viability of a command when first exploring it. Afterwards, we should not recheck the buffer state after applying in any way, because we should have guaranteed that correctness on the very first step.
+- Instead of performing long test runs at the end of your search, ask me to perform them.
 - Don't use static casts if they aren't needed!
 - Don't overuse namespaces. We should naturally bring them up as the code grows, not when we only have a few functions / classes.
 - Make sure to route unicode printing through PrettyPrint

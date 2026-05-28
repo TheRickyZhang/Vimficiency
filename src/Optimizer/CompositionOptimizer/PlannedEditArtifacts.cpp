@@ -8,7 +8,6 @@
 #include "Effort/RunningEffort.h"
 #include "Optimizer/BuildTypedCommands.h"
 #include "Utils/Debug.h"
-#include "Utils/StringUtils.h"
 #include "VimCore/VimEditUtils.h"
 
 using namespace std;
@@ -151,13 +150,14 @@ struct JoinSimulation {
   string joinedLine;
   vector<int> cursorCols;
 
-  static JoinSimulation simulate(const Lines& srcLines, int begin, int end) {
+  static JoinSimulation simulate(const Lines& srcLines, int begin, int end,
+                                 bool addSpace = true) {
     JoinSimulation sim;
     Lines workLines(srcLines.begin() + begin, srcLines.begin() + end);
     CursorPos pos(0, 0);
 
     for (int l = begin + 1; l < end; l++) {
-      VimCore::joinLines(workLines, pos, /*addSpace=*/true);
+      VimCore::joinLines(workLines, pos, addSpace);
       sim.cursorCols.push_back(pos.col);
     }
     sim.joinedLine = workLines[0];
@@ -183,6 +183,18 @@ int commonSuffixLen(string_view a, string_view b, int prefixLen) {
     count++;
   }
   return count;
+}
+
+// Score a join simulation against a target line: characters retained without
+// a residual edit. Higher is better; an exact match scores the full target
+// length. J (addSpace=true) inserts a space between joined lines; gJ does
+// not. We pick whichever lands closer to the target so a pure-newline
+// deletion goal can collapse to bare `gJ` without a residual space-delete.
+int joinSimMatchScore(string_view joined, string_view target) {
+  int cp = commonPrefixLen(joined, target);
+  int cs = commonSuffixLen(joined, target, cp);
+  if (joined == target) return static_cast<int>(target.size()) + 1;
+  return cp + cs;
 }
 
 }
@@ -345,11 +357,13 @@ optional<JoinPlan> computeJoinPlanForDiff(
     auto [begin, end] = partition[g];
     if (end - begin <= 1) continue;
 
-    auto sim = JoinSimulation::simulate(srcLines, begin, end);
-    int cpLen = commonPrefixLen(sim.joinedLine, fullTargetLines[g]);
-    int csLen = commonSuffixLen(sim.joinedLine, fullTargetLines[g], cpLen);
-    int commonLen = cpLen + csLen;
-    int maxLen = max(static_cast<int>(sim.joinedLine.size()),
+    auto simJ = JoinSimulation::simulate(srcLines, begin, end, /*addSpace=*/true);
+    auto simGJ = JoinSimulation::simulate(srcLines, begin, end, /*addSpace=*/false);
+    int matchJ = joinSimMatchScore(simJ.joinedLine, fullTargetLines[g]);
+    int matchGJ = joinSimMatchScore(simGJ.joinedLine, fullTargetLines[g]);
+    const auto& best = matchGJ > matchJ ? simGJ : simJ;
+    int commonLen = max(matchJ, matchGJ);
+    int maxLen = max(static_cast<int>(best.joinedLine.size()),
                      static_cast<int>(fullTargetLines[g].size()));
     double matchRatio = maxLen > 0 ? static_cast<double>(commonLen) / maxLen : 1.0;
     if (matchRatio < 0.3) return nullopt;
@@ -365,10 +379,23 @@ optional<JoinPlan> computeJoinPlanForDiff(
     auto [begin, end] = partition[g];
     int numJoins = end - begin - 1;
 
-    if (g > 0) fullSeq.append("j");
-    for (int j = 0; j < numJoins; j++) fullSeq.append("J");
+    // Navigate to next group's first line at col 0.
+    //   - `j0` (not `j` alone) ensures cursor lands at col 0, regardless of
+    //     prior targetCol. JoinSimulation models J's from slice-local (0, 0)
+    //     and the residual TransformOptimizer is called with cursorCol=0 for
+    //     non-join groups (or post-J col tracked by JoinSimulation for join
+    //     groups, also assuming the entry col was 0). Without `0`, `j` keeps
+    //     curswant from the prior group's exit, so the residual edit (e.g.
+    //     `C`) runs from the wrong column.
+    if (g > 0) fullSeq.append("j0");
+    auto simJ = JoinSimulation::simulate(srcLines, begin, end, /*addSpace=*/true);
+    auto simGJ = JoinSimulation::simulate(srcLines, begin, end, /*addSpace=*/false);
+    bool useGJ = joinSimMatchScore(simGJ.joinedLine, fullTargetLines[g]) >
+                 joinSimMatchScore(simJ.joinedLine, fullTargetLines[g]);
+    string_view joinCmd = useGJ ? "gJ" : "J";
+    for (int j = 0; j < numJoins; j++) fullSeq.append(joinCmd);
 
-    auto sim = JoinSimulation::simulate(srcLines, begin, end);
+    const auto& sim = useGJ ? simGJ : simJ;
     int cursorCol = numJoins > 0 ? sim.cursorCols.back() : 0;
 
     if (sim.joinedLine != fullTargetLines[g]) {
@@ -418,8 +445,8 @@ optional<JoinPlan> computeJoinPlanForDiff(
     goalPos = CursorPos(diff.beginPos.line + targetLineCount - 1, lastGoalPos.col);
   }
 
-  CHECK(fullSeq.view().starts_with("J"),
-        "composition join plan must start with J");
+  CHECK(fullSeq.view().starts_with("J") || fullSeq.view().starts_with("gJ"),
+        "composition join plan must start with J or gJ");
   double effort = getEffort(fullSeq.view(), config);
 
   return JoinPlan{

@@ -26,7 +26,7 @@
 #include "Utils/PrettyText.h"
 #include "Utils/RandomBufferHelpers.h"
 #include "Utils/RandomGeneration.h"
-#include "Utils/StringUtils.h"
+#include "Utils/PrettyText.h"
 #include "Optimizer/TransformOptimizer/TransformState.h"
 #include "VimCore/VimEditUtils.h"
 #include "VimCore/VimEndpointUtils.h"
@@ -405,7 +405,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
     Lines test = eff;
     CursorPos pos(0, 13);  // first edit position in effective lines
     Mode mode = Mode::Normal;
-    string lastEdit;
+    DotRepeat lastEdit;
 
     auto parsed = Edit::parseEdits(seq);
     assert(parsed);
@@ -436,7 +436,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
     Lines test = eff;
     CursorPos pos(0, 13);
     Mode mode = Mode::Normal;
-    string lastEdit;
+    DotRepeat lastEdit;
     string seq = "D4gJ7dbDjd0dw.x";
     auto parsed = Edit::parseEdits(seq);
     assert(parsed);
@@ -446,7 +446,7 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
            << "' count=" << edits[i].effectiveCount()
            << "): lines=" << test.size()
            << " pos=(" << pos.line << "," << pos.col << ")"
-           << " lastEdit='" << lastEdit << "'" << endl;
+           << " lastEdit='" << lastEdit.base << "' (count=" << lastEdit.count << ")" << endl;
       for (size_t li = 0; li < test.size(); li++)
         cerr << "    [" << li << "] '" << test[li] << "'" << endl;
       try {
@@ -477,10 +477,10 @@ TEST_F(DebugTest, DISABLED_InvestigateSuffixCacheCrash) {
       const string& seq = r.getSequence().str();
 
       Lines test = eff;
-      CursorPos pos = fromFlatIndex(static_cast<int>(i), editRegion);
+      CursorPos pos = editRegion.cursorFromFlatIndexClamped(static_cast<int>(i));
       pos.col += (pos.line == 0 ? boundary.prefix().size() : 0);
       Mode mode = Mode::Normal;
-      string lastEdit;
+      DotRepeat lastEdit;
 
       auto parsed = Edit::parseEdits(seq);
       assert(parsed);
@@ -553,10 +553,10 @@ TEST_F(DebugTest, DISABLED_InvestigateMissingTypedCharAfterSubstitute) {
     const auto& d = diffs[i];
     cerr << "diff[" << i << "] begin=" << d.beginPos
          << " end=" << d.endPos
-         << " del='" << makePrintable(d.deletedText) << "'"
-         << " ins='" << makePrintable(d.insertedText) << "'"
-         << " prefix='" << makePrintable(d.boundary.prefix()) << "'"
-         << " suffix='" << makePrintable(d.boundary.suffix()) << "'"
+         << " del='" << VF::prettify(d.deletedText) << "'"
+         << " ins='" << VF::prettify(d.insertedText) << "'"
+         << " prefix='" << VF::prettify(d.boundary.prefix()) << "'"
+         << " suffix='" << VF::prettify(d.boundary.suffix()) << "'"
          << endl;
   }
 
@@ -577,7 +577,7 @@ TEST_F(DebugTest, DISABLED_InvestigateMissingTypedCharAfterSubstitute) {
   for (size_t i = 0; i < localResults.size(); i++) {
     const string& rawSeq = localResults[i].getSequence().str();
     cerr << "  [" << i << "] seq='" << localResults[i].getSequence()
-         << "' raw='" << makePrintable(rawSeq) << "'"
+         << "' raw='" << VF::prettify(rawSeq) << "'"
          << " cost=" << localResults[i].getCost()
          << " bytes=";
     for (char c : rawSeq) {
@@ -646,7 +646,7 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
     Lines simBuf = fullBuffer;
     CursorPos simPos(bufRow, bufCol);
     Mode mode = Mode::Normal;
-    string lastEdit;
+    DotRepeat lastEdit;
 
     auto parsed = Edit::parseEdits("deXXXXx");
     assert(parsed);
@@ -664,7 +664,7 @@ TEST_F(DebugTest, DISABLED_InvestigateCountedWordEdit) {
     Lines effLines = {"acffce", "adf", " ,e", ".fe bd"};
     CursorPos simPos(0, 5);  // editPos [0,4] + leftColOffset 1 = col 5
     Mode mode = Mode::Normal;
-    string lastEdit;
+    DotRepeat lastEdit;
 
     auto parsed = Edit::parseEdits("deX...x");
     assert(parsed);
@@ -967,6 +967,98 @@ std::unique_ptr<NeovimOracle> NeovimOracleDebug::oracle_;
 // ============================================================================
 // Begin Debug Tests
 // ============================================================================
+
+TEST_F(NeovimOracleDebug, ProbeDjCount) {
+  auto run = [this](Lines lines, int row, int col, string cmd) {
+    auto r = oracle_->simulate(lines, row, col, cmd);
+    cerr << "CASE " << cmd << " on " << lines.size() << ":";
+    for (size_t i = 0; i < lines.size(); i++) cerr << "[" << lines[i] << "]";
+    cerr << " (" << row << "," << col << ") → " << r.lines.size() << ":";
+    for (size_t i = 0; i < r.lines.size(); i++) cerr << "[" << r.lines[i] << "]";
+    cerr << " (" << r.row << "," << r.col << ")" << endl;
+  };
+  run(Lines{" ", "b", "b", "a", ""}, 0, 0, "5dj");
+  run(Lines{"a", "b"}, 0, 0, "dj");
+  run(Lines{"a"}, 0, 0, "dj");
+  run(Lines{"a"}, 0, 0, "5dj");
+  run(Lines{"a", "b"}, 0, 0, "5dj");
+}
+
+TEST_F(NeovimOracleDebug, ProbeDdCountBoundary) {
+  auto run = [this](Lines lines, int row, int col, string cmd) {
+    auto r = oracle_->simulate(lines, row, col, cmd);
+    cerr << "CASE " << cmd << " on " << lines.size() << ":";
+    for (size_t i = 0; i < lines.size(); i++) cerr << "[" << lines[i] << "]";
+    cerr << " (" << row << "," << col << ") → " << r.lines.size() << ":";
+    for (size_t i = 0; i < r.lines.size(); i++) cerr << "[" << r.lines[i] << "]";
+    cerr << " (" << r.row << "," << r.col << ")" << endl;
+  };
+  run(Lines{"", ""}, 1, 0, "2dd");
+  run(Lines{"a", "b"}, 0, 0, "3dd");
+  run(Lines{"a"}, 0, 0, "dd");
+  run(Lines{"a"}, 0, 0, "2dd");
+  run(Lines{"a", "b", "c"}, 1, 0, "5dd");
+}
+
+TEST_F(NeovimOracleDebug, InvestigateEmbeddedSuffixReplay) {
+  Lines initial = {"H^{ K%", " 6~", " >p~&<"};
+  auto tracer = makeTracer(initial, 0, 3);
+  tracer.trace("J");
+  tracer.trace("D");
+  tracer.trace("J");
+  tracer.trace("X");
+  tracer.trace("x");
+  tracer.trace("X");
+  tracer.trace(".");
+  tracer.trace("ce$    \rj\r\x1b");
+  tracer.printSummary();
+
+  Lines beforeFinal = {"H^{p~&<"};
+  VimCore::WordBoundaryContext boundary;
+  boundary.leftColOffset = 3;
+  boundary.rightColOffset = 3;
+  boundary.clampOutside = false;
+  CursorPos cursor(0, 3);
+  auto range = VimCore::wordOperatorRange(
+      cursor, beforeFinal, VimCore::WordOperatorTarget::DeleteToWordEnd,
+      false, boundary);
+  cerr << "wordOperatorRange de with suffix boundary: begin=("
+       << range.begin.line << "," << range.begin.col << ") end=("
+       << range.end.line << "," << range.end.col << ")" << endl;
+  auto raw = VimCore::wordOperatorRange(
+      cursor, beforeFinal, VimCore::WordOperatorTarget::DeleteToWordEnd,
+      false, {});
+  cerr << "wordOperatorRange de raw: begin=("
+       << raw.begin.line << "," << raw.begin.col << ") end=("
+       << raw.end.line << "," << raw.end.col << ")" << endl;
+
+  Lines model = initial;
+  CursorPos modelPos(0, 3);
+  Mode modelMode = Mode::Normal;
+  DotRepeat lastEdit;
+  string prefix = "JDJXxX.";
+  auto parsed = Edit::parseEdits(prefix);
+  assert(parsed);
+  for (const ParsedEdit& edit : *parsed) {
+    Edit::applyEdit(model, modelPos, modelMode, edit, &lastEdit,
+                    false, 3, 3, false);
+    cerr << "model after '" << edit.edit << "': " << model
+         << " pos=(" << modelPos.line << "," << modelPos.col << ")"
+         << " last='" << lastEdit.base << "' (count=" << lastEdit.count << ")" << endl;
+  }
+
+  vector<Lines> joinCases = {
+      {"abc", " >p"},
+      {"abc%", " >p"},
+      {"% abc", " >p"},
+      {"H^{ K%", " >p"},
+      {"x-", "#  1"},
+  };
+  for (const Lines& lines : joinCases) {
+    auto result = oracle_->simulate(lines, 0, 0, "J");
+    cerr << "join case " << lines << " -> " << result.lines << endl;
+  }
+}
 
 TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
   // FAIL iter=11 seq='db..s fba<Esc>' initialPos=(0,2)
@@ -2003,8 +2095,8 @@ TEST_F(DebugTest, InvestigateTelescopingSearch) {
     const auto& d = ctx.edits[i].diffState;
     cerr << "  diff[" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
          << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
-         << " del='" << makePrintable(d.deletedText) << "'"
-         << " ins='" << makePrintable(d.insertedText) << "'"
+         << " del='" << VF::prettify(d.deletedText) << "'"
+         << " ins='" << VF::prettify(d.insertedText) << "'"
          << " type=" << (d.isPureInsertion() ? "INSERT" : d.isPureDeletion() ? "DELETE" : "REPLACE")
          << endl;
     cerr << "    buffer[" << i << "]: " << ctx.getLinesAfter(i) << endl;
@@ -2220,8 +2312,8 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
       const auto& d = diffs[i];
       cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
            << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
-           << " del='" << makePrintable(d.deletedText) << "'"
-           << " ins='" << makePrintable(d.insertedText) << "'"
+           << " del='" << VF::prettify(d.deletedText) << "'"
+           << " ins='" << VF::prettify(d.insertedText) << "'"
            << endl;
       cerr << "    deletedLines: " << d.deletedLines();
       cerr << "    insertedLines: " << d.insertedLines();
@@ -2238,8 +2330,8 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
       const auto& d = ctx.edits[i].diffState;
       cerr << "  diff[" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
            << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
-           << " del='" << makePrintable(d.deletedText) << "'"
-           << " ins='" << makePrintable(d.insertedText) << "'" << endl;
+           << " del='" << VF::prettify(d.deletedText) << "'"
+           << " ins='" << VF::prettify(d.insertedText) << "'" << endl;
       cerr << "    buffer[" << i << "]: " << ctx.getLinesAfter(i);
 
       if (ctx.edits[i].joinPlan) {
@@ -2315,8 +2407,8 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
     const auto& d = diffs[i];
     cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
          << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
-         << " del='" << makePrintable(d.deletedText) << "'"
-         << " ins='" << makePrintable(d.insertedText) << "'"
+         << " del='" << VF::prettify(d.deletedText) << "'"
+         << " ins='" << VF::prettify(d.insertedText) << "'"
          << " type=" << (d.isPureInsertion() ? "INSERT" : d.isPureDeletion() ? "DELETE" : "REPLACE")
          << endl;
     cerr << "    boundary: prefix='" << d.boundary.prefix() << "' suffix='" << d.boundary.suffix() << "'"
@@ -2336,8 +2428,8 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
     const auto& d = ctx.edits[i].diffState;
     cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
          << ") end=(" << d.endPos.line << "," << d.endPos.col << ")"
-         << " del='" << makePrintable(d.deletedText) << "'"
-         << " ins='" << makePrintable(d.insertedText) << "'"
+         << " del='" << VF::prettify(d.deletedText) << "'"
+         << " ins='" << VF::prettify(d.insertedText) << "'"
          << " type=" << (d.isPureInsertion() ? "INSERT" : d.isPureDeletion() ? "DELETE" : "REPLACE")
          << endl;
     cerr << "    buffer[" << i << "]: " << ctx.getLinesAfter(i) << endl;
@@ -2575,7 +2667,7 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
     const auto& r = bucket[0];
     total++;
 
-    CursorPos editPos = fromFlatIndex(static_cast<int>(i), initial);
+    CursorPos editPos = initial.cursorFromFlatIndexClamped(static_cast<int>(i));
     auto nvim = oracle->simulate(initial, editPos.line, editPos.col, r.getSequence().str());
     if (nvim.lines == goal) {
       passed++;
@@ -2603,7 +2695,7 @@ TEST_F(DebugTest, CcAutoindentCollapse) {
     const auto& r = bucket[0];
     total2++;
 
-    CursorPos editPos = fromFlatIndex(static_cast<int>(i), initial2);
+    CursorPos editPos = initial2.cursorFromFlatIndexClamped(static_cast<int>(i));
     auto nvim = oracle->simulate(initial2, editPos.line, editPos.col, r.getSequence().str());
     if (nvim.lines == goal2) {
       passed2++;
@@ -3192,7 +3284,7 @@ TEST_F(NeovimOracleDebugSentence, DISABLED_SentenceDeleteDivergence) {
   Lines modelLines = source;
   CursorPos modelPos(0, 1);
   Mode modelMode = Mode::Normal;
-  string lastEdit;
+  DotRepeat lastEdit;
   auto parsed = Edit::parseEdits("d)");
   assert(parsed);
   for (auto& e : *parsed) {
@@ -3327,7 +3419,7 @@ TEST_F(DebugTest, DISABLED_ReproduceSmallEmbeddedSentenceCrash) {
   Lines buf = editRegion;
   CursorPos pos(0, 0);
   Mode mode = Mode::Normal;
-  string lastEditCmd;
+  DotRepeat lastEditCmd;
 
   auto applyAndLog = [&](const string& cmd) {
     cerr << "  Before '" << cmd << "' at (" << pos.line << "," << pos.col << "): " << buf << endl;
@@ -3423,7 +3515,7 @@ void applyDebugEditToken(
     CursorPos& pos,
     Mode& mode,
     const ParsedEdit& edit,
-    string& lastEdit) {
+    DotRepeat& lastEdit) {
   string token(edit.edit);
   if (mode == Mode::Insert) {
     if (token == "<Space>") {
@@ -3443,7 +3535,7 @@ void applyDebugEditSequence(
     Lines& lines,
     CursorPos& pos,
     Mode& mode,
-    string& lastEdit,
+    DotRepeat& lastEdit,
     const string& seq) {
   size_t i = 0;
   while (i < seq.size()) {
@@ -3518,7 +3610,7 @@ void traceEditReplay(
   Lines modelLines = initial;
   CursorPos modelPos = initialPos;
   Mode modelMode = Mode::Normal;
-  string lastEdit;
+  DotRepeat lastEdit;
 
   Lines nvimLines = initial;
   int nvimRow = initialPos.line;
@@ -3738,4 +3830,5 @@ TEST_F(NeovimOracleDebug, FuzzFailureRepresentativeReplayTrace) {
       "dB.dgeJxhX..s,<Space>.e<CR>,,eba,<CR>c<Space>de<Esc>",
       {"dB", ".", "dge", "J", "x", "h", "X", ".", ".",
        "s,<Space>.e<CR>,,eba,<CR>c<Space>de<Esc>"});
+
 }

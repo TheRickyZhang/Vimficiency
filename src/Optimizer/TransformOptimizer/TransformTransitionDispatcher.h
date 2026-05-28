@@ -137,9 +137,10 @@ struct TransformTransitionDispatcher {
   }
 
   void continueWithEdit(TransformEditorState&& next, const SequenceBinding& sourceCmd, double hCost) {
-    bool isDot = baseState.hasLastEdit() &&
-                 baseState.getLastEditCount() == sourceCmd.count &&
-                 baseState.getLastEditBase() == sourceCmd.base.seq.view();
+    const DotRepeat& last = baseState.getLastEdit();
+    bool isDot = !last.empty() &&
+                 last.count == sourceCmd.count &&
+                 last.base == sourceCmd.base.seq.view();
     if (isDot) {
       emitState(stateFactory().afterCommand(
           baseState, std::move(next), ".", bank[KSId::Period], hCost));

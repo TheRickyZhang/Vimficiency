@@ -8,13 +8,11 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <tuple>
 #include <vector>
 
 #include <fuzztest/fuzztest.h>
 #include <gtest/gtest.h>
 
-#include "Interpreter/EditInterpreter.h"
 #include "Interpreter/MovementInterpreter.h"
 #include "Property/PropertyDomains.h"
 #include "Types/CursorPos.h"

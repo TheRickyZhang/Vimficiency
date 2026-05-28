@@ -302,6 +302,12 @@ struct NeovimOracle::Impl {
     } else {
       setOption("set noautoindent");
     }
+    // Vim's default `'comments'` includes leaders like `:%`, `b:#`, `fb:-`,
+    // which cause `J`/`gJ` to strip those characters (and surrounding
+    // whitespace) when joining onto a comment-leader line. Our VimCore
+    // models a plain join with no comment-leader awareness; clear `comments`
+    // so the oracle agrees. See decisions.md (J comment-leader stripping).
+    setOption("set comments=");
   }
 };
 
@@ -340,6 +346,42 @@ SimulationResult NeovimOracle::simulateTokens(
                         /*asSeparateUserActions=*/true);
 }
 
+// Single Lua script that performs the entire simulation in one RPC: create
+// scratch buffer, set lines/cursor, run the key chunks (each as its own
+// vim.cmd.normal call when `separate` is true, preserving user-action
+// boundaries for autoindent), then capture lines/cursor/mode, force back to
+// Normal, and delete the buffer. Collapses ~10 round-trips into one.
+constexpr const char* SIMULATE_LUA = R"(
+local lines, start_row, start_col, chunks, separate = ...
+local buf = vim.api.nvim_create_buf(false, true)
+vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+vim.api.nvim_set_current_buf(buf)
+vim.api.nvim_win_set_cursor(0, {start_row + 1, start_col})
+
+local function run(chunk)
+  if chunk == '' then return end
+  local keys = vim.api.nvim_replace_termcodes(chunk, true, true, true)
+  vim.cmd.normal({bang = true, args = {keys}})
+end
+
+if separate then
+  for _, c in ipairs(chunks) do run(c) end
+else
+  run(chunks[1])
+end
+
+local result_lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+local cur = vim.api.nvim_win_get_cursor(0)
+local mode = vim.api.nvim_get_mode().mode
+
+local esc = vim.api.nvim_replace_termcodes('<Esc>', true, true, true)
+vim.api.nvim_feedkeys(esc, 'nx', false)
+
+vim.api.nvim_buf_delete(buf, {force = true})
+
+return {result_lines, cur[1] - 1, cur[2], mode}
+)";
+
 SimulationResult NeovimOracle::simulateChunks(
     const Lines& lines,
     int startRow,
@@ -349,122 +391,37 @@ SimulationResult NeovimOracle::simulateChunks(
   if (++callsSinceRestart_ >= AUTO_RESTART_INTERVAL) {
     restart();
   }
-  msgpack::zone z;
 
-  // nvim_create_buf(listed=false, scratch=true)
-  {
-    auto args = msgpack::object(std::make_tuple(false, true), z);
-    impl_->send_request("nvim_create_buf", args);
-  }
-  auto buf_oh = impl_->recv_response();
-  auto &buf_resp = buf_oh.get();
-  auto &buf_result = buf_resp.via.array.ptr[3];
-  // Buffer handle comes as EXT type 0; extract the integer from the ext data
-  int64_t buf = 0;
-  if (buf_result.type == msgpack::type::EXT) {
-    // EXT data contains the buffer ID as a msgpack integer
-    const char *data = buf_result.via.ext.data();
-    size_t size = buf_result.via.ext.size;
-    if (size == 1) {
-      buf = static_cast<uint8_t>(data[0]);
-    } else if (size > 1) {
-      // Multi-byte integer encoding
-      msgpack::object_handle oh = msgpack::unpack(data, size);
-      buf = oh.get().as<int64_t>();
-    }
-  } else {
-    buf = buf_result.as<int64_t>();
-  }
-
-  // nvim_buf_set_lines(buf, 0, -1, false, lines)
-  // Convert Lines to vector<string> for msgpack serialization
-  {
-    std::vector<std::string> linesVec(lines.begin(), lines.end());
-    auto args = msgpack::object(std::make_tuple(buf, 0, -1, false, linesVec), z);
-    impl_->call_void("nvim_buf_set_lines", args);
-  }
-
-  // nvim_set_current_buf(buf)
-  {
-    auto args = msgpack::object(std::make_tuple(buf), z);
-    impl_->call_void("nvim_set_current_buf", args);
-  }
-
-  // nvim_win_set_cursor(0, [row+1, col]) -- Neovim uses 1-indexed rows
-  {
-    std::vector<int64_t> pos = {startRow + 1, startCol};
-    auto args = msgpack::object(std::make_tuple(0, pos), z);
-    impl_->call_void("nvim_win_set_cursor", args);
-  }
-
-  auto replaceTermcodes = [&](const std::string& input) {
-    std::string convertedKeys = convertSpecialKeys(input);
-    auto replaced = impl_->call(
-        "nvim_replace_termcodes", convertedKeys, true, true, true);
-    return replaced.get().via.array.ptr[3].as<std::string>();
-  };
-
-  auto runNormalCommand = [&](const std::string& input) {
-    if (input.empty()) return;
-    std::string keysToRun = replaceTermcodes(input);
-    std::vector<std::string> luaArgs = {keysToRun};
-    auto args = msgpack::object(std::make_tuple(
-        std::string("local keys = ...; vim.cmd.normal({ bang = true, args = { keys } })"),
-        luaArgs), z);
-    impl_->call_void("nvim_exec_lua", args);
-  };
-
-  if (asSeparateUserActions) {
-    for (const std::string& chunk : chunks) {
-      runNormalCommand(chunk);
-    }
-  } else {
+  if (!asSeparateUserActions) {
     assert(chunks.size() == 1);
-    runNormalCommand(chunks.front());
   }
 
-  // Get final state
+  std::vector<std::string> convertedChunks;
+  convertedChunks.reserve(chunks.size());
+  for (const std::string& chunk : chunks) {
+    convertedChunks.push_back(convertSpecialKeys(chunk));
+  }
+
+  std::vector<std::string> linesVec(lines.begin(), lines.end());
+
+  msgpack::zone z;
+  auto luaArgs = std::make_tuple(
+      linesVec, startRow, startCol, convertedChunks, asSeparateUserActions);
+  auto args = msgpack::object(std::make_tuple(
+      std::string(SIMULATE_LUA), luaArgs), z);
+  impl_->send_request("nvim_exec_lua", args);
+  auto resp_oh = impl_->recv_response();
+  auto& ret = resp_oh.get().via.array.ptr[3].via.array;
+
   SimulationResult result;
-
-  // nvim_buf_get_lines(buf, 0, -1, false)
-  {
-    auto args = msgpack::object(std::make_tuple(buf, 0, -1, false), z);
-    impl_->send_request("nvim_buf_get_lines", args);
-  }
-  auto lines_oh = impl_->recv_response();
-  auto &lines_arr = lines_oh.get().via.array.ptr[3].via.array;
+  auto& lines_arr = ret.ptr[0].via.array;
   result.lines.reserve(lines_arr.size);
   for (size_t i = 0; i < lines_arr.size; ++i) {
     result.lines.push_back(lines_arr.ptr[i].as<std::string>());
   }
-
-  // nvim_win_get_cursor(0)
-  {
-    auto args = msgpack::object(std::make_tuple(0), z);
-    impl_->send_request("nvim_win_get_cursor", args);
-  }
-  auto cursor_oh = impl_->recv_response();
-  auto &cursor_arr = cursor_oh.get().via.array.ptr[3].via.array;
-  result.row = cursor_arr.ptr[0].as<int>() - 1; // Convert to 0-indexed
-  result.col = cursor_arr.ptr[1].as<int>();
-
-  // nvim_get_mode()
-  {
-    auto args = msgpack::object(std::make_tuple(), z);
-    impl_->send_request("nvim_get_mode", args);
-  }
-  auto mode_oh = impl_->recv_response();
-  auto &mode_result = mode_oh.get().via.array.ptr[3];
-  std::string mode_str;
-  if (mode_result.type == msgpack::type::MAP) {
-    for (size_t i = 0; i < mode_result.via.map.size; ++i) {
-      auto &kv = mode_result.via.map.ptr[i];
-      if (kv.key.as<std::string>() == "mode") {
-        mode_str = kv.val.as<std::string>();
-        break;
-      }
-    }
-  }
+  result.row = ret.ptr[1].as<int>();
+  result.col = ret.ptr[2].as<int>();
+  std::string mode_str = ret.ptr[3].as<std::string>();
   if (mode_str == "i" || mode_str == "ic" || mode_str == "ix") {
     result.mode = Mode::Insert;
   } else if (mode_str == "v" || mode_str == "V" || mode_str == "\x16") {
@@ -472,28 +429,5 @@ SimulationResult NeovimOracle::simulateChunks(
   } else {
     result.mode = Mode::Normal;
   }
-
-  // Return to normal mode and clean up buffer
-  {
-    // Send Escape to ensure we're in normal mode
-    auto args = msgpack::object(std::make_tuple("\x1b"), z);
-    impl_->send_request("nvim_input", args);
-    impl_->recv_response();
-  }
-  // Force processing of Escape
-  {
-    std::vector<msgpack::object> empty_args;
-    auto args = msgpack::object(std::make_tuple("return nil", empty_args), z);
-    impl_->send_request("nvim_exec_lua", args);
-    impl_->recv_response();
-  }
-
-  // nvim_buf_delete(buf, {force=true})
-  {
-    std::map<std::string, bool> opts = {{"force", true}};
-    auto args = msgpack::object(std::make_tuple(buf, opts), z);
-    impl_->call_void("nvim_buf_delete", args);
-  }
-
   return result;
 }

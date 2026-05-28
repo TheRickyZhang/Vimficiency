@@ -51,6 +51,7 @@
     _KS(f,      "f",      (Key::Key_F)) \
     _KS(r,      "r",      (Key::Key_R)) \
     _KS(i,      "i",      (Key::Key_I)) \
+    _KS(A,      "A",      (Key::Key_Shift, Key::Key_A)) \
     _KS(s,      "s",      (Key::Key_S)) \
     _KS(C,      "C",      (Key::Key_Shift, Key::Key_C)) \
     _KS(cc,     "cc",     (Key::Key_C, Key::Key_C)) \
