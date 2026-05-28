@@ -346,16 +346,37 @@ SimulationResult NeovimOracle::simulateTokens(
                         /*asSeparateUserActions=*/true);
 }
 
+SimulationResult NeovimOracle::simulateScroll(const Lines &lines,
+                                              int startRow, int startCol,
+                                              const std::string &keys,
+                                              int scrollAmount) {
+  return simulateChunks(lines, startRow, startCol, {keys},
+                        /*asSeparateUserActions=*/false, scrollAmount);
+}
+
+int NeovimOracle::windowHeight() {
+  msgpack::zone z;
+  auto args = msgpack::object(std::make_tuple(0), z);
+  return static_cast<int>(impl_->call_int("nvim_win_get_height", args));
+}
+
 // Single Lua script that performs the entire simulation in one RPC: create
 // scratch buffer, set lines/cursor, run the key chunks (each as its own
 // vim.cmd.normal call when `separate` is true, preserving user-action
 // boundaries for autoindent), then capture lines/cursor/mode, force back to
 // Normal, and delete the buffer. Collapses ~10 round-trips into one.
 constexpr const char* SIMULATE_LUA = R"(
-local lines, start_row, start_col, chunks, separate = ...
+local lines, start_row, start_col, chunks, separate, scroll_amount = ...
 local buf = vim.api.nvim_create_buf(false, true)
 vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 vim.api.nvim_set_current_buf(buf)
+-- scroll_amount < 0 means "leave 'scroll' at nvim's default"; only the
+-- specialized scroll-motion path passes a value. Clamp to [1, height] so
+-- 'scroll' is never set larger than the window (which would raise E49).
+if scroll_amount >= 0 then
+  local h = vim.api.nvim_win_get_height(0)
+  vim.wo.scroll = math.max(1, math.min(scroll_amount, h))
+end
 vim.api.nvim_win_set_cursor(0, {start_row + 1, start_col})
 
 local function run(chunk)
@@ -387,7 +408,8 @@ SimulationResult NeovimOracle::simulateChunks(
     int startRow,
     int startCol,
     const std::vector<std::string>& chunks,
-    bool asSeparateUserActions) {
+    bool asSeparateUserActions,
+    int scrollAmount) {
   if (++callsSinceRestart_ >= AUTO_RESTART_INTERVAL) {
     restart();
   }
@@ -406,7 +428,8 @@ SimulationResult NeovimOracle::simulateChunks(
 
   msgpack::zone z;
   auto luaArgs = std::make_tuple(
-      linesVec, startRow, startCol, convertedChunks, asSeparateUserActions);
+      linesVec, startRow, startCol, convertedChunks, asSeparateUserActions,
+      scrollAmount);
   auto args = msgpack::object(std::make_tuple(
       std::string(SIMULATE_LUA), luaArgs), z);
   impl_->send_request("nvim_exec_lua", args);

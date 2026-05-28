@@ -42,6 +42,17 @@ SuggestionSortMode parseSuggestionSortMode(string_view text) {
   return SuggestionSortMode::Effort;
 }
 
+VF::LuaExports::Result<OptimizerParamOverrides> parseOverrides(
+    string_view text) {
+  auto parsed = parseOptimizerParamOverrides(text);
+  if (!parsed) {
+    return helpers::unexpectedError(
+        VF::LuaExports::ExportErrorKind::InvalidValue,
+        formatOptimizerParamOverrideErrors(parsed.error()));
+  }
+  return std::move(*parsed);
+}
+
 // State payload. Length-prefixed fields so raw bytes in `seq` survive
 // round-tripping. `is_completed` is the C++-side derived predicate (cursor
 // has reached goalPos at the post-final-edit nav segment). The trailing
@@ -178,7 +189,9 @@ VF::LuaExports::Result<string> startImpl(
       optimizer_overrides_len,
       "optimizer_overrides");
   if (!overridesText) return unexpected(overridesText.error());
-  const auto overrides = OptimizerParamOverrides::parse(*overridesText);
+  auto overridesResult = parseOverrides(*overridesText);
+  if (!overridesResult) return unexpected(overridesResult.error());
+  const OptimizerParamOverrides overrides = std::move(*overridesResult);
   CompositionOptimizerParams compositionParams =
       OptimizerParamOverrides::resolved<CompositionOptimizerParams>(&overrides);
 
@@ -259,7 +272,11 @@ VFByteSlice vf_explore_recommendations(
   auto sortModeText = helpers::requiredBytes(sort_mode, sort_mode_len, "sort_mode");
   if (!sortModeText) return helpers::storeBytes(storage, unexpected(sortModeText.error()));
 
-  const auto overrides = OptimizerParamOverrides::parse(*overridesText);
+  auto overridesResult = parseOverrides(*overridesText);
+  if (!overridesResult) {
+    return helpers::storeBytes(storage, unexpected(overridesResult.error()));
+  }
+  const OptimizerParamOverrides overrides = std::move(*overridesResult);
   const SuggestionSortMode mode = parseSuggestionSortMode(*sortModeText);
   storage = encodeSuggestions(v.recommendations(max_count, &overrides, mode));
   return helpers::byteSlice(storage);
@@ -277,7 +294,11 @@ VFByteSlice vf_explore_reconfigure_plan(
       "optimizer_overrides");
   if (!overridesText) return helpers::storeBytes(storage, unexpected(overridesText.error()));
 
-  const auto overrides = OptimizerParamOverrides::parse(*overridesText);
+  auto overridesResult = parseOverrides(*overridesText);
+  if (!overridesResult) {
+    return helpers::storeBytes(storage, unexpected(overridesResult.error()));
+  }
+  const OptimizerParamOverrides overrides = std::move(*overridesResult);
   CompositionOptimizerParams compositionParams =
       OptimizerParamOverrides::resolved<CompositionOptimizerParams>(&overrides);
   const PlanReconfigureResult result =

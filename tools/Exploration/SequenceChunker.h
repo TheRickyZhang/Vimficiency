@@ -22,6 +22,6 @@ struct ChunkedSequence {
 
 // Parse and chunk a composition sequence into motion and edit phases.
 // Groups consecutive motion tokens into one Motion chunk and edit tokens
-// (Delete/Change/TypedText/Escape) into one Edit chunk.
+// (Delete/Change/Visual/TypedText/Escape) into one Edit chunk.
 // Typed content is extracted and deduplicated into contents[].
 ChunkedSequence chunkCompositionSequence(std::string_view seq);

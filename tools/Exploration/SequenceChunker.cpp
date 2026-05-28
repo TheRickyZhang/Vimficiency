@@ -38,7 +38,8 @@ ChunkedSequence chunkCompositionSequence(string_view seq) {
         chunk.text += tok.token;
         break;
       }
-      case TokenKind::Change: {
+      case TokenKind::Change:
+      case TokenKind::Visual: {
         auto& chunk = ensureChunk(SequenceChunk::Edit);
         chunk.tokens.push_back(tok.token);
         chunk.text += tok.token;

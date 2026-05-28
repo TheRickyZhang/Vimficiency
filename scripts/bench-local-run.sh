@@ -96,7 +96,10 @@ Log: $LOG_FILE" 2>/dev/null || true
     fi
   fi
 
-  [ "$rc" -ne 0 ] && echo "[bench-local-run] FAILED (exit $rc) at $(date)"
+  if [ "$rc" -ne 0 ]; then
+    echo "[bench-local-run] FAILED (exit $rc) at $(date)"
+  fi
+  exit "$rc"
 }
 trap cleanup_and_report EXIT
 
@@ -239,18 +242,22 @@ if $IS_MAIN; then
     echo "  $f: $total explored states recorded"
   done
 
-  echo "[tests] running for timing"
+  echo "[tests] timing (unit, approval) + coverage (property, safety)"
   ./build/tests/vimfy_unit_tests --gtest_brief=1 --gtest_output=json:unit_timing.json
   ./build/tests/vimfy_approval_tests --gtest_brief=1 --gtest_output=json:approval_timing.json
-  FUZZTEST_PRNG_SEED="$FUZZTEST_PRNG_SEED_FIXED" \
-    ./build/tests/vimfy_property_tests --gtest_brief=1 --gtest_output=json:property_timing.json
-  FUZZTEST_PRNG_SEED="$FUZZTEST_PRNG_SEED_FIXED" \
-    ./build/tests/vimfy_safety_tests --gtest_brief=1 --gtest_output=json:safety_timing.json
+  # Property/safety are coverage, not timing (their unit-mode wall-time is
+  # meaningless — see dev/decisions.md). FUZZTEST_FUZZ_FOR=0 just enumerates the
+  # cases for the coverage snapshot.
+  FUZZTEST_PRNG_SEED="$FUZZTEST_PRNG_SEED_FIXED" FUZZTEST_FUZZ_FOR=0 \
+    ./build/tests/vimfy_property_tests --gtest_brief=1 --gtest_output=json:property_cov.json
+  FUZZTEST_PRNG_SEED="$FUZZTEST_PRNG_SEED_FIXED" FUZZTEST_FUZZ_FOR=0 \
+    ./build/tests/vimfy_safety_tests --gtest_brief=1 --gtest_output=json:safety_cov.json
   bun scripts/convert-gtest-timing.ts test_timing_bench.json \
     Unit=unit_timing.json \
-    Approval=approval_timing.json \
-    Property=property_timing.json \
-    Safety=safety_timing.json
+    Approval=approval_timing.json
+  bun scripts/convert-gtest-coverage.ts tests_coverage.json \
+    Property=property_cov.json \
+    Safety=safety_cov.json
 fi
 
 # --- Dashboard build ---
@@ -283,7 +290,7 @@ cp edit_result.json motion_result.json composition_result.json "$STAGE_DIR/"
 if $IS_MAIN; then
   cp -r docs-site/dist "$STAGE_DIR/docs-dist"
   cp edit_explore.json motion_explore.json composition_explore.json "$STAGE_DIR/"
-  cp test_timing_bench.json "$STAGE_DIR/"
+  cp test_timing_bench.json tests_coverage.json "$STAGE_DIR/"
 fi
 
 COMMIT_MSG=$(git log -1 --pretty=%s "$PUSHED_SHA")
@@ -340,6 +347,8 @@ if $IS_MAIN; then
     --commit-ts="$COMMIT_TS" \
     --author="$COMMIT_AUTHOR" \
     --repo-url="$REPO_URL"
+  # Coverage is a latest-snapshot, not a time series — overwrite each run.
+  cp "$STAGE_DIR/tests_coverage.json" tests/coverage.json
 fi
 
 PRUNE_DIRS=(edit motion composition)

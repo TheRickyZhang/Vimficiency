@@ -15,6 +15,7 @@ interface Props {
   showExplore?: boolean;
   subtitle?: string;
   inlinePanel?: ReactNode;
+  headerChart?: ReactNode;
   categoryActionLabel?: string;
   onCategoryAction?: (category: string) => void;
   onNavigate: (cat: string | null, benchName?: string) => void;
@@ -32,6 +33,7 @@ export function App({
   showExplore = true,
   subtitle,
   inlinePanel,
+  headerChart,
   categoryActionLabel,
   onCategoryAction,
   onNavigate,
@@ -52,6 +54,7 @@ export function App({
       <>
         <h1>{optimizerName}</h1>
         <p className="subtitle">{pageSubtitle}</p>
+        {headerChart}
         {inlinePanel}
         <CategorySection
           category={validCategory}

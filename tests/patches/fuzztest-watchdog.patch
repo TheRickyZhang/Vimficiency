@@ -1,0 +1,19 @@
+diff --git a/fuzztest/internal/runtime.cc b/fuzztest/internal/runtime.cc
+index 24e094f..510f8ea 100644
+--- a/fuzztest/internal/runtime.cc
++++ b/fuzztest/internal/runtime.cc
+@@ -411,7 +411,13 @@ class Runtime::Watchdog {
+         break;
+       }
+       runtime_.watchdog_spinlock_.Unlock();
+-      absl::SleepFor(absl::Seconds(1));
++      // Vimficiency patch (fuzztest @ 2026-02-19): poll stop_requested_ in
++      // short steps instead of one 1s sleep, so ~Watchdog::join() returns
++      // promptly instead of blocking ~1s/test. CheckWatchdogLimits cadence
++      // (the real timeout guard) stays ~1s.
++      for (int i = 0; i < 100 && !stop_requested_; ++i) {
++        absl::SleepFor(absl::Milliseconds(10));
++      }
+     }
+   }
+ 

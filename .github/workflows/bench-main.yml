@@ -46,7 +46,7 @@ jobs:
         # Idempotent — brew install on already-present formulae is a fast
         # version check. Keeps the runner machine's required state to just
         # brew + Xcode CLI tools; everything else lives in the workflow.
-        run: brew install --quiet ccache cmake neovim jq oven-sh/bun/bun
+        run: brew install --quiet ccache cmake neovim jq node oven-sh/bun/bun
 
       - name: Run bench pipeline
         env:

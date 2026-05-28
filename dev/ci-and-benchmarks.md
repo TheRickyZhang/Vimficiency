@@ -133,7 +133,7 @@ Steps:
    - `MotionOpt.*` → `motion_result.json`
    - `CompositionOpt.*` → `composition_result.json`
 3. Baseline comparison: look up the parent SHA's stored entry in `gh-pages/{edit,motion,composition}/data.json` via `scripts/bench-baseline-from-stored.ts`, feed it to `bench-compare.ts`. Skipped when the parent has no stored entry (first run on this machine, parent was rebased away, etc.) — informational, never gates the run.
-4. **Main only:** build and run `vimfy_explore` for exploration data; run unit, approval, property, and safety binaries and convert timing to bench format
+4. **Main only:** build and run `vimfy_explore` for exploration data; time the unit + approval binaries (`convert-gtest-timing.ts`) and snapshot property + safety coverage (`convert-gtest-coverage.ts`)
 5. Build `bench-dashboard/` with `--base=/Vimficiency/`. **Main only:** also build `docs-site/`
 6. In the `gh-pages` worktree: ingest results, prune to 100 entries, ingest exploration (main only), copy dashboard/docs assets
 7. Commit + push to `origin gh-pages`. On push conflict (race with another local run) fetch + rebase once and retry
@@ -254,13 +254,35 @@ Google Benchmark outputs JSON → `scripts/bench-data.ts ingest` parses it and a
 `{optimizer}/explore.json` on gh-pages. The dashboard fetches this JSON
 directly.
 
-### Test timing data (`tests/data.json`)
+### Test timing data (`tests/data.json`) and coverage (`tests/coverage.json`)
 
-On `main`, the local deploy runner records `--gtest_output=json` for
-`vimfy_unit_tests`, `vimfy_approval_tests`, `vimfy_property_tests`, and
-`vimfy_safety_tests`. `scripts/convert-gtest-timing.ts` combines those files
-into Google Benchmark-shaped data under the `Tests` suite, with total,
-per-binary, per-gtest-suite, and per-test-case timings.
+On `main`, the local deploy runner records `--gtest_output=json` for all four
+test binaries, but splits them by what their wall-time means:
+
+- **Unit + Approval** are deterministic, so `scripts/convert-gtest-timing.ts`
+  turns them into Google Benchmark-shaped data under the `Tests` suite —
+  `Tests/Binaries/{Unit,Approval}` (per-binary total) and
+  `Tests/Cases/{Unit,Approval}/<Suite>.<Case>` (per-case). Ingested into
+  `tests/data.json` as a per-commit time series. The home page charts the two
+  per-binary totals as one multi-line chart; each suite page shows its
+  binary-total trend on top plus per-case charts (no per-suite total).
+- **Property + Safety** run FuzzTest in unit mode, whose wall-time is a fixed
+  watchdog floor and carries no signal (see `dev/decisions.md`). They are run
+  with `FUZZTEST_FUZZ_FOR=0` purely to enumerate cases, and
+  `scripts/convert-gtest-coverage.ts` writes a latest-snapshot
+  `tests/coverage.json` (suites → cases + pass status + counts). Their dashboard
+  pages show coverage, not a duration trend.
+
+The historical `tests/data.json` was migrated to this shape once via
+`scripts/migrate-tests-data.ts` (drops `Tests/Total/All`, `Tests/Suites/*`, and
+property/safety timing; upgrades legacy unit-only entries). That script is
+single-use and may be deleted.
+
+Unrelated to the dashboard but in the same area: the fuzz binaries themselves
+are fast now because `tests/patches/fuzztest-watchdog.patch` (applied via the
+`PATCH_COMMAND` on the pinned `fuzztest` `FetchContent_Declare`) defuses the 1s
+per-test watchdog teardown. `scripts/vimfy_tests` exposes `--for <dur>` to set
+each FUZZ_TEST's `FUZZTEST_FUZZ_FOR` budget, which now shortens runs for real.
 
 ### Migration from legacy format
 
@@ -361,7 +383,8 @@ gh-pages/
 │   └── explore/
 │       └── index.html
 ├── tests/
-│   └── data.json           # C++ test timing data
+│   ├── data.json           # Unit + Approval timing (per-commit time series)
+│   └── coverage.json       # Property + Safety coverage (latest snapshot)
 └── docs/
 ```
 

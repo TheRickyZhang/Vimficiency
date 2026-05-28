@@ -34,6 +34,10 @@ FetchContent_Declare(
   fuzztest
   GIT_REPOSITORY https://github.com/google/fuzztest.git
   GIT_TAG        2026-02-19
+  # Defuse FuzzTest's unit-mode watchdog: its 1s poll-sleep + blocking join
+  # costs ~1s per test at teardown (see tests/patches/fuzztest-watchdog.patch).
+  # Idempotent reverse-check skips re-apply; pinned to the GIT_TAG above.
+  PATCH_COMMAND sh -c "git apply -R --check '${CMAKE_CURRENT_LIST_DIR}/patches/fuzztest-watchdog.patch' 2>/dev/null || git apply '${CMAKE_CURRENT_LIST_DIR}/patches/fuzztest-watchdog.patch'"
 )
 
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
@@ -80,10 +84,9 @@ set(VIMFY_LUA_PAYLOAD_SOURCE ${PROJECT_SOURCE_DIR}/src/LuaExports/Payload.cpp)
 
 file(GLOB VIMFY_TEST_UTIL_SOURCES CONFIGURE_DEPENDS
   ${CMAKE_CURRENT_SOURCE_DIR}/Utils/*.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/Operator/TestHelpers.cpp
 )
 list(APPEND VIMFY_TEST_UTIL_SOURCES
-  ${CMAKE_CURRENT_SOURCE_DIR}/TransformOptimizer/EmbeddedRegionTestUtils.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/Unit/TransformOptimizer/EmbeddedRegionTestUtils.cpp
 )
 
 add_library(test_utils STATIC
@@ -93,7 +96,6 @@ add_library(test_utils STATIC
 target_include_directories(test_utils
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/Operator
 )
 
 target_link_libraries(test_utils
@@ -110,13 +112,12 @@ target_link_libraries(test_utils
 # separate binary because ApprovalTests.cpp needs process-wide main() setup.
 
 file(GLOB_RECURSE VIMFY_UNIT_TEST_SOURCES CONFIGURE_DEPENDS
-  ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/Unit/*.cpp
 )
-list(FILTER VIMFY_UNIT_TEST_SOURCES EXCLUDE REGEX [[/tests/(Benchmarks|Debug|Approval|Property|Safety|Utils)/]])
+# EmbeddedRegionTestUtils lives under Unit/ for proximity to its sibling tests
+# but compiles into test_utils (which the unit binary links), so exclude it here.
 list(REMOVE_ITEM VIMFY_UNIT_TEST_SOURCES
-  ${VIMFY_TEST_MAIN_SOURCE}
-  ${CMAKE_CURRENT_SOURCE_DIR}/Operator/TestHelpers.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/TransformOptimizer/EmbeddedRegionTestUtils.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/Unit/TransformOptimizer/EmbeddedRegionTestUtils.cpp
 )
 
 add_executable(vimfy_unit_tests
@@ -168,9 +169,9 @@ function(suppress_fuzztest_header_warnings target_name)
   endif()
 endfunction()
 
-if(FUZZTEST_FUZZING_MODE AND COMMAND fuzztest_setup_fuzzing_flags)
-  fuzztest_setup_fuzzing_flags()
-endif()
+# Fuzzing-mode ASan + sancov flags are applied at root scope (see the top-level
+# CMakeLists.txt) so the code under test is instrumented too — not via
+# fuzztest_setup_fuzzing_flags() here, which would only reach this directory.
 
 file(GLOB_RECURSE VIMFY_PROPERTY_TEST_SOURCES CONFIGURE_DEPENDS
   ${CMAKE_CURRENT_SOURCE_DIR}/Property/*.cpp

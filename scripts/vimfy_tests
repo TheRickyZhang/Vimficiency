@@ -10,6 +10,21 @@ case "$build_dir" in
   *) build_dir="$repo_root/$build_dir" ;;
 esac
 
+# Optional `--for <dur>` / `--for=<dur>` knob: sets FUZZTEST_FUZZ_FOR for the
+# generated suites. Extracted from anywhere in the args so the positional
+# parsing below is unaffected. With the watchdog patch
+# (tests/patches/fuzztest-watchdog.patch) this shortens runs for real.
+fuzz_for=""
+_args=()
+while (( $# )); do
+  case "$1" in
+    --for) fuzz_for="${2:-}"; shift; (( $# )) && shift ;;
+    --for=*) fuzz_for="${1#--for=}"; shift ;;
+    *) _args+=("$1"); shift ;;
+  esac
+done
+if (( ${#_args[@]} )); then set -- "${_args[@]}"; else set --; fi
+
 suite="${1:-all}"
 filter="${2:-}"
 mode="${3:-explore}"
@@ -178,9 +193,12 @@ run_generated() {
   local test_filter="${2:-}"
   local run_mode="${3:-seed}"
 
-  if (( repeat > 1 )); then
+  if [[ -n "$fuzz_for" ]]; then
+    export FUZZTEST_FUZZ_FOR="$fuzz_for"
+    echo "[fuzz_for=$fuzz_for] each FUZZ_TEST runs until $fuzz_for elapses or 10000 iterations"
+  elif (( repeat > 1 )); then
     export FUZZTEST_FUZZ_FOR="${repeat}s"
-    echo "[fuzz_for=${repeat}s] each FUZZ_TEST gets max(10000 iterations, ${repeat}s budget)"
+    echo "[fuzz_for=${repeat}s] each FUZZ_TEST runs until ${repeat}s elapses or 10000 iterations"
   fi
 
   run_one_generated "$binary" "$test_filter" "$run_mode"
@@ -243,6 +261,7 @@ case "$suite" in
     echo "usage: scripts/vimfy_tests [all|unit|approval|property|safety|lua] [filter-or-file|N] [seed|explore|campaign|N|--approve]" >&2
     echo "  property/safety/all default to explore mode; CI passes seed for deterministic generated tests." >&2
     echo "  property/safety/all accept a positive integer N to budget each FUZZ_TEST for N seconds (FUZZTEST_FUZZ_FOR)." >&2
+    echo "  property/safety/all accept --for <dur> (e.g. 0.2s, 500ms, 2s) to set each FUZZ_TEST's budget directly." >&2
     echo "  approval accepts --approve before or after the optional filter to update snapshots and rerun." >&2
     exit 1
     ;;

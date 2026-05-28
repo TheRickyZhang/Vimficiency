@@ -54,6 +54,21 @@ public:
                                   int startCol,
                                   const std::vector<std::string>& tokens);
 
+  // Specialized entry point for NavContext-dependent scroll motions
+  // (<C-d>/<C-u> via 'scroll', <C-f>/<C-b> via window height). Sets window-local
+  // 'scroll' (clamped to the live window height) for this one call; the general
+  // simulate() path is untouched. Headless nvim can't resize its sole window,
+  // so window height is fixed — query it via windowHeight() and mirror it into
+  // the model side's NavContext rather than trying to vary it here.
+  SimulationResult simulateScroll(const Lines &lines,
+                                  int startRow,
+                                  int startCol,
+                                  const std::string &keys,
+                                  int scrollAmount);
+
+  // The live (fixed) window height of the headless session.
+  int windowHeight();
+
   // Restart the Neovim subprocess (resets call counter)
   void restart();
 
@@ -66,9 +81,12 @@ private:
   static constexpr int AUTO_RESTART_INTERVAL = 200;
   int callsSinceRestart_ = 0;
 
+  // scrollAmount < 0 leaves 'scroll' untouched (the default for every caller
+  // except simulateScroll).
   SimulationResult simulateChunks(const Lines& lines,
                                   int startRow,
                                   int startCol,
                                   const std::vector<std::string>& chunks,
-                                  bool asSeparateUserActions);
+                                  bool asSeparateUserActions,
+                                  int scrollAmount = -1);
 };

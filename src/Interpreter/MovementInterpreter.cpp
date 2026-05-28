@@ -317,6 +317,13 @@ static void applyParsedMovementWithState(CursorPos& pos, Mode& mode,
       pos.clampColPreservingTarget(VimCore::clampCol(lines, pos.targetCol, pos.line));
     }
   }
+  // <C-f>/<C-b> are approximate: Vim's full-page scroll places the cursor based
+  // on the window's topline (e.g. with the whole buffer visible, <C-b> does not
+  // move at all), which the minimal-state model does not track. We jump by ~one
+  // window height and clamp. Accurate enough for interpreting a recorded session
+  // (where the captured cursor is ground truth) but NOT exact, so these are
+  // excluded from optimizer search (MovementToSpec.cpp). <C-d>/<C-u> above move
+  // by a fixed 'scroll' offset and ARE exact (Verify_ScrollMotions).
   else if (motion == "<C-f>") {
     for(int i = 0; i < count; i++) {
       int jump = max(0, navContext.windowHeight - 2);

@@ -32,12 +32,12 @@ unit/assert pins regressions; property checks the universal invariant).
 
 - **Unit/assert** — named-bug regressions, canonical-semantic documentation,
   and specific-output assertions for VimCore commands and operators
-  (`tests/Commands/`, `tests/Operator/`); fixed-case optimizer replay
+  (`tests/Unit/Commands/`, `tests/Unit/Operator/`); fixed-case optimizer replay
   regressions and small heuristic/API checks
-  (`tests/NavOptimizer/`, `tests/TransformOptimizer/`,
-  `tests/CompositionOptimizer/`, `tests/Optimizer/`); parser error cases, cost
+  (`tests/Unit/NavOptimizer/`, `tests/Unit/TransformOptimizer/`,
+  `tests/Unit/CompositionOptimizer/`, `tests/Unit/Optimizer/`); parser error cases, cost
   math, range and position helpers, config defaults, data-structure invariants
-  (`tests/Misc/`); explore-flow tests (`tests/Explore/`). Bare oracle
+  (`tests/Unit/Misc/`); explore-flow tests (`tests/Unit/Explore/`). Bare oracle
   conformance (ours == oracle on hand-picked inputs) lives under `Property/`
   instead.
 - **Property** — semantic invariants over structured generated project inputs:
@@ -337,7 +337,7 @@ build output do not collide with production basenames.
   implicit default — it doesn't get its own labeled directory because feature
   co-location matters more than re-labeling the default.
 - A property test for a word motion goes in `tests/Property/`, never in
-  `tests/Commands/`. A unit test for a word motion goes in `tests/Commands/`,
+  `tests/Unit/Commands/`. A unit test for a word motion goes in `tests/Unit/Commands/`,
   never in `tests/Property/`.
 
 `Utils/` is shared infrastructure and not subject to the rule.

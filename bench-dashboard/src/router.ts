@@ -1,14 +1,22 @@
 import { createRootRoute, createRoute, createRouter, redirect, Outlet } from '@tanstack/react-router';
-import type { BenchmarkData } from './types/benchmark';
+import type { BenchmarkData, BenchmarkRun } from './types/benchmark';
 import type { ExplorationData } from './types/exploration';
-import { loadBenchmarkData, discoverCategories } from './utils/data';
+import type { CoverageData, CoverageBinary } from './types/coverage';
+import { loadBenchmarkData, discoverCategories, type TimePoint } from './utils/data';
 import { RootLayout } from './components/RootLayout';
 import { HomePage } from './pages/HomePage';
 import { OptimizerPage } from './pages/OptimizerPage';
 import { TestSuitePage } from './pages/TestSuitePage';
 import { ExplorePage } from './pages/ExplorePage';
 import { ChunkDetailPage } from './pages/ChunkDetailPage';
-import { isTestSuiteSlug, loadTestSuiteBenchmarkData } from './utils/testSuites';
+import {
+  isTestSuiteSlug,
+  loadTestSuiteBenchmarkData,
+  binaryTotalSeries,
+  testSuiteKind,
+  getTestSuite,
+  type TestSuiteKind,
+} from './utils/testSuites';
 
 const VALID_OPTIMIZERS = ['edit', 'motion', 'composition', 'tests'] as const;
 export type OptimizerSlug = (typeof VALID_OPTIMIZERS)[number];
@@ -24,25 +32,37 @@ export interface HomeLoaderData {
     slug: OptimizerSlug;
     data: BenchmarkData;
   }[];
+  coverage: CoverageData | null;
 }
 
 export const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   loader: async (): Promise<HomeLoaderData> => {
-    const results = await Promise.all(
-      VALID_OPTIMIZERS.map(async (slug) => {
+    const [results, coverage] = await Promise.all([
+      Promise.all(
+        VALID_OPTIMIZERS.map(async (slug) => {
+          try {
+            const res = await fetch(`${base}${slug}/data.json?_=${Date.now()}`);
+            if (!res.ok) return null;
+            const data: BenchmarkData = await res.json();
+            return { slug, data };
+          } catch {
+            return null;
+          }
+        }),
+      ),
+      (async (): Promise<CoverageData | null> => {
         try {
-          const res = await fetch(`${base}${slug}/data.json?_=${Date.now()}`);
+          const res = await fetch(`${base}tests/coverage.json?_=${Date.now()}`);
           if (!res.ok) return null;
-          const data: BenchmarkData = await res.json();
-          return { slug, data };
+          return await res.json();
         } catch {
           return null;
         }
-      }),
-    );
-    return { optimizers: results.filter((r) => r !== null) };
+      })(),
+    ]);
+    return { optimizers: results.filter((r) => r !== null), coverage };
   },
   component: HomePage,
 });
@@ -96,6 +116,20 @@ export const optimizerIndexRoute = createRoute({
   component: OptimizerPage,
 });
 
+export interface TestSuiteLoaderData {
+  kind: TestSuiteKind;
+  optimizerName: string;
+  repoUrl: string;
+  data: BenchmarkRun[] | null;
+  categories: Record<string, string[]>;
+  binaryTotal: TimePoint[];
+  coverage: CoverageBinary | null;
+}
+
+function emptyTestSuiteData(kind: TestSuiteKind, optimizerName: string): TestSuiteLoaderData {
+  return { kind, optimizerName, repoUrl: '', data: null, categories: {}, binaryTotal: [], coverage: null };
+}
+
 export const testSuiteRoute = createRoute({
   getParentRoute: () => optimizerLayoutRoute,
   path: '$testSuite',
@@ -104,22 +138,39 @@ export const testSuiteRoute = createRoute({
       throw redirect({ to: '/' });
     }
   },
-  loader: async ({ params }): Promise<OptimizerLoaderData> => {
-    if (!isTestSuiteSlug(params.testSuite)) {
-      return { data: null, categories: {}, optimizerName: 'Tests', repoUrl: '' };
-    }
+  loader: async ({ params }): Promise<TestSuiteLoaderData> => {
+    const slug = params.testSuite;
+    if (!isTestSuiteSlug(slug)) return emptyTestSuiteData('timing', 'Tests');
+
+    const kind = testSuiteKind(slug);
+    const optimizerName = getTestSuite(slug).title;
 
     try {
+      if (kind === 'coverage') {
+        const res = await fetch(`${base}tests/coverage.json?_=${Date.now()}`);
+        if (!res.ok) return emptyTestSuiteData(kind, optimizerName);
+        const cov: CoverageData = await res.json();
+        return {
+          ...emptyTestSuiteData(kind, optimizerName),
+          coverage: cov.binaries[getTestSuite(slug).label] ?? null,
+        };
+      }
+
       const res = await fetch(`${base}tests/data.json?_=${Date.now()}`);
-      if (!res.ok) return { data: null, categories: {}, optimizerName: 'Tests', repoUrl: '' };
+      if (!res.ok) return emptyTestSuiteData(kind, optimizerName);
       const raw: BenchmarkData = await res.json();
-      const data = loadTestSuiteBenchmarkData(raw, params.testSuite);
-      const categories = discoverCategories(data);
-      const firstName = data[data.length - 1]?.benches[0]?.name;
-      const optimizerName = firstName ? `${firstName.split('/')[0]} Tests` : 'Tests';
-      return { data: data.length > 0 ? data : null, categories, optimizerName, repoUrl: raw.repoUrl };
+      const data = loadTestSuiteBenchmarkData(raw, slug);
+      return {
+        kind,
+        optimizerName,
+        repoUrl: raw.repoUrl,
+        data: data.length > 0 ? data : null,
+        categories: discoverCategories(data),
+        binaryTotal: binaryTotalSeries(raw, slug, raw.repoUrl),
+        coverage: null,
+      };
     } catch {
-      return { data: null, categories: {}, optimizerName: 'Tests', repoUrl: '' };
+      return emptyTestSuiteData(kind, optimizerName);
     }
   },
   validateSearch: (search: Record<string, unknown>) => ({

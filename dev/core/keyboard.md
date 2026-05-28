@@ -103,9 +103,9 @@ Several maps for different purposes:
 |-----|---------|
 | `ACTION_MOTIONS_TO_KEYS` | Physical actions for tokenizing raw input |
 | `ALL_MOTIONS` | All supported vim motions for parsing/validation |
-| `EXPLORABLE_MOTIONS` | Motions directly usable in optimizer search (excludes f/F/t/T which need target char) |
+| `EXPLORABLE_MOTIONS` | Context-free motions (no target char needed), combined into `ALL_MOTIONS` |
 
-Count-search motion pair specs (`w/b`, `e/ge`, paragraph categories) are owned by NavOptimizer (`Optimizer/NavOptimizer/CountableMovementPair.h`), not Keyboard. Counted sentence motions are stateful scans in NavExplorer, not `BufferIndex` categories.
+`EXPLORABLE_MOTIONS` is **not** the optimizer's search set despite the name — nothing outside `MovementToKeys.cpp` reads it; it exists only as the base of `ALL_MOTIONS`. The actual NavOptimizer search enumerates motions via `MovementToSpec` specs (`WORD_MOTIONS`, `PARAGRAPH_MOTIONS`, `SENTENCE_MOTIONS`, `SCROLL_MOTIONS`, …) and the count-search pair specs (`w/b`, `e/ge`, paragraph categories) in `Optimizer/NavOptimizer/CountableMovementPair.h`, not this map. Counted sentence motions are stateful scans in NavExplorer, not `BufferIndex` categories. Note `SCROLL_MOTIONS` is `<C-d>`/`<C-u>` only — `<C-f>`/`<C-b>` are excluded as viewport-dependent (see `MovementToSpec.cpp`).
 
 ### EditToKeys (`ToKeys/EditToKeys.h`)
 

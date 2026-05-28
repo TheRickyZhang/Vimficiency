@@ -18,7 +18,7 @@ centralize the "hidden baggage" behind common identifiers.
 - **Transform**: modify-oriented action/result; changes text
 - Movement/Edit are command-level categories; Nav/Transform are result-level (optimizer) categories — they are intentionally distinct from Vim's narrower vocabulary (e.g. "motion") to avoid name collision
 - `NavOptimizer` primarily explores movements but also reaches goals via jumps and find commands — hence the broader Nav name. Symmetrically, `TransformOptimizer` primarily explores edits but may also use substitute commands.
-- Vim's own vocabulary is preserved at the Vim-domain layer (`VimMotionUtils`, `motionE`, `motionW`, …) and in tests of individual Vim commands (`tests/Commands/*Motions.cpp`); our broader categories live above it.
+- Vim's own vocabulary is preserved at the Vim-domain layer (`VimMotionUtils`, `motionE`, `motionW`, …) and in tests of individual Vim commands (`tests/Unit/Commands/*Motions.cpp`); our broader categories live above it.
 - **`ParsedMovement` / `ParsedEdit`**: parsed command with count semantics, where `count == 0` means "implicit default count of 1"
 
 - **Pos**: geometric position only (`line`, `col`)

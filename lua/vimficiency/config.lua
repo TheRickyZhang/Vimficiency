@@ -16,8 +16,8 @@ local fields = {
   -- Explore-session sidecar overrides (set live via the explore panel)
   -- shadow these per-session.
   --
-  -- Recognized keys: effortWeight, distanceWeight, exploreFactor,
-  -- maxNodesPopped, minPrefixCount, maxPrefixCount. See
+  -- Recognized keys: maxResults, maxNodesPopped, exploreFactor,
+  -- effortWeight, distanceWeight, minPrefixCount, maxPrefixCount. See
   -- `OptimizerParamsBase.h` for semantics and defaults.
   optimizer = {},
 

@@ -2,8 +2,13 @@
 // Converts GTest JSON output (--gtest_output=json:...) to Google Benchmark
 // JSON format so it can be ingested by bench-data.ts.
 //
+// Only the deterministically-timed binaries (Unit, Approval) go through here;
+// property/safety are coverage, not timing (see convert-gtest-coverage.ts and
+// dev/decisions.md). Emits one per-binary total plus one entry per test case:
+//   Tests/Binaries/<Label>
+//   Tests/Cases/<Label>/<Suite>.<Case>
+//
 // Usage:
-//   bun scripts/convert-gtest-timing.ts <gtest.json> <output.json>
 //   bun scripts/convert-gtest-timing.ts <output.json> Unit=unit.json Approval=approval.json
 
 import { readFileSync, writeFileSync } from "fs";
@@ -48,21 +53,12 @@ function parseTimeToMs(timeStr: string): number {
 function usage(): never {
   console.error(
     "Usage:\n" +
-      "  bun scripts/convert-gtest-timing.ts <gtest.json> <output.json>\n" +
       "  bun scripts/convert-gtest-timing.ts <output.json> Unit=unit.json Approval=approval.json"
   );
   process.exit(1);
 }
 
-function parseArgs(args: string[]): { outputFile: string; inputs: TimedInput[]; legacySingle: boolean } {
-  if (args.length === 2 && !args[0]!.includes("=") && !args[1]!.includes("=")) {
-    return {
-      outputFile: args[1]!,
-      inputs: [{ label: "All", path: args[0]! }],
-      legacySingle: true,
-    };
-  }
-
+function parseArgs(args: string[]): { outputFile: string; inputs: TimedInput[] } {
   const outputFile = args[0];
   if (!outputFile || args.length < 2) usage();
 
@@ -77,7 +73,7 @@ function parseArgs(args: string[]): { outputFile: string; inputs: TimedInput[]; 
     };
   });
 
-  return { outputFile, inputs, legacySingle: false };
+  return { outputFile, inputs };
 }
 
 function pushBenchmark(benchmarks: GoogleBenchmark[], name: string, valueMs: number): void {
@@ -90,36 +86,21 @@ function pushBenchmark(benchmarks: GoogleBenchmark[], name: string, valueMs: num
 }
 
 const args = process.argv.slice(2);
-const { outputFile, inputs, legacySingle } = parseArgs(args);
+const { outputFile, inputs } = parseArgs(args);
 
 const benchmarks: GoogleBenchmark[] = [];
-let totalMs = 0;
-const parsedInputs = inputs.map((input) => {
+
+for (const input of inputs) {
   const gtest: GTestOutput = JSON.parse(readFileSync(input.path, "utf8"));
-  const inputMs = parseTimeToMs(gtest.time);
-  totalMs += inputMs;
-  return { ...input, gtest, inputMs };
-});
+  pushBenchmark(benchmarks, `Tests/Binaries/${input.label}`, parseTimeToMs(gtest.time));
 
-// Overall total
-pushBenchmark(benchmarks, "Tests/Total/All", totalMs);
-
-for (const input of parsedInputs) {
-  if (!legacySingle) {
-    pushBenchmark(benchmarks, `Tests/Binaries/${input.label}`, input.inputMs);
-  }
-
-  for (const suite of input.gtest.testsuites) {
-    const suiteName = legacySingle
-      ? `Tests/Suites/${suite.name}`
-      : `Tests/Suites/${input.label}/${suite.name}`;
-    pushBenchmark(benchmarks, suiteName, parseTimeToMs(suite.time));
-
+  for (const suite of gtest.testsuites) {
     for (const testCase of suite.testsuite) {
-      const caseName = legacySingle
-        ? `Tests/Cases/${suite.name}.${testCase.name}`
-        : `Tests/Cases/${input.label}/${suite.name}.${testCase.name}`;
-      pushBenchmark(benchmarks, caseName, parseTimeToMs(testCase.time));
+      pushBenchmark(
+        benchmarks,
+        `Tests/Cases/${input.label}/${suite.name}.${testCase.name}`,
+        parseTimeToMs(testCase.time)
+      );
     }
   }
 }

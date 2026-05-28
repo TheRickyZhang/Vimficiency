@@ -60,7 +60,20 @@ option(VIMF_DEBUG "Enable debug output" ON)
 option(VIMF_TRACK_STATES "Enable explored-state recording for vimfy_explore" OFF)
 
 # FuzzTest-backed property and safety tests are part of the normal test build.
-# Coverage-guided campaigns are enabled separately with FUZZTEST_FUZZING_MODE.
+# Coverage-guided campaigns are enabled separately with FUZZTEST_FUZZING_MODE
+# (Clang only) — see dev/tests/fuzzing.md. The macro that sets FuzzTest's
+# fuzzing flags (fuzztest_setup_fuzzing_flags) only exists after the fuzztest
+# fetch in tests/, which runs *after* vimfy_core is defined below — so the code
+# under test would not get coverage instrumentation. We therefore apply the
+# flags here at root scope, before any target, so vimfy_core is instrumented
+# too. Keep in sync with fuzztest's cmake/FuzzTestFlagSetup.cmake.
+option(FUZZTEST_FUZZING_MODE "Build fuzz tests in coverage-guided fuzzing mode (Clang + ASan + sancov)" OFF)
+if(FUZZTEST_FUZZING_MODE)
+  set(_vimfy_fuzzing_flags "-g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -UNDEBUG -fsanitize=address -fsanitize-coverage=inline-8bit-counters -fsanitize-coverage=trace-cmp -DADDRESS_SANITIZER")
+  string(APPEND CMAKE_C_FLAGS " ${_vimfy_fuzzing_flags}")
+  string(APPEND CMAKE_CXX_FLAGS " ${_vimfy_fuzzing_flags}")
+  string(APPEND CMAKE_EXE_LINKER_FLAGS " -fsanitize=address")
+endif()
 
 # Legacy Vim compatibility mode (uses Vim defaults instead of Neovim defaults)
 # Key differences when enabled:

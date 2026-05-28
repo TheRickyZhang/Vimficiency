@@ -136,6 +136,7 @@ For Lua context, see `lua/vimficiency/AGENTS.md`.
 - @dev/optimizer/composition-optimizer.md - Planned-edit search and composition replay semantics
 - @dev/optimizer/interactive-explore.md - Explore state machine and interactive replay model
 - @dev/tests/testing.md - NeovimOracle, test file conventions, debug printing
+- @dev/tests/fuzzing.md - Coverage-guided campaign fuzzing (manual): instrumented Clang build + running campaigns
 
 ## PR review focus
 Prioritize:

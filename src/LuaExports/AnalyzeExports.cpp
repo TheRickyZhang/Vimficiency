@@ -15,6 +15,17 @@ using VF::LuaExports::EVENT_FIELD_SEP;
 
 namespace {
 
+VF::LuaExports::Result<OptimizerParamOverrides> parseOverrides(
+    string_view text) {
+  auto parsed = parseOptimizerParamOverrides(text);
+  if (!parsed) {
+    return helpers::unexpectedError(
+        VF::LuaExports::ExportErrorKind::InvalidValue,
+        formatOptimizerParamOverrideErrors(parsed.error()));
+  }
+  return std::move(*parsed);
+}
+
 VF::LuaExports::Result<string> analyzeImpl(
     const char *encoded_initial_lines,
     size_t encoded_initial_lines_len,
@@ -54,8 +65,9 @@ VF::LuaExports::Result<string> analyzeImpl(
       "optimizer_overrides");
   if (!optimizerOverridesText) return unexpected(optimizerOverridesText.error());
 
-  const auto overrides = OptimizerParamOverrides::parse(
-      *optimizerOverridesText);
+  auto overridesResult = parseOverrides(*optimizerOverridesText);
+  if (!overridesResult) return unexpected(overridesResult.error());
+  const OptimizerParamOverrides overrides = std::move(*overridesResult);
 
   auto initialLinesResult = payload::decodeLineArray(*initialText);
   if (!initialLinesResult) return unexpected(initialLinesResult.error());

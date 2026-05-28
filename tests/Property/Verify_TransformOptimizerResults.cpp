@@ -18,7 +18,7 @@
 #include "Utils/NeovimOracle.h"
 #include "Property/OptimizerResultChecks.h"
 #include "Property/PropertyDomains.h"
-#include "TransformOptimizer/EmbeddedRegionTestUtils.h"
+#include "Unit/TransformOptimizer/EmbeddedRegionTestUtils.h"
 
 using namespace std;
 

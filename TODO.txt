@@ -32,6 +32,7 @@
 - Really ensure that the suffix cache handling with . is correct AND performant.
 Local-only RunningEffort context in NavOptimize
 - Improve onLinewiseGoal semantics - currently very lengthy
+- Wait until https://github.com/google/fuzztest/pull/2082 gets merged to fix annoying watchdog issue
 
 
 Review Exploration C++ code

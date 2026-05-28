@@ -2,16 +2,29 @@ import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { testSuiteRoute } from '../router';
 import { App } from '../components/App';
-import { approvalFixturesForCategory, testSuiteDescription, type ApprovalFixture, type TestSuiteSlug } from '../utils/testSuites';
+import { BenchmarkChart } from '../components/BenchmarkChart';
+import { CoverageView } from '../components/CoverageView';
+import { approvalFixturesForCategory, testSuiteDescription, getTestSuite, type ApprovalFixture, type TestSuiteSlug } from '../utils/testSuites';
+import { bestUnit } from '../utils/format';
 import { approvalFixtureContents } from '../utils/approvalFixtureContents';
 
 export function TestSuitePage() {
-  const { data, categories, optimizerName, repoUrl } = testSuiteRoute.useLoaderData();
+  const { kind, data, categories, binaryTotal, coverage, optimizerName, repoUrl } = testSuiteRoute.useLoaderData();
   const { cat, bench } = testSuiteRoute.useSearch();
   const { optimizer, testSuite } = testSuiteRoute.useParams();
   const suiteSlug = testSuite as TestSuiteSlug;
   const navigate = useNavigate({ from: testSuiteRoute.fullPath });
   const [fixtureCategory, setFixtureCategory] = useState<string | null>(null);
+
+  if (kind === 'coverage') {
+    return (
+      <>
+        <h1>{optimizerName}</h1>
+        <p className="subtitle">{testSuiteDescription(suiteSlug)}</p>
+        <CoverageView coverage={coverage} />
+      </>
+    );
+  }
 
   if (!data) {
     return (
@@ -41,6 +54,17 @@ export function TestSuitePage() {
     )
     : undefined;
 
+  const headerChart = binaryTotal.length > 0
+    ? (
+      <section className="card p-4 mb-8 max-w-[60%] mx-auto max-md:max-w-full">
+        <h4 className="m-0 mb-2 text-base font-bold text-[#333]">Total {getTestSuite(suiteSlug).label} duration</h4>
+        <div style={{ height: 220 }}>
+          <BenchmarkChart series={binaryTotal} unit={bestUnit(binaryTotal.map((p) => p.val))} />
+        </div>
+      </section>
+    )
+    : undefined;
+
   return (
     <>
       <App
@@ -53,6 +77,7 @@ export function TestSuitePage() {
         openBench={bench ?? null}
         showExplore={false}
         subtitle={testSuiteDescription(suiteSlug)}
+        headerChart={headerChart}
         inlinePanel={inlinePanel}
         categoryActionLabel={suiteSlug === 'approval' ? 'Explore' : undefined}
         onCategoryAction={suiteSlug === 'approval'

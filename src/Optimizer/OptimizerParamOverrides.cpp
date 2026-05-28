@@ -11,21 +11,20 @@
 #include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
 #include "Optimizer/NavOptimizer/NavOptimizerParams.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
-#include "Utils/Debug.h"
 
 namespace {
 
 std::optional<int> parseInt(std::string_view s) {
   int v = 0;
-  auto [_, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
-  if (ec != std::errc{}) return std::nullopt;
+  auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
+  if (ec != std::errc{} || ptr != s.data() + s.size()) return std::nullopt;
   return v;
 }
 
 std::optional<double> parseDouble(std::string_view s) {
   double v = 0.0;
-  auto [_, ec] = fast_float::from_chars(s.data(), s.data() + s.size(), v);
-  if (ec != std::errc{}) return std::nullopt;
+  auto [ptr, ec] = fast_float::from_chars(s.data(), s.data() + s.size(), v);
+  if (ec != std::errc{} || ptr != s.data() + s.size()) return std::nullopt;
   return v;
 }
 
@@ -103,6 +102,18 @@ bool keyAllowedInScope(std::string_view scope, std::string_view key) {
   return false;
 }
 
+bool valueValidForKey(std::string_view key, std::string_view value) {
+#define VF_MATCH(type, name, withName, def, parser)                  \
+  if (key == #name) return parser(value).has_value();
+  OPTIMIZER_BASE_FIELDS(VF_MATCH)
+  MOTION_CLASS_FIELDS(VF_MATCH)
+  NAV_OWN_FIELDS(VF_MATCH)
+  TRANSFORM_FIELDS(VF_MATCH)
+  COMPOSITION_OWN_FIELDS(VF_MATCH)
+#undef VF_MATCH
+  return false;
+}
+
 bool applyBaseField(OptimizerParamsBase& p,
                     std::string_view key,
                     std::string_view value) {
@@ -163,50 +174,95 @@ void applyMap(const std::map<std::string, std::string, std::less<>>& kv, ApplyFn
   for (const auto& [k, v] : kv) apply(k, v);
 }
 
+std::string scopedKey(std::string_view scope, std::string_view key) {
+  return std::string(scope) + ":" + std::string(key);
+}
+
 }  // namespace
 
-OptimizerParamOverrides OptimizerParamOverrides::parse(std::string_view encoded) {
-  OptimizerParamOverrides out;
-  while (!encoded.empty()) {
-    const auto eolPos = encoded.find('\n');
-    const auto line = encoded.substr(0, eolPos);
-    encoded.remove_prefix(eolPos == std::string_view::npos ? encoded.size() : eolPos + 1);
-    if (line.empty()) continue;
+class OptimizerParamOverridesParser {
+public:
+  static OptimizerParamOverridesParseResult parse(std::string_view encoded) {
+    OptimizerParamOverrides out;
+    OptimizerParamOverrideErrors errors;
+    int lineNumber = 0;
+    while (!encoded.empty()) {
+      const auto eolPos = encoded.find('\n');
+      const auto line = encoded.substr(0, eolPos);
+      encoded.remove_prefix(
+          eolPos == std::string_view::npos ? encoded.size() : eolPos + 1);
+      lineNumber++;
+      if (line.empty()) continue;
 
-    const auto scopeSplit = splitOnce(line, ':');
-    if (!scopeSplit) {
-      warning("optimizer override: malformed line, expected '<scope>:<key>=<value>': '", line, "'");
-      continue;
+      const auto scopeSplit = splitOnce(line, ':');
+      if (!scopeSplit) {
+        errors.push_back(
+            "line " + std::to_string(lineNumber) +
+            ": expected '<scope>:<key>=<value>'");
+        continue;
+      }
+      const auto& [scope, rest] = *scopeSplit;
+
+      const auto kvSplit = splitOnce(rest, '=');
+      if (!kvSplit) {
+        errors.push_back(
+            "line " + std::to_string(lineNumber) +
+            ": expected '<scope>:<key>=<value>'");
+        continue;
+      }
+      const auto& [key, value] = *kvSplit;
+
+      OptimizerParamOverrides::ScopeMap* target = nullptr;
+      if (scope == "shared") target = &out.shared_;
+      else if (scope == "nav") target = &out.nav_;
+      else if (scope == "transform") target = &out.transform_;
+      else if (scope == "composition") target = &out.composition_;
+      else {
+        errors.push_back(
+            "line " + std::to_string(lineNumber) +
+            ": unknown scope '" + std::string(scope) +
+            "', expected shared/nav/transform/composition");
+        continue;
+      }
+
+      if (!knownKeys().contains(key)) {
+        errors.push_back(
+            "line " + std::to_string(lineNumber) +
+            ": unknown optimizer key '" + scopedKey(scope, key) + "'");
+        continue;
+      } else if (!keyAllowedInScope(scope, key)) {
+        errors.push_back(
+            "line " + std::to_string(lineNumber) +
+            ": optimizer key '" + scopedKey(scope, key) +
+            "' is not valid in that scope");
+        continue;
+      }
+
+      if (!valueValidForKey(key, value)) {
+        errors.push_back(
+            "line " + std::to_string(lineNumber) +
+            ": invalid value for optimizer key '" + scopedKey(scope, key) +
+            "': '" + std::string(value) + "'");
+        continue;
+      }
+
+      target->insert_or_assign(std::string(key), std::string(value));
     }
-    const auto& [scope, rest] = *scopeSplit;
+    if (!errors.empty()) return std::unexpected(std::move(errors));
+    return out;
+  }
+};
 
-    const auto kvSplit = splitOnce(rest, '=');
-    if (!kvSplit) {
-      warning("optimizer override: malformed line, expected 'key=value': '", line, "'");
-      continue;
-    }
-    const auto& [key, value] = *kvSplit;
+OptimizerParamOverridesParseResult parseOptimizerParamOverrides(std::string_view encoded) {
+  return OptimizerParamOverridesParser::parse(encoded);
+}
 
-    ScopeMap* target = nullptr;
-    if (scope == "shared") target = &out.shared_;
-    else if (scope == "nav") target = &out.nav_;
-    else if (scope == "transform") target = &out.transform_;
-    else if (scope == "composition") target = &out.composition_;
-    else {
-      warning("optimizer override: unknown scope '", scope,
-              "', expected one of shared/nav/transform/composition");
-      continue;
-    }
-
-    if (!knownKeys().contains(key)) {
-      warning("optimizer override: unknown key '", key, "' (scope ", scope, ")");
-      // Still recorded so re-encoding is a round-trip.
-    } else if (!keyAllowedInScope(scope, key)) {
-      warning("optimizer override: key '", key,
-              "' is not valid in scope '", scope, "'");
-    }
-
-    target->insert_or_assign(std::string(key), std::string(value));
+std::string formatOptimizerParamOverrideErrors(
+    const OptimizerParamOverrideErrors& errors) {
+  std::string out = "invalid optimizer overrides";
+  for (const auto& error : errors) {
+    out += "\n";
+    out += error;
   }
   return out;
 }
