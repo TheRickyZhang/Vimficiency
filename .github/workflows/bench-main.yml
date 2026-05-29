@@ -63,6 +63,10 @@ jobs:
         # creates) so network git ops authenticate regardless. Token is
         # job-scoped and reset by checkout on the next run.
         run: |
+          # The runner has no global git identity, so deploy commits would
+          # otherwise be attributed to the auto-detected user@hostname.local.
+          git config user.name "Ricky Zhang"
+          git config user.email "140441625+TheRickyZhang@users.noreply.github.com"
           git remote set-url origin \
             "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
           scripts/bench-local-run.sh "${{ github.sha }}" main

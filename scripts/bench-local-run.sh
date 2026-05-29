@@ -32,8 +32,14 @@ if ! command -v ccache >/dev/null 2>&1; then
 fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
+# Strip any embedded userinfo (e.g. bench-main.yml sets origin to
+# https://x-access-token:<GITHUB_TOKEN>@github.com/... for push auth). The
+# clean URL is the only thing written into data.json/explore.json; without
+# this strip the token lands in those files and GitHub push protection
+# rejects the gh-pages push. Push auth is unaffected — git push uses origin's
+# real config, not REPO_URL.
 REPO_URL_RAW="$(git -C "$REPO_ROOT" remote get-url origin)"
-REPO_URL="$(printf '%s' "$REPO_URL_RAW" | sed -e 's|^git@github.com:|https://github.com/|' -e 's|\.git$||')"
+REPO_URL="$(printf '%s' "$REPO_URL_RAW" | sed -e 's|^git@github.com:|https://github.com/|' -e 's|://[^/@]*@|://|' -e 's|\.git$||')"
 REPO_NAME="${REPO_URL##*/}"
 SAFE_BRANCH=$(printf '%s' "$BRANCH" | sed 's|/|--|g; s|[^a-zA-Z0-9._-]||g')
 FUZZTEST_PRNG_SEED_FIXED="OffQXb8u5_vZtH4-7wgVOLu_HNAhPIbLz7CFF13u3nk"
@@ -308,15 +314,18 @@ cd "$GHPAGES_REPO"
 echo "[deploy]"
 
 # Migration from legacy `bench/<optimizer>/` layout to flat `<optimizer>/`.
-# Idempotent; runs every time but only acts the first time it sees the
-# legacy layout.
+# Idempotent: stages the bench/ removal so the cleanup actually commits, then
+# no-ops once bench/ is gone. `git rm` (not `rm -rf`) is required — a plain
+# filesystem delete leaves the bench/ deletions unstaged, so the legacy tree
+# never gets removed from origin and any push-retry rebase aborts on the dirty
+# worktree.
 for o in edit motion composition; do
   if [ -d "bench/$o" ] && [ ! -d "$o" ]; then
     echo "  migrating bench/$o -> $o"
     mv "bench/$o" "$o"
   fi
 done
-rm -rf bench
+git rm -r --quiet --ignore-unmatch bench
 
 # Ingest the three benchmark suites — every push contributes a data point.
 # Whether $BRANCH is "main" or a feature branch, the data lands on the same
