@@ -93,14 +93,29 @@ function emptyOptimizerData(): OptimizerLoaderData {
   return { data: null, categories: {}, optimizerName: 'Benchmarks', repoUrl: '', exploreCategories: null };
 }
 
-async function loadExploreCategories(optimizer: string): Promise<string[] | null> {
+// External-JSON boundary: res.json() is `any`, so casting to ExplorationData is
+// an unchecked assertion — TS types are erased at runtime and enforce nothing on
+// fetched data. Validate the one invariant the app relies on (entries[]) so a
+// malformed file degrades to the same null/empty state as a missing file,
+// instead of crashing downstream with an opaque `undefined.length`.
+async function fetchExplorationData(optimizer: string): Promise<ExplorationData | null> {
   try {
     const res = await fetch(`${base}${optimizer}/explore.json?_=${Date.now()}`);
     if (!res.ok) return null;
-    return exploreCategoryNames(await res.json());
+    const json = await res.json();
+    if (!json || !Array.isArray(json.entries)) {
+      console.warn(`explore.json for "${optimizer}" is malformed (missing entries[]); ignoring`);
+      return null;
+    }
+    return json as ExplorationData;
   } catch {
     return null;
   }
+}
+
+async function loadExploreCategories(optimizer: string): Promise<string[] | null> {
+  const data = await fetchExplorationData(optimizer);
+  return data ? exploreCategoryNames(data) : null;
 }
 
 export const optimizerIndexRoute = createRoute({
@@ -210,15 +225,8 @@ export const exploreRoute = createRoute({
       throw redirect({ to: '/$optimizer', params: { optimizer: 'tests' }, search: { cat: undefined, bench: undefined } });
     }
   },
-  loader: async ({ params }): Promise<ExplorationData | null> => {
-    try {
-      const res = await fetch(`${base}${params.optimizer}/explore.json?_=${Date.now()}`);
-      if (!res.ok) return null;
-      return await res.json();
-    } catch {
-      return null;
-    }
-  },
+  loader: async ({ params }): Promise<ExplorationData | null> =>
+    fetchExplorationData(params.optimizer),
   validateSearch: (search: Record<string, unknown>) => ({
     case: (search['case'] as string) || undefined,
   }),
@@ -233,15 +241,8 @@ export const chunkDetailRoute = createRoute({
       throw redirect({ to: '/$optimizer', params: { optimizer: 'tests' }, search: { cat: undefined, bench: undefined } });
     }
   },
-  loader: async ({ params }): Promise<ExplorationData | null> => {
-    try {
-      const res = await fetch(`${base}${params.optimizer}/explore.json?_=${Date.now()}`);
-      if (!res.ok) return null;
-      return await res.json();
-    } catch {
-      return null;
-    }
-  },
+  loader: async ({ params }): Promise<ExplorationData | null> =>
+    fetchExplorationData(params.optimizer),
   validateSearch: (search: Record<string, unknown>) => ({
     case: (search['case'] as string) || undefined,
     chunkIndex: search['chunkIndex'] != null ? Number(search['chunkIndex']) : undefined,

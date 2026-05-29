@@ -17,6 +17,7 @@
 #include "Keyboard/Config.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizerParams.h"
+#include "Utils/OptimizerCaseCatalog.h"
 #include "Utils/RandomGeneration.h"
 
 using namespace std;
@@ -120,40 +121,6 @@ static BenchmarkSetup makeBoundarySetup(int boundaryType) {
   return setup;
 }
 
-static BenchmarkSetup makeMultiLineFixedSetup(int caseNum) {
-  auto makeSetup = [](const Lines& buffer, const Lines& goal,
-                      CursorPos editBegin, CursorPos editEnd) {
-    Lines editRegion = buffer.getSpan(editBegin, editEnd);
-    TransformBoundary boundary(buffer, editBegin, editEnd);
-    return BenchmarkSetup(editRegion, goal, boundary);
-  };
-
-  switch (caseNum) {
-    case 0: {
-      Lines buffer = {"I saw a pig in barn in Switzerland", "Inconspicuous, even"};
-      Lines goal = {"Florida"};
-      return makeSetup(buffer, goal, CursorPos(0, 23), CursorPos(1, 19));
-    }
-    case 1: {
-      Lines buffer = {"The quick brown fox jumps over the lazy dog",
-                      "and then runs around the park",
-                      "before going home to sleep"};
-      Lines goal = {"walked away"};
-      return makeSetup(buffer, goal, CursorPos(0, 20), CursorPos(2, 26));
-    }
-    case 2: {
-      Lines buffer = {"prefix stuff delete me line one",
-                      "delete me line two",
-                      "delete me line three",
-                      "delete me line four",
-                      "delete me line five and suffix here"};
-      Lines goal = {"replaced"};
-      return makeSetup(buffer, goal, CursorPos(0, 13), CursorPos(4, 22));
-    }
-  }
-  return BenchmarkSetup({""});
-}
-
 static vector<size_t> collectPerStartCounts(const TransformResult& result, const Lines& lines) {
   vector<size_t> counts;
   for (int line = 0; line < static_cast<int>(lines.size()); line++) {
@@ -207,31 +174,26 @@ static optional<BenchmarkSetup> findMixedTerminalSetup(int perStartCap) {
 // Benchmark Functions
 // =============================================================================
 
-static void BM_EditBufferSize(benchmark::State& state) {
-  int numLines = static_cast<int>(state.range(0));
-  auto setups = makeSeededSetups([&](int) {
-    return BenchmarkSetup(generateBuffer(numLines, 30));
-  });
+// Drives one catalog case (BufferSize/LineLength/MultiLineDelete pure deletions
+// and MultiLineEdit transforms). The catalog's buildEditSetup fixes the buffer +
+// maxResults cap per seed, so the explorer traces the identical case.
+static void BM_EditCatalogCase(benchmark::State& state, EditCaseSpec spec) {
+  vector<EditSetup> setups;
+  setups.reserve(DEFAULT_SEED_COUNT);
+  for (int i = 0; i < DEFAULT_SEED_COUNT; ++i)
+    setups.push_back(buildEditSetup(spec, i));
   TransformSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
-    const auto& setup = setups[iter % static_cast<int>(setups.size())];
-    runBenchmark(setup, withCap({}, setup), totalStats);
-    iter++;
-  }
-  setSearchCounters(state, totalStats);
-}
-
-static void BM_EditLineLength(benchmark::State& state) {
-  int avgLen = static_cast<int>(state.range(0));
-  auto setups = makeSeededSetups([&](int) {
-    return BenchmarkSetup(generateBuffer(5, avgLen));
-  });
-  TransformSearchStats totalStats;
-  int iter = 0;
-  for (auto _ : state) {
-    const auto& setup = setups[iter % static_cast<int>(setups.size())];
-    runBenchmark(setup, withCap({}, setup), totalStats);
+    const EditSetup& s = setups[iter % static_cast<int>(setups.size())];
+    TransformOptimizer opt(benchConfig);
+    if (s.goalKind == EditGoalKind::PureDeletion) {
+      accumulateStats(totalStats,
+                      opt.optimizePureDeletion(s.initialLines, s.boundary, s.params).getStats());
+    } else {
+      accumulateStats(totalStats,
+                      opt.optimizeTransform(s.initialLines, s.goalLines, s.boundary, s.params).getStats());
+    }
     iter++;
   }
   setSearchCounters(state, totalStats);
@@ -268,55 +230,12 @@ static void BM_EditSearchDepth(benchmark::State& state) {
   setSearchCounters(state, totalStats);
 }
 
-static void BM_EditMultiLineDelete(benchmark::State& state) {
-  int numLines = static_cast<int>(state.range(0));
-  auto setups = makeSeededSetups([&](int) {
-    return BenchmarkSetup(generateBuffer(numLines, 20));
-  });
-  TransformSearchStats totalStats;
-  int iter = 0;
-  for (auto _ : state) {
-    const auto& setup = setups[iter % static_cast<int>(setups.size())];
-    runBenchmark(setup, withCap({}, setup), totalStats);
-    iter++;
-  }
-  setSearchCounters(state, totalStats);
-}
-
 static void BM_TransformBoundaryConstraints(benchmark::State& state, int boundaryType) {
   auto setup = makeBoundarySetup(boundaryType);
   TransformSearchStats totalStats;
   for (auto _ : state) {
     int mr = max(10, setup.initialLines.totalPositions() / 4);
     runBenchmark(setup, TransformOptimizerParams{}.withMaxResults(mr), totalStats);
-  }
-  setSearchCounters(state, totalStats);
-}
-
-static void BM_EditMultiLineFixed(benchmark::State& state, int caseNum) {
-  auto setup = makeMultiLineFixedSetup(caseNum);
-  TransformSearchStats totalStats;
-  for (auto _ : state) {
-    int mr = max(10, setup.initialLines.totalPositions() / 4);
-    runBenchmark(setup, TransformOptimizerParams{}.withMaxResults(mr), totalStats);
-  }
-  setSearchCounters(state, totalStats);
-}
-
-static void BM_EditMultiLineRandom(benchmark::State& state) {
-  int numLines = static_cast<int>(state.range(0));
-  auto setups = makeSeededSetups([&](int) {
-    Lines buffer = generateBuffer(numLines, 25);
-    Lines goal = {"replacement"};
-    TransformBoundary boundary(buffer, CursorPos(0, 0), buffer.endPos());
-    return BenchmarkSetup(buffer, goal, boundary);
-  });
-  TransformSearchStats totalStats;
-  int iter = 0;
-  for (auto _ : state) {
-    const auto& setup = setups[iter % static_cast<int>(setups.size())];
-    runBenchmark(setup, withCap({}, setup), totalStats);
-    iter++;
   }
   setSearchCounters(state, totalStats);
 }
@@ -473,20 +392,21 @@ static void registerArgBenchmark(const string& name, void(*fn)(benchmark::State&
 
 // Static initialization block to register all benchmarks
 static int registerEditBenchmarks = []() {
-  // BufferSize
-  registerArgBenchmark("EditOpt/BufferSize", BM_EditBufferSize,
-                       {1, 3, 5, 10, 15});
+  // Explorable cases (BufferSize/LineLength/MultiLineDelete/MultiLineEdit) come
+  // from the shared catalog so the benchmark and explore tool agree on names +
+  // sizes. Each registers under its full "EditOpt/<category>/<param>" name.
+  for (const auto& spec : editCaseCatalog()) {
+    benchmark::RegisterBenchmark("EditOpt/" + spec.name, BM_EditCatalogCase, spec);
+  }
 
-  // LineLength
-  registerArgBenchmark("TransformOpt/LineLength", BM_EditLineLength,
-                       {10, 20, 40, 60});
+  // --- Bench-only tuning sweeps + micro-benchmarks (not surfaced in explore) ---
 
   // BufferShape
   for (const auto& [name, shape] : vector<pair<string, BufferShape>>{
            {"Uniform", BufferShape::Uniform},
            {"Prose", BufferShape::Prose},
            {"CodeLike", BufferShape::CodeLike}}) {
-    auto* b = benchmark::RegisterBenchmark(
+    benchmark::RegisterBenchmark(
         "EditOpt/BufferShape/" + name, BM_EditBufferShape, shape);
   }
 
@@ -494,25 +414,11 @@ static int registerEditBenchmarks = []() {
   registerArgBenchmark("EditOpt/SearchDepth", BM_EditSearchDepth,
                        {1000, 5000, 10000, 50000});
 
-  // MultiLineDelete
-  registerArgBenchmark("EditOpt/MultiLineDelete", BM_EditMultiLineDelete,
-                       {2, 4, 6, 8, 10});
-
   // BoundaryConstraints
   for (const auto& [name, type] : vector<pair<string, int>>{
            {"None", 0}, {"Prefix", 1}, {"Suffix", 2}, {"Both", 3}}) {
-    benchmark::RegisterBenchmark("TransformOpt/Boundary/" + name, BM_TransformBoundaryConstraints, type);
+    benchmark::RegisterBenchmark("EditOpt/Boundary/" + name, BM_TransformBoundaryConstraints, type);
   }
-
-  // MultiLineEdit - fixed cases
-  for (const auto& [name, caseNum] : vector<pair<string, int>>{
-           {"2L->1w", 0}, {"3L->1w", 1}, {"5L+bnd", 2}}) {
-    benchmark::RegisterBenchmark("EditOpt/MultiLineEdit/" + name, BM_EditMultiLineFixed, caseNum);
-  }
-
-  // MultiLineEdit - random
-  registerArgBenchmark("EditOpt/MultiLineEdit/Random", BM_EditMultiLineRandom,
-                       {2, 4, 6});
 
   // SmallChange - matches correctness test pattern (small region, full content change)
   registerArgBenchmark("EditOpt/SmallChange", BM_EditSmallChange,

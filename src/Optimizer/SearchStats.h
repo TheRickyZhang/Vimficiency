@@ -14,6 +14,13 @@
 // -Wundef, rather than silently skipping the "enabled" branch.
 constexpr bool SEARCH_TRACE_STATS_ENABLED = VIMF_TRACK_STATES;
 
+// Cap on recorded explore-trace states per search. States are recorded in
+// pop order, and A* pops a node's parent before the node, so first-N keeps
+// the reconstructed tree connected (no orphaned children). Bounds the size of
+// the committed explore.json — composition is the heavy domain — without
+// dropping whole cases. Only consulted in tracking builds.
+constexpr int MAX_TRACED_STATES = 8000;
+
 enum class SearchStopReason {
   Unknown,
   FullyExplored,
@@ -69,7 +76,8 @@ public:
                                 double effort,
                                 const Sequence& sequence) {
     if constexpr (SEARCH_TRACE_STATS_ENABLED) {
-      exploredStates_.push_back({line, col, effort, sequence.str()});
+      if (exploredStates_.size() < static_cast<size_t>(MAX_TRACED_STATES))
+        exploredStates_.push_back({line, col, effort, sequence.str()});
     }
   }
 
@@ -78,7 +86,8 @@ public:
                                 double effort,
                                 std::string_view sequence) {
     if constexpr (SEARCH_TRACE_STATS_ENABLED) {
-      exploredStates_.push_back({line, col, effort, std::string(sequence)});
+      if (exploredStates_.size() < static_cast<size_t>(MAX_TRACED_STATES))
+        exploredStates_.push_back({line, col, effort, std::string(sequence)});
     }
   }
 

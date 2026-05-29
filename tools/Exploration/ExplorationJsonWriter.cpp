@@ -141,6 +141,11 @@ void writeContextJson(ofstream& out, const ContextData& ctx) {
     out << ",\n        \"goalCursor\": [" << ctx.goalCursorLine
         << ", " << ctx.goalCursorCol << "]";
   }
+  if (ctx.goalRangeBeginLine >= 0) {
+    out << ",\n        \"goalRange\": [" << ctx.goalRangeBeginLine
+        << ", " << ctx.goalRangeBeginCol << ", " << ctx.goalRangeEndLine
+        << ", " << ctx.goalRangeEndCol << "]";
+  }
   if (!ctx.prefix.empty()) {
     out << ",\n        \"prefix\": \"" << jsonEscape(ctx.prefix) << "\"";
   }

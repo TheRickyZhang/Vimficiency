@@ -213,10 +213,15 @@ export function BufferPreview({ context, diffs }: Props) {
     () => hasDiffs ? computeInitialRanges(diffs) : [],
     [diffs, hasDiffs]
   );
-  const goalRanges = useMemo(
-    () => hasDiffs ? computeGoalRanges(diffs) : [],
-    [diffs, hasDiffs]
-  );
+  const goalRanges = useMemo<CharRange[]>(() => {
+    if (hasDiffs) return computeGoalRanges(diffs);
+    // Motion range cases have no diffs; highlight the acceptable landing span.
+    if (context.goalRange) {
+      const [bl, bc, el, ec] = context.goalRange;
+      return [{ beginLine: bl, beginCol: bc, endLine: el, endCol: ec, colorIdx: 1 }];
+    }
+    return [];
+  }, [diffs, hasDiffs, context.goalRange]);
 
   return (
     <div className="card p-4 mb-6">

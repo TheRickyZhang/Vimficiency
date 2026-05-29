@@ -3,58 +3,19 @@
 #include <algorithm>
 #include <map>
 
-#include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
-#include "Utils/RandomBufferHelpers.h"
-#include "Utils/RandomGeneration.h"
-#include "Utils/SeedManager.h"
+#include "Utils/OptimizerCaseCatalog.h"
 
 using namespace std;
 
-static Lines generateBuffer(int numLines, int avgLineLen) {
-  return randomCodeBuffer(numLines, avgLineLen);
-}
-
 vector<CompositionExploreCase> collectCompositionCases() {
   vector<CompositionExploreCase> cases;
-  auto& seedMgr = SeedManager::instance();
 
-  CompositionOptimizerParams params;
-  auto makeDefaultSetup = [](int numLines, int avgLen, int editCount) {
-    Lines initial = generateBuffer(numLines, avgLen);
-    Lines goal = initial;
-    for (int e = 0; e < editCount; e++) {
-      int line = editCount <= 1 ? numLines / 2
-                                : e * (numLines - 1) / max(1, editCount - 1);
-      int len = max(1, static_cast<int>(initial[line].size()));
-      goal[line] = randomWord(len);
-      if (goal[line] == initial[line]) goal[line] = "changed";
-    }
-    return make_pair(initial, goal);
-  };
-
-  struct CompCase {
-    string name;
-    int numLines;
-    int avgLen;
-    int editCount;
-  };
-
-  vector<CompCase> compCases = {
-    {"EditCount/1", 15, 20, 1},
-    {"EditCount/2", 15, 20, 2},
-    {"EditCount/5", 15, 20, 5},
-    {"EditCount/8", 15, 20, 8},
-    {"BufferSize/5", 5, 20, 5},
-    {"BufferSize/10", 10, 20, 5},
-    {"BufferSize/20", 20, 20, 5},
-  };
-
-  for (const auto& cc : compCases) {
-    RandomGen::seed(seedMgr.getSeed(0));
-    auto [initial, goal] = makeDefaultSetup(cc.numLines, cc.avgLen, cc.editCount);
+  for (const auto& spec : compositionCaseCatalog()) {
+    // Seed 0 is the representative instance of the multi-seed benchmark case.
+    CompositionSetup s = buildCompositionSetup(spec, 0);
 
     CompositionOptimizer opt(config);
-    auto result = opt.optimize(initial, {0, 0}, goal, {0, 0}, params);
+    auto result = opt.optimize(s.initial, {0, 0}, s.goal, {0, 0}, s.params);
 
     vector<FoundResult> found;
     for (const auto& r : result.getResults()) {
@@ -64,8 +25,8 @@ vector<CompositionExploreCase> collectCompositionCases() {
     }
 
     ContextData ctx;
-    for (const auto& l : initial) ctx.initialLines.push_back(l);
-    for (const auto& l : goal) ctx.goalLines.push_back(l);
+    for (const auto& l : s.initial) ctx.initialLines.push_back(l);
+    for (const auto& l : s.goal) ctx.goalLines.push_back(l);
     ctx.initialCursorLine = 0;
     ctx.initialCursorCol = 0;
     ctx.goalCursorLine = 0;
@@ -99,7 +60,7 @@ vector<CompositionExploreCase> collectCompositionCases() {
       editDetails.push_back(std::move(detail));
     }
 
-    cases.push_back({cc.name, result.getStats().nodesExplored(),
+    cases.push_back({spec.name, result.getStats().nodesExplored(),
                      std::move(found),
                      std::move(result.getExploredStates()),
                      std::move(ctx),

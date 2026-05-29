@@ -1,8 +1,8 @@
 {
-  "generated": 1780003697477,
+  "generated": 1780073006953,
   "binaries": {
     "Property": {
-      "totalCases": 38,
+      "totalCases": 39,
       "failures": 0,
       "suites": [
         {
@@ -183,6 +183,16 @@
           "cases": [
             {
               "name": "QuoteObjectsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyScrollMotions",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "ScrollMotionsMatchOracle",
               "passed": true
             }
           ]

@@ -14,6 +14,7 @@
 #include "Benchmarks/BenchUtils.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
+#include "Utils/OptimizerCaseCatalog.h"
 #include "Utils/RandomGeneration.h"
 
 using namespace std;
@@ -40,22 +41,6 @@ struct CompBenchSetup {
   Lines goal;
 };
 
-// Generate initial buffer, then produce goal by replacing content on
-// evenly-spaced edit lines with random words of similar length.
-static CompBenchSetup makeDefaultSetup(int numLines, int avgLen, int editCount,
-                                        BufferShape shape = DEFAULT_SHAPE) {
-  Lines initial = generateBuffer(numLines, avgLen, shape);
-  Lines goal = initial;
-  for (int e = 0; e < editCount; e++) {
-    int line = editCount <= 1 ? numLines / 2
-                              : e * (numLines - 1) / max(1, editCount - 1);
-    int len = max(1, static_cast<int>(initial[line].size()));
-    goal[line] = randomWord(len);
-    if (goal[line] == initial[line]) goal[line] = "changed";
-  }
-  return {initial, goal};
-}
-
 template<typename MakeSetup>
 static vector<CompBenchSetup> makeSeededSetups(MakeSetup makeSetup) {
   auto& seedMgr = SeedManager::instance();
@@ -72,18 +57,19 @@ static vector<CompBenchSetup> makeSeededSetups(MakeSetup makeSetup) {
 // Benchmark Functions
 // =============================================================================
 
-// --- EditCount: varies number of separate edits ---
-static void BM_CompEditCount(benchmark::State& state) {
-  int editCount = static_cast<int>(state.range(0));
-  auto setups = makeSeededSetups([&](int) {
-    return makeDefaultSetup(DEFAULT_LINES, DEFAULT_AVG_LEN, editCount);
-  });
+// Drives one catalog case (EditCount/BufferSize/LineLength). buildCompositionSetup
+// fixes the buffer + goal per seed, so the explorer traces the identical case.
+static void BM_CompCatalogCase(benchmark::State& state, CompositionCaseSpec spec) {
+  vector<CompositionSetup> setups;
+  setups.reserve(DEFAULT_SEED_COUNT);
+  for (int i = 0; i < DEFAULT_SEED_COUNT; ++i)
+    setups.push_back(buildCompositionSetup(spec, i));
   CompositionSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
-    const auto& setup = setups[iter % static_cast<int>(setups.size())];
+    const CompositionSetup& s = setups[iter % static_cast<int>(setups.size())];
     CompositionOptimizer opt(benchConfig);
-    auto result = opt.optimize(setup.initial, {0, 0}, setup.goal, {0, 0});
+    auto result = opt.optimize(s.initial, {0, 0}, s.goal, {0, 0}, s.params);
     accumulateStats(totalStats, result.getStats());
     iter++;
   }
@@ -271,61 +257,18 @@ static void BM_CompCharDist(benchmark::State& state, CharDistType charType) {
   setSearchCounters(state, totalStats);
 }
 
-// --- BufferSize: varies total buffer size ---
-static void BM_CompBufferSize(benchmark::State& state) {
-  int numLines = static_cast<int>(state.range(0));
-  int editCount = min(DEFAULT_EDIT_COUNT, numLines);
-  auto setups = makeSeededSetups([&](int) {
-    return makeDefaultSetup(numLines, DEFAULT_AVG_LEN, editCount);
-  });
-  CompositionSearchStats totalStats;
-  int iter = 0;
-  for (auto _ : state) {
-    const auto& setup = setups[iter % static_cast<int>(setups.size())];
-    CompositionOptimizer opt(benchConfig);
-    auto result = opt.optimize(setup.initial, {0, 0}, setup.goal, {0, 0});
-    accumulateStats(totalStats, result.getStats());
-    iter++;
-  }
-  setSearchCounters(state, totalStats);
-}
-
-// --- LineLength: varies average line length ---
-static void BM_CompLineLength(benchmark::State& state) {
-  int avgLen = static_cast<int>(state.range(0));
-  auto setups = makeSeededSetups([&](int) {
-    return makeDefaultSetup(DEFAULT_LINES, avgLen, DEFAULT_EDIT_COUNT);
-  });
-  CompositionSearchStats totalStats;
-  int iter = 0;
-  for (auto _ : state) {
-    const auto& setup = setups[iter % static_cast<int>(setups.size())];
-    CompositionOptimizer opt(benchConfig);
-    auto result = opt.optimize(setup.initial, {0, 0}, setup.goal, {0, 0});
-    accumulateStats(totalStats, result.getStats());
-    iter++;
-  }
-  setSearchCounters(state, totalStats);
-}
-
-// =============================================================================
-// Registration Helpers
-// =============================================================================
-
-static void registerArgBenchmark(const string& name, void(*fn)(benchmark::State&),
-                                  const vector<int>& args) {
-  auto* b = benchmark::RegisterBenchmark(name, fn);
-  for (int v : args) b->Arg(v);
-}
-
 // =============================================================================
 // Registration
 // =============================================================================
 
 static int registerCompositionBenchmarks = []() {
-  // EditCount
-  registerArgBenchmark("CompositionOpt/EditCount", BM_CompEditCount,
-                       {1, 2, 5, 8});
+  // Explorable cases (EditCount/BufferSize/LineLength) come from the shared
+  // catalog so the benchmark and explore tool agree on names + sizes.
+  for (const auto& spec : compositionCaseCatalog()) {
+    benchmark::RegisterBenchmark("CompositionOpt/" + spec.name, BM_CompCatalogCase, spec);
+  }
+
+  // --- Bench-only sweeps (not surfaced in explore) ---
 
   // EditSize
   for (const auto& [name, type] : vector<pair<string, EditSizeType>>{
@@ -357,14 +300,6 @@ static int registerCompositionBenchmarks = []() {
     auto* b = benchmark::RegisterBenchmark(
         "CompositionOpt/CharDist/" + name, BM_CompCharDist, type);
   }
-
-  // BufferSize
-  registerArgBenchmark("CompositionOpt/BufferSize", BM_CompBufferSize,
-                       {5, 10, 20, 40});
-
-  // LineLength
-  registerArgBenchmark("CompositionOpt/LineLength", BM_CompLineLength,
-                       {10, 20, 40, 60});
 
   return 0;
 }();

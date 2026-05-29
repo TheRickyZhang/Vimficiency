@@ -16,24 +16,11 @@
 // =============================================================================
 // Buffer Generation
 // =============================================================================
+// BufferShape, generateBuffer, and DEFAULT_RANGE_SIZE/DEFAULT_SEED_COUNT live in
+// Utils/RandomBufferHelpers.h (shared with the explore tool and the
+// optimizer-case catalog via test_utils).
 
-enum class BufferShape { Uniform, Prose, CodeLike };
-
-constexpr int DEFAULT_RANGE_SIZE = 6;
-constexpr int DEFAULT_SEED_COUNT = 5;
 constexpr double DEFAULT_BENCH_MIN_TIME = 0.05;
-
-inline Lines generateBuffer(int numLines = 20, int avgLineLen = 30, BufferShape shape = BufferShape::CodeLike) {
-  switch (shape) {
-    case BufferShape::Uniform:
-      return randomProseLines(numLines, avgLineLen, avgLineLen);
-    case BufferShape::Prose:
-      return randomProseBuffer(numLines);
-    case BufferShape::CodeLike:
-      return randomCodeBuffer(numLines, avgLineLen);
-  }
-  return {}; // unreachable
-}
 
 // =============================================================================
 // Seed Mode Description

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { Link } from '@tanstack/react-router';
 import type { BenchmarkRun } from '../types/benchmark';
 import { OverviewSection } from './OverviewSection';
 import { CategorySection } from './CategorySection';
@@ -51,11 +52,30 @@ export function App({
     : 'Performance tracking across commits';
   const pageSubtitle = subtitle ?? defaultSubtitle;
 
+  // Optimizer-level Search Space entry. Per-chart buttons stay gated per category;
+  // this keeps explore reachable on any optimizer that has data, since the chart
+  // buttons vanish for categories absent from the (curated, smaller) explore set.
+  // null = explore.json unavailable (unknown) → show, matching the inline buttons'
+  // don't-gate-when-unknown rule; [] → hide.
+  const hasExplore = showExplore && (exploreCategories == null || exploreCategories.length > 0);
+  const pageHeader = (
+    <>
+      <div className="flex items-baseline justify-between gap-4">
+        <h1>{optimizerName}</h1>
+        {hasExplore && (
+          <Link to="/$optimizer/explore" params={{ optimizer }} search={{ case: undefined }} className="explore-btn">
+            Search Space
+          </Link>
+        )}
+      </div>
+      <p className="subtitle">{pageSubtitle}</p>
+    </>
+  );
+
   if (validCategory && categories[validCategory]) {
     return (
       <>
-        <h1>{optimizerName}</h1>
-        <p className="subtitle">{pageSubtitle}</p>
+        {pageHeader}
         {inlinePanel}
         <CategorySection
           category={validCategory}
@@ -76,8 +96,7 @@ export function App({
 
   return (
     <>
-      <h1>{optimizerName}</h1>
-      <p className="subtitle">{pageSubtitle}</p>
+      {pageHeader}
       {headerChart}
       {inlinePanel}
       <OverviewSection

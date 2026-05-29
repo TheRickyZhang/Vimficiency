@@ -201,6 +201,7 @@ struct CompositionSearchContext {
   // Track an explored state when search-trace collection is compiled in.
   void trackState(const CompositionState& s) {
     if constexpr (SEARCH_TRACE_STATS_ENABLED) {
+      if (exploredStates.size() >= static_cast<size_t>(MAX_TRACED_STATES)) return;
       CursorPos pos = s.getPos();
       exploredStates.push_back({{pos.line, pos.col, s.getEffort(), s.getSequence().str()},
                                 s.getEditsCompleted()});

@@ -47,6 +47,9 @@ export interface BufferContext {
   goalLines: string[];
   initialCursor?: [number, number];
   goalCursor?: [number, number];
+  // Motion-to-range goal: half-open [beginLine, beginCol, endLine, endCol) span
+  // of acceptable landing cells. Present instead of goalCursor for range cases.
+  goalRange?: [number, number, number, number];
   prefix?: string;
   suffix?: string;
   hasLinesAbove?: boolean;

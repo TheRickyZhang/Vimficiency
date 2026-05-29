@@ -24,6 +24,7 @@
 #include "Optimizer/NavOptimizer/NavOptimizerParams.h"
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
 #include "Optimizer/SearchFrontier.h"
+#include "Utils/OptimizerCaseCatalog.h"
 #include "Utils/RandomGeneration.h"
 
 using namespace std;
@@ -35,14 +36,6 @@ namespace {
 // =============================================================================
 
 constexpr bool ENABLE_COMPARISON = false;
-
-static NavOptimizerParams navParamsA() {
-  return NavOptimizerParams{};
-}
-
-static NavOptimizerParams navParamsB() {
-  return NavOptimizerParams{}.withDirectionalPruning(false);
-}
 
 static NavOptimizerParams rangeParamsA() {
   return NavOptimizerParams{};
@@ -60,32 +53,9 @@ static Config benchConfig = Config::uniform();
 using NavPriorityQueue =
     priority_queue<NavState, vector<NavState>, greater<NavState>>;
 
-struct BenchmarkSetup {
-  Lines lines;
-  NavBoundary boundary{};
-  CursorPos firstPos;
-  CursorPos lastPos;
-
-  BenchmarkSetup(const Lines& lines) : lines(lines) {
-    firstPos = randomFirstPos(this->lines);
-    lastPos = randomLastPos(this->lines);
-    CursorPos boundaryEnd(lastPos.line, lastPos.col + 1);
-    boundary = NavBoundary(this->lines, firstPos, boundaryEnd, true, true);
-  }
-};
-
-static vector<BenchmarkSetup> makeMotionSetups(
-    int numLines, int avgLen = 30, BufferShape shape = BufferShape::CodeLike) {
-  auto& seedMgr = SeedManager::instance();
-  vector<BenchmarkSetup> setups;
-  setups.reserve(DEFAULT_SEED_COUNT);
-  for (int i = 0; i < DEFAULT_SEED_COUNT; ++i) {
-    RandomGen::seed(seedMgr.getSeed(i));
-    setups.emplace_back(generateBuffer(numLines, avgLen, shape));
-  }
-  return setups;
-}
-
+// Point/range motion cases come from the shared catalog (built via
+// buildNavSetup, so the explorer traces the identical buffer). RangeResultSize
+// below is a bench-only tuning sweep and keeps its own RangeBenchmarkSetup.
 struct RangeBenchmarkSetup {
   Lines lines;
   NavBoundary boundary{};
@@ -125,17 +95,6 @@ struct RangeBenchmarkSetup {
     boundary = NavBoundary(lines, rangeBegin, rangeEnd, true, true);
   }
 };
-
-static vector<RangeBenchmarkSetup> makeRangeSetups(int numLines, int avgLen = 30) {
-  auto& seedMgr = SeedManager::instance();
-  vector<RangeBenchmarkSetup> setups;
-  setups.reserve(DEFAULT_SEED_COUNT);
-  for (int i = 0; i < DEFAULT_SEED_COUNT; ++i) {
-    RandomGen::seed(seedMgr.getSeed(i));
-    setups.emplace_back(generateBuffer(numLines, avgLen));
-  }
-  return setups;
-}
 
 static vector<RangeBenchmarkSetup> makeRangeSizeSetups(int rangeChars, int rangeLines) {
   auto& seedMgr = SeedManager::instance();
@@ -261,13 +220,20 @@ static vector<DispatchExploreCase>& getDispatchExploreCases(DispatchScenario sce
   return codeLikePruned;
 }
 
-static void runWithParams(const BenchmarkSetup& cfg,
-                          const NavOptimizerParams& params,
-                          NavSearchStats& outStats) {
+static void runNavSetup(const NavSetup& s,
+                        const NavOptimizerParams& params,
+                        NavSearchStats& outStats) {
   NavOptimizer opt(benchConfig);
-  auto result = opt.optimize(cfg.lines, cfg.firstPos, cfg.lastPos,
-                             params, "", cfg.boundary);
-  accumulateStats(outStats, result.getStats());
+  if (s.goalKind == NavGoalKind::Point) {
+    auto result = opt.optimize(s.lines, s.start, s.goalPoint, params, "", s.boundary);
+    accumulateStats(outStats, result.getStats());
+  } else {
+    auto result = opt.optimize(
+        s.lines, s.start,
+        CharInterval(CharRange(s.rangeBegin, s.rangeEnd), s.lines),
+        params, "", s.boundary);
+    accumulateStats(outStats, result.getStats());
+  }
 }
 
 static void runRangeWithParams(const RangeBenchmarkSetup& cfg,
@@ -285,52 +251,19 @@ static void runRangeWithParams(const RangeBenchmarkSetup& cfg,
 // Benchmark Functions
 // =============================================================================
 
-static void BM_MotionBufferSize(benchmark::State& state, bool useB) {
-  int numLines = static_cast<int>(state.range(0));
-  auto setups = makeMotionSetups(numLines);
-  auto params = useB ? navParamsB() : navParamsA();
+// Drives one catalog case (BufferSize/LineLength/BufferShape point goals and
+// RangeBufferLines range goals). useB selects the no-pruning A/B variant.
+static void BM_MotionCatalogCase(benchmark::State& state, NavCaseSpec spec, bool useB) {
+  vector<NavSetup> setups;
+  setups.reserve(DEFAULT_SEED_COUNT);
+  for (int i = 0; i < DEFAULT_SEED_COUNT; ++i)
+    setups.push_back(buildNavSetup(spec, i));
+  NavOptimizerParams params =
+      useB ? spec.params.withDirectionalPruning(false) : spec.params;
   NavSearchStats totalStats;
   int iter = 0;
   for (auto _ : state) {
-    runWithParams(setups[iter % static_cast<int>(setups.size())], params, totalStats);
-    iter++;
-  }
-  setSearchCounters(state, totalStats);
-}
-
-static void BM_MotionLineLength(benchmark::State& state, bool useB) {
-  int avgLen = static_cast<int>(state.range(0));
-  auto setups = makeMotionSetups(20, avgLen);
-  auto params = useB ? navParamsB() : navParamsA();
-  NavSearchStats totalStats;
-  int iter = 0;
-  for (auto _ : state) {
-    runWithParams(setups[iter % static_cast<int>(setups.size())], params, totalStats);
-    iter++;
-  }
-  setSearchCounters(state, totalStats);
-}
-
-static void BM_MotionBufferShape(benchmark::State& state, bool useB, BufferShape shape) {
-  auto setups = makeMotionSetups(20, 30, shape);
-  auto params = useB ? navParamsB() : navParamsA();
-  NavSearchStats totalStats;
-  int iter = 0;
-  for (auto _ : state) {
-    runWithParams(setups[iter % static_cast<int>(setups.size())], params, totalStats);
-    iter++;
-  }
-  setSearchCounters(state, totalStats);
-}
-
-static void BM_MotionRangeBufferLines(benchmark::State& state, bool useB) {
-  int numLines = static_cast<int>(state.range(0));
-  auto setups = makeRangeSetups(numLines);
-  auto params = useB ? rangeParamsB() : rangeParamsA();
-  NavSearchStats totalStats;
-  int iter = 0;
-  for (auto _ : state) {
-    runRangeWithParams(setups[iter % static_cast<int>(setups.size())], params, totalStats);
+    runNavSetup(setups[iter % static_cast<int>(setups.size())], params, totalStats);
     iter++;
   }
   setSearchCounters(state, totalStats);
@@ -511,31 +444,21 @@ static void registerArgBenchmark(const string& name, void(*fn)(benchmark::State&
 }
 
 static int registerMotionBenchmarks = []() {
-  // BufferSize
-  registerArgBenchmark("MotionOpt/BufferSize", BM_MotionBufferSize,
-                       {1, 5, 10, 15, 20, 30});
-
-  // LineLength
-  registerArgBenchmark("MotionOpt/LineLength", BM_MotionLineLength,
-                       {10, 20, 40, 60, 80});
-
-  // BufferShape
-  for (const auto& [name, shape] : vector<pair<string, BufferShape>>{
-           {"Uniform", BufferShape::Uniform},
-           {"Prose", BufferShape::Prose},
-           {"CodeLike", BufferShape::CodeLike}}) {
-    string benchName = "MotionOpt/BufferShape/" + name;
-    auto* a = benchmark::RegisterBenchmark(
-        ENABLE_COMPARISON ? benchName + "/Standard" : benchName, BM_MotionBufferShape, false, shape);
+  // Explorable cases (BufferSize/LineLength/BufferShape/RangeBufferLines) come
+  // from the shared catalog so the benchmark and explore tool agree on names +
+  // sizes. Each registers under its full "MotionOpt/<category>/<param>" name —
+  // identical to the prior RegisterBenchmark(...)->Arg(v) names, so the
+  // dashboard timeline stays unbroken.
+  for (const auto& spec : navCaseCatalog()) {
+    string name = "MotionOpt/" + spec.name;
+    benchmark::RegisterBenchmark(
+        ENABLE_COMPARISON ? name + "/Standard" : name,
+        BM_MotionCatalogCase, spec, false);
     if (ENABLE_COMPARISON) {
-      auto* b = benchmark::RegisterBenchmark(
-          benchName + "/NoPruning", BM_MotionBufferShape, true, shape);
+      benchmark::RegisterBenchmark(name + "/NoPruning",
+                                   BM_MotionCatalogCase, spec, true);
     }
   }
-
-  // RangeBufferLines
-  registerArgBenchmark("MotionOpt/RangeBufferLines", BM_MotionRangeBufferLines,
-                       {5, 10, 20, 30, 40});
 
   // RangeResultSize
   for (const auto& [label, chars, rangeLines] : vector<tuple<string, int, int>>{

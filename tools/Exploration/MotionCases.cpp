@@ -1,45 +1,28 @@
 #include "Exploration/ExplorationCollector.h"
 
-#include "Boundary/NavBoundary.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
-#include "Optimizer/NavOptimizer/NavOptimizerParams.h"
-#include "Utils/RandomBufferHelpers.h"
-#include "Utils/RandomGeneration.h"
-#include "Utils/SeedManager.h"
+#include "Types/CharInterval.h"
+#include "Types/CharRange.h"
+#include "Utils/OptimizerCaseCatalog.h"
 
 using namespace std;
 
 vector<ExploreCase> collectMotionCases() {
   vector<ExploreCase> cases;
-  auto& seedMgr = SeedManager::instance();
 
-  struct MotionCase {
-    string name;
-    int numLines;
-    int avgLen;
-  };
-
-  vector<MotionCase> motionCases = {
-    {"BufferSize/1", 1, 30},
-    {"BufferSize/5", 5, 30},
-    {"BufferSize/10", 10, 30},
-    {"BufferSize/20", 20, 30},
-    {"LineLength/10", 20, 10},
-    {"LineLength/40", 20, 40},
-    {"LineLength/80", 20, 80},
-  };
-
-  NavOptimizerParams params;
-  for (const auto& mc : motionCases) {
-    RandomGen::seed(seedMgr.getSeed(0));
-    Lines lines = randomCodeBuffer(mc.numLines, mc.avgLen);
-    CursorPos firstPos = randomFirstPos(lines);
-    CursorPos lastPos = randomLastPos(lines);
-    CursorPos boundaryEnd(lastPos.line, lastPos.col + 1);
-    NavBoundary boundary(lines, firstPos, boundaryEnd, true, true);
+  for (const auto& spec : navCaseCatalog()) {
+    // Seed 0 is the representative instance of the case the benchmark times
+    // across DEFAULT_SEED_COUNT seeds; buildNavSetup fixes the identical buffer.
+    NavSetup s = buildNavSetup(spec, 0);
 
     NavOptimizer opt(config);
-    auto result = opt.optimize(lines, firstPos, lastPos, params, "", boundary);
+    LandingNavResult result =
+        spec.goalKind == NavGoalKind::Point
+            ? opt.optimize(s.lines, s.start, s.goalPoint, spec.params, "", s.boundary)
+            : opt.optimize(
+                  s.lines, s.start,
+                  CharInterval(CharRange(s.rangeBegin, s.rangeEnd), s.lines),
+                  spec.params, "", s.boundary);
 
     vector<FoundResult> found;
     for (const auto& r : result.getResults()) {
@@ -49,16 +32,23 @@ vector<ExploreCase> collectMotionCases() {
     }
 
     ContextData ctx;
-    for (const auto& l : lines) ctx.initialLines.push_back(l);
-    ctx.goalLines = ctx.initialLines;
-    ctx.initialCursorLine = firstPos.line;
-    ctx.initialCursorCol = firstPos.col;
-    ctx.goalCursorLine = lastPos.line;
-    ctx.goalCursorCol = lastPos.col;
+    for (const auto& l : s.lines) ctx.initialLines.push_back(l);
+    ctx.goalLines = ctx.initialLines;  // motion never changes text
+    ctx.initialCursorLine = s.start.line;
+    ctx.initialCursorCol = s.start.col;
     ctx.hasLinesAbove = true;
     ctx.hasLinesBelow = true;
+    if (spec.goalKind == NavGoalKind::Point) {
+      ctx.goalCursorLine = s.goalPoint.line;
+      ctx.goalCursorCol = s.goalPoint.col;
+    } else {
+      ctx.goalRangeBeginLine = s.rangeBegin.line;
+      ctx.goalRangeBeginCol = s.rangeBegin.col;
+      ctx.goalRangeEndLine = s.rangeEnd.line;
+      ctx.goalRangeEndCol = s.rangeEnd.col;
+    }
 
-    cases.push_back({mc.name, result.getStats(), std::move(found), std::move(ctx)});
+    cases.push_back({spec.name, result.getStats(), std::move(found), std::move(ctx)});
   }
 
   return cases;

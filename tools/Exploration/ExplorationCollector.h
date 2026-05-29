@@ -21,6 +21,10 @@ struct ContextData {
   std::vector<std::string> goalLines;
   int initialCursorLine = -1, initialCursorCol = -1;
   int goalCursorLine = -1, goalCursorCol = -1;
+  // Range goal (motion-to-range cases): the [begin, end) span of acceptable
+  // landing cells. All -1 for a point goal, in which case goalCursor* applies.
+  int goalRangeBeginLine = -1, goalRangeBeginCol = -1;
+  int goalRangeEndLine = -1, goalRangeEndCol = -1;
   std::string prefix;
   std::string suffix;
   bool hasLinesAbove = false;
