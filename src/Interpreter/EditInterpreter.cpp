@@ -489,10 +489,15 @@ void applyEdit(Lines& lines, CursorPos& pos, Mode& mode, const ParsedEdit& edit,
       applyEdit(lines, pos, mode, motion);
     }
 
-    // Compute range (visual mode is inclusive of both endpoints in Vim).
-    int posLineLen = static_cast<int>(lines[pos.line].size());
-    CharRange r(anchor, CursorPos(pos.line, std::min(pos.col + 1, posLineLen)));
-    r.normalize();
+    // Visual mode is inclusive of both endpoints; the half-open operator range
+    // extends one past the HIGHER of {anchor, cursor}. For a backward selection
+    // the cursor sits below the anchor, so the anchor takes the +1, not cursor.
+    const bool backward = pos.line < anchor.line ||
+                          (pos.line == anchor.line && pos.col < anchor.col);
+    CursorPos lo = backward ? pos : anchor;
+    CursorPos hi = backward ? anchor : pos;
+    int hiLineLen = static_cast<int>(lines[hi.line].size());
+    CharRange r(lo, CursorPos(hi.line, std::min(hi.col + 1, hiLineLen)));
 
     // Apply operator
     if (op == 'd') {

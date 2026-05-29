@@ -336,6 +336,27 @@ TEST(TransformFrontier, PreservesDistinctResultsFromSameStart) {
   EXPECT_NE(recs[0].token, recs[1].token);
 }
 
+// A replacement whose edit region is two empty lines ("\n"): a bare J joins
+// them to the cleared shell ([prefix+suffix] = [""]) that the goal text is then
+// typed into. deleteToChangeChar has no J case, so routing J through the
+// char-change conversion asserts; the frontier must emit raw "J".
+TEST(TransformFrontier, JoinReachingClearedShellInReplacementEmitsRawJoin) {
+  DiffState diff(CursorPos(0, 0), CursorPos(1, 0), "\n", "x", TransformBoundary{});
+  auto recs = rankTransformFrontier(
+      TransformFrontierQuery{
+          FrontierQuery{
+              .lines = Lines{Line(""), Line("")},
+              .cursor = {0, 0},
+              .maxCount = 10,
+          },
+          diff,
+      },
+      Config::uniform());
+  bool hasJoin = std::any_of(recs.begin(), recs.end(),
+      [](const Suggestion& s) { return s.token == "J"; });
+  EXPECT_TRUE(hasJoin);
+}
+
 TEST_F(ExploreViewTest, NavigateMotionRecommendationsLandOnEditStarts) {
   Lines initial{Line("one two three four five six seven")};
   Lines goal{Line("one two three four FIVE six seven")};
@@ -373,6 +394,29 @@ TEST_F(ExploreViewTest, NavigateMotionRecommendationsLandOnEditStarts) {
   }
   EXPECT_GT(motionCount, 0);
   EXPECT_TRUE(hasRecoveryMotion);
+}
+
+// Deleting the last char of a line as the prefix of a replacement clamps the
+// Normal-mode cursor back one column, so the post-deletion cursor is NOT the
+// residual insertion start. acceptSnapshot must derive the phase (-> Navigate)
+// rather than forcing Transform, which recommendTransform would assert against.
+TEST_F(ExploreViewTest, DeletePrefixClampedCursorRederivesPhaseNotAssert) {
+  Lines initial{Line("abc")};
+  Lines goal{Line("abX")};
+  auto view = makeView(initial, {0, 2}, goal, {0, 2});
+
+  ASSERT_TRUE(std::holds_alternative<Explore::Transform>(view.phase()));
+
+  // User deletes 'c' with `x`; Vim clamps the cursor from col 2 to col 1.
+  auto outcome =
+      view.acceptSnapshot(Lines{Line("ab")}, {0, 1}, "x", /*insertMode=*/false);
+  ASSERT_TRUE(outcome.has_value());
+
+  // Cursor (0,1) is not the insertion start (0,2): phase must fall back to
+  // Navigate, and recommendations() must not abort.
+  EXPECT_TRUE(std::holds_alternative<Explore::Navigate>(view.phase()));
+  auto recs = view.recommendations(10);
+  EXPECT_FALSE(recs.empty());
 }
 
 } // namespace

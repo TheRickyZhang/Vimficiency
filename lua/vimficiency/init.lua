@@ -105,7 +105,9 @@ function M.setup(user_config)
   vim.cmd.helptags(plugin_dir .. "/doc")
 
   if not user_config.shiftwidth then
-    user_config.shiftwidth = vim.o.shiftwidth
+    -- vim.fn.shiftwidth() resolves the "0 means follow tabstop" case to the
+    -- effective width; vim.o.shiftwidth can be 0, which the C++ side can't model.
+    user_config.shiftwidth = vim.fn.shiftwidth()
   end
 
   local lua_consumed = config.apply(user_config)

@@ -136,6 +136,7 @@ function M.normalize_auto_suggest(raw, defaults)
     cost = true,
     default_cost = true,
     cooldown_ms = true,
+    notif_cooldown_ms = true,
   })
 
   local merged = vim.tbl_deep_extend("force", vim.deepcopy(defaults), raw)
@@ -166,6 +167,7 @@ function M.normalize_auto_suggest(raw, defaults)
   end
 
   expect_non_negative_number("auto_suggest.cooldown_ms", merged.cooldown_ms)
+  expect_non_negative_number("auto_suggest.notif_cooldown_ms", merged.notif_cooldown_ms)
   return merged
 end
 

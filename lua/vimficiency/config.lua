@@ -30,6 +30,11 @@ local fields = {
   -- Session features
   auto_suggest = {
     cooldown_ms = 5000,
+    -- Minimum gap between *shown* suggestion toasts. A suggestion suppressed
+    -- by this guard is still finished + stored (reachable via `@`), just not
+    -- toasted. Distinct from cooldown_ms, which throttles how often the
+    -- optimizer runs.
+    notif_cooldown_ms = 2000,
     -- Fallback cost gate armed by `:Vimfy suggest on` when no idle/keys/cost
     -- trigger is configured. Tuning it does not auto-enable at startup; only
     -- an explicit trigger does.

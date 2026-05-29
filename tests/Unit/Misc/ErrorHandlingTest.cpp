@@ -28,6 +28,15 @@ TEST(ErrorHandlingTest, ParseMotionsRejectsMalformedSpecialKey) {
   EXPECT_EQ(result.error().offset, 0u);
 }
 
+TEST(ErrorHandlingTest, ParseMotionsRejectsBareFindCommand) {
+  // f/F/t/T with no target char is incomplete; the applier can't execute it.
+  EXPECT_FALSE(parseMovements("f").has_value());
+  EXPECT_FALSE(parseMovements("lf").has_value());
+  EXPECT_FALSE(parseMovements("3t").has_value());
+  // A find command with a target stays valid.
+  EXPECT_TRUE(parseMovements("fa").has_value());
+}
+
 TEST(ErrorHandlingTest, ParseSequenceRejectsUnknownCharacter) {
   // '!' is not a motion, delete, change, count prefix, or insert command.
   auto result = parseSequence("!");

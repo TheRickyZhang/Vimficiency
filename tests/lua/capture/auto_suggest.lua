@@ -15,6 +15,7 @@ local h             = require("_helpers")
 local fire_idle   = auto_suggest._for_test.fire_idle
 local fire_keys   = auto_suggest._for_test.fire_keys
 local fire_cost   = auto_suggest._for_test.fire_cost
+local render      = auto_suggest._for_test.render_suggestion
 local get_last_fp = auto_suggest._for_test.get_last_fingerprint
 local reset       = auto_suggest._for_test.reset
 
@@ -291,5 +292,43 @@ test("enable: turnkey default arms a trigger with no config", function()
     assert_eq(auto_suggest.is_enabled(), true)
     auto_suggest.disable()
     assert_eq(auto_suggest.is_enabled(), false)
+  end)
+end)
+
+--------------------------------------------------------------------------------
+-- render_suggestion: notif_cooldown_ms throttles visible toasts. A suppressed
+-- toast does not advance last_notify_hrtime; only a shown one does.
+--------------------------------------------------------------------------------
+
+local SUGGEST_SUMMARY = {
+  result = h.fake_result({
+    user_cost = 20,
+    optimal_results = { { seq = "ciwx", cost = 1.0 } },
+  }),
+}
+
+test("render_suggestion: suppresses a toast within notif_cooldown_ms", function()
+  local count = 0
+  h.with_patch({
+    { config, "auto_suggest", { notif_cooldown_ms = 600000 } },
+    { vim, "notify", function() count = count + 1 end },
+  }, function()
+    reset()
+    render(SUGGEST_SUMMARY)
+    render(SUGGEST_SUMMARY)
+    assert_eq(count, 1, "second toast within cooldown must be suppressed")
+  end)
+end)
+
+test("render_suggestion: notif_cooldown_ms = 0 never suppresses", function()
+  local count = 0
+  h.with_patch({
+    { config, "auto_suggest", { notif_cooldown_ms = 0 } },
+    { vim, "notify", function() count = count + 1 end },
+  }, function()
+    reset()
+    render(SUGGEST_SUMMARY)
+    render(SUGGEST_SUMMARY)
+    assert_eq(count, 2, "no cooldown → both toasts show")
   end)
 end)

@@ -98,7 +98,10 @@ void sync_config() {
     }
   }
 
-  if (g_config_ffi.shiftwidth >= 0) {
+  // Reject 0 as well as the -1 "unset" sentinel: shiftwidth 0 means "follow
+  // tabstop" in Neovim, which this layer can't model (no tabstop). Callers
+  // resolve it to the effective value before this point; keep the default 8.
+  if (g_config_ffi.shiftwidth >= 1) {
     VimOptions::shiftwidthRef() = g_config_ffi.shiftwidth;
   }
 

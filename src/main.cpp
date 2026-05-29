@@ -25,8 +25,18 @@ int main(int argc, char* argv[]) {
   fs::path end_path = argv[2];
   string user_seq = argv[3];
 
-  Snapshot start_snapshot = load_snapshot(start_path); 
-  Snapshot end_snapshot = load_snapshot(end_path); 
+  auto start_loaded = load_snapshot(start_path);
+  auto end_loaded = load_snapshot(end_path);
+  if(!start_loaded) {
+    cerr << "start snapshot: " << formatSnapshotParseError(start_loaded.error()) << endl;
+    return 1;
+  }
+  if(!end_loaded) {
+    cerr << "end snapshot: " << formatSnapshotParseError(end_loaded.error()) << endl;
+    return 1;
+  }
+  Snapshot start_snapshot = std::move(*start_loaded);
+  Snapshot end_snapshot = std::move(*end_loaded);
 
   CursorPos start_position(start_snapshot.row, start_snapshot.col);
   CursorPos end_position(end_snapshot.row, end_snapshot.col);

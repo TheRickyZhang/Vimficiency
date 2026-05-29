@@ -26,6 +26,15 @@ BufferIndex::BufferIndex(const Lines& buffer) {
     }
     prevLineWasEmpty = lineEmpty;
 
+    // A truly empty line is itself a word and a WORD: w/W and b/B stop on it
+    // (e/ge have no "end" there, so WordEnd/BigWordEnd are left out). A
+    // whitespace-only line is not a word, so this is gated on ln.empty(), not
+    // lineEmpty.
+    if (ln.empty()) {
+      get(LandingType::WordBegin).emplace_back(line, 0);
+      get(LandingType::BigWordBegin).emplace_back(line, 0);
+    }
+
     for (int col = 0; col < static_cast<int>(ln.size()); ++col) {
       char curr = ln[col];
       const bool atLineStart = col == 0;

@@ -26,6 +26,8 @@ string formatSnapshotParseError(const SnapshotParseError& error) {
       return "No navContext";
     case SnapshotParseErrorKind::InvalidNavContext:
       return "Bad navContext";
+    case SnapshotParseErrorKind::CannotRead:
+      return "Cannot read snapshot file";
   }
   assert(false && "Unhandled SnapshotParseErrorKind");
   return "unknown snapshot parse error";
@@ -89,19 +91,22 @@ expected<Snapshot, SnapshotParseError> parseSnapshot(string_view bytes) {
   while(getline(in, line)) {
     lines.push_back(line);
   }
+  // Neovim buffers always have >=1 line; an empty content section is an empty
+  // buffer, represented as a single empty line so downstream never sees 0 lines.
+  if (lines.empty()) {
+    lines.push_back("");
+  }
 
   Snapshot s(std::move(bufname), std::move(filename), row, col,
              topRow, bottomRow, windowHeight, scrollAmount, std::move(lines));
   return s;
 }
 
-Snapshot load_snapshot(const std::filesystem::path& path) {
+expected<Snapshot, SnapshotParseError> load_snapshot(const std::filesystem::path& path) {
   ifstream in(path);
-  if(!in) assert(false && "Can't read");
+  if(!in) return unexpected(SnapshotParseError{SnapshotParseErrorKind::CannotRead});
 
   ostringstream buffer;
   buffer << in.rdbuf();
-  auto parsed = parseSnapshot(buffer.str());
-  assert(parsed && "Invalid snapshot");
-  return *parsed;
+  return parseSnapshot(buffer.str());
 }

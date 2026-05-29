@@ -4,6 +4,37 @@ using namespace std;
 
 namespace {
 
+// Backward visual selection: the inclusive +1 must extend past the HIGHER of
+// {anchor, cursor}. `vhh` from col 2 selects cols 0-2; `d` deletes "abc".
+TEST_F(TransformOptimizer_ManualTest, VisualBackwardSelectionMatchesOracle) {
+  Lines lines = {"abcde"};
+  SimulationResult nvim = oracle->simulate(lines, 0, 2, "vhhd");
+
+  Lines ours = lines;
+  CursorPos pos(0, 2);
+  Mode mode = Mode::Normal;
+  Edit::applyEdit(ours, pos, mode, ParsedEdit("vhhd"));
+
+  EXPECT_EQ(ours, nvim.lines);
+  EXPECT_EQ(pos.line, nvim.row);
+  EXPECT_EQ(pos.col, nvim.col);
+}
+
+// Forward visual selection must still work after the fix.
+TEST_F(TransformOptimizer_ManualTest, VisualForwardSelectionMatchesOracle) {
+  Lines lines = {"abcde"};
+  SimulationResult nvim = oracle->simulate(lines, 0, 0, "vlld");
+
+  Lines ours = lines;
+  CursorPos pos(0, 0);
+  Mode mode = Mode::Normal;
+  Edit::applyEdit(ours, pos, mode, ParsedEdit("vlld"));
+
+  EXPECT_EQ(ours, nvim.lines);
+  EXPECT_EQ(pos.line, nvim.row);
+  EXPECT_EQ(pos.col, nvim.col);
+}
+
 TEST_F(TransformOptimizer_ManualTest, Boundary_VisualDeleteFallbackRespectsBoundary) {
   // Locks the visual-delete fallback path against motion-search boundary
   // drift: when the optimizer emits `v <motion> d` for a constrained slice,

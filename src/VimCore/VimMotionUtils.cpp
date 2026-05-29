@@ -941,19 +941,19 @@ generateFMotions(int currCol, int targetCol,
   // Count occurrences between cursor and window
   if constexpr (Forward) {
     for (int i = currCol + 1; i < l; i++) {
-      cnt[line[i]]++;
+      cnt[static_cast<unsigned char>(line[i])]++;
     }
     for (int i = l; i <= r; i++) {
       char c = line[i];
-      res.emplace_back(c, i, cnt[c]++);
+      res.emplace_back(c, i, cnt[static_cast<unsigned char>(c)]++);
     }
   } else {
     for (int i = currCol - 1; i > r; i--) {
-      cnt[line[i]]++;
+      cnt[static_cast<unsigned char>(line[i])]++;
     }
     for (int i = r; i >= l; i--) {
       char c = line[i];
-      res.emplace_back(c, i, cnt[c]++);
+      res.emplace_back(c, i, cnt[static_cast<unsigned char>(c)]++);
     }
   }
   return res;

@@ -5,11 +5,66 @@ local simulate = require("vimficiency.simulate")
 
 local M = {}
 
+---@param result VF.Session.Result
+---@param label string
+---@param count integer|nil
+local function run_compare(result, label, count)
+  local function fmt_cost(c)
+    return c and string.format("%.2f", c) or nil
+  end
+
+  local optimal_results = result.optimal_results or {}
+  local user_seq = result.user_seq or ""
+  local first_optimal = optimal_results[1] and optimal_results[1].seq or ""
+
+  local user_item = nil
+  if user_seq ~= "" and user_seq ~= first_optimal then
+    user_item = { seq = user_seq, cost = fmt_cost(result.user_cost) }
+  end
+
+  local suggestions = {}
+  for _, r in ipairs(optimal_results) do
+    table.insert(suggestions, { seq = r.seq, cost = fmt_cost(r.cost) })
+  end
+
+  if user_item == nil and #suggestions == 0 then
+    vim.notify("No sequences to simulate", vim.log.levels.WARN)
+    return
+  end
+
+  simulate.simulate_compare(
+    result.lines,
+    result.start_row,
+    result.start_col,
+    {
+      user = user_item,
+      suggestions = suggestions,
+    },
+    {
+      label = label,
+      end_row = result.end_row,
+      end_col = result.end_col,
+      initial_window_count = count,
+    }
+  )
+end
+
 ---@param alias string
 ---@param count integer|nil
 function M.simulate(alias, count)
   if not alias or alias == "" then
     vim.notify("simulate() requires a session alias or saved name", vim.log.levels.ERROR)
+    return
+  end
+
+  -- `@` = the most recently finished session (e.g. the last auto-suggestion).
+  if alias == "@" then
+    local result = session_store.get_last_finished_result()
+    if not result then
+      vim.notify("No recently finished session to replay.", vim.log.levels.ERROR)
+      return
+    end
+    run_compare(result, "@", count)
     return
   end
 

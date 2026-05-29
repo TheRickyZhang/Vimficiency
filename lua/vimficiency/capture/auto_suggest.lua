@@ -16,6 +16,8 @@ local SUBSCRIBER_COST = "auto_suggest_cost"
 local disarms = {}
 ---@type string|nil  Fingerprint of the most recent shown suggestion.
 local last_fingerprint = nil
+---@type integer  hrtime of the most recent shown toast (notif_cooldown_ms gate).
+local last_notify_hrtime = 0
 
 ---@param result VF.Session.Result
 ---@return string
@@ -41,9 +43,20 @@ local function render_suggestion(summary)
   local optimal = (result.optimal_results or {})[1]
   if not optimal then return end
 
+  -- Drop toasts landing within notif_cooldown_ms of the previous shown one.
+  -- The record is already finished + stored, so a suppressed suggestion is
+  -- still reachable via `@` / `:Vimfy list`.
+  local cfg = config.auto_suggest
+  local notif_cooldown_ns = ((cfg and cfg.notif_cooldown_ms) or 0) * 1e6
+  local now = vim.uv.hrtime()
+  if last_notify_hrtime > 0 and (now - last_notify_hrtime) < notif_cooldown_ns then
+    return
+  end
+  last_notify_hrtime = now
+
   vim.notify(
-    string.format("%.1f → %.1f   %s\n:Vimfy explore @   ·   save @ <name>",
-      result.user_cost or 0, optimal.cost or 0, optimal.seq or ""),
+    string.format("%s (%.1f)  →  %s (%.1f)\n:Vimfy play @  ·  explore @  ·  save @ <name>",
+      summary.preview or "", result.user_cost or 0, optimal.seq or "", optimal.cost or 0),
     vim.log.levels.INFO,
     { title = "vimfy suggest", id = "vimfy_suggest" })
 end
@@ -179,6 +192,7 @@ function M.disable()
   for _, d in ipairs(disarms) do d() end
   disarms = {}
   last_fingerprint = nil
+  last_notify_hrtime = 0
 end
 
 ---@return boolean
@@ -199,9 +213,11 @@ M._for_test = {
   fire_idle = fire_idle,
   fire_keys = fire_keys,
   fire_cost = fire_cost,
+  render_suggestion = render_suggestion,
   get_last_fingerprint = function() return last_fingerprint end,
   reset = function()
     last_fingerprint = nil
+    last_notify_hrtime = 0
   end,
 }
 

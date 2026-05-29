@@ -200,6 +200,29 @@ test("validate_auto_suggest: default_cost validates its shape", function()
   end)
 end)
 
+test("validate_auto_suggest: notif_cooldown_ms defaults and validates", function()
+  with_saved_auto_suggest(function()
+    config.auto_suggest = config_detail.normalize_auto_suggest(nil, config._defaults.auto_suggest)
+    assert_eq(config.auto_suggest.notif_cooldown_ms, 2000, "default notif cooldown")
+
+    assert_error(
+      function()
+        validate_auto_suggest({
+          cost = { m = 1.5, b = 2.0, ms = 500, window = "30s" },
+          notif_cooldown_ms = -1,
+        })
+      end,
+      "notif_cooldown_ms", "negative notif cooldown must be rejected"
+    )
+
+    validate_auto_suggest({
+      cost = { m = 1.5, b = 2.0, ms = 500, window = "30s" },
+      notif_cooldown_ms = 1000,
+    })
+    assert_eq(config.auto_suggest.notif_cooldown_ms, 1000)
+  end)
+end)
+
 test("validate_auto_suggest: all three triggers coexist", function()
   with_saved_auto_suggest(function()
     validate_auto_suggest({

@@ -331,16 +331,20 @@ void enumerateDepth1DeletionStructurals(
         cmd, firstLineContent);
   };
 
-  // Explorer's J lane owns every J/gJ/NJ/NgJ that exactly reaches the
-  // post-edit fencepost. The fencepost gate inside applyAndEmitCharwise
-  // (newState.getLines() == expectedPost) makes this disjoint from
-  // emitJoinFirstAction, which owns "progress without reaching fencepost".
-  // No pure-deletion gate — a replacement of `\n` with ` ` is also reachable
-  // by a bare J.
+  // Joins are split by edit kind. For a pure deletion the cleared shell IS the
+  // goal (expectedPost == applyDiffState), so a join reaching it completes the
+  // transform: charwiseSeq's non-replacement path emits raw J, and
+  // emitJoinFirstAction's fencepost gate yields to it. For a replacement the
+  // cleared shell is only delete-progress (expectedPost != goal), which
+  // emitJoinFirstAction owns (it carries the residual insert distance); routing
+  // it here would both duplicate that "J" and hit deleteToChangeChar, which has
+  // no J/gJ case. So skip replacements.
   auto onJoin = [&](bool addSpace, const SequenceBinding& cmd) {
+    if (isReplacement) return;
     applyAndEmitCharwise(TransformSimulator::afterJoin(state, addSpace), cmd);
   };
   auto onCountedJoin = [&](bool addSpace, const SequenceBinding& cmd) {
+    if (isReplacement) return;
     applyAndEmitCharwise(TransformSimulator::afterMultiJoin(state, cmd.count, addSpace), cmd);
   };
 

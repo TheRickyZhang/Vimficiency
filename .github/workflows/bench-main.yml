@@ -54,4 +54,15 @@ jobs:
           # (the concurrency group above already serializes runs) and to
           # skip the pre-push hook self-install step in CMakeLists.txt.
           CI: "true"
-        run: scripts/bench-local-run.sh "${{ github.sha }}" main
+          GH_TOKEN: ${{ github.token }}
+        # checkout's token auth (http.extraheader) doesn't reliably survive the
+        # repo "recreate" that the persistent worktree cache triggers across
+        # runs, so the script's `git fetch/push origin gh-pages` lost
+        # credentials ("could not read Username"). Embed the job token in the
+        # origin URL (workspace .git config, shared by the worktrees the script
+        # creates) so network git ops authenticate regardless. Token is
+        # job-scoped and reset by checkout on the next run.
+        run: |
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          scripts/bench-local-run.sh "${{ github.sha }}" main

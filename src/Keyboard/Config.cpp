@@ -218,7 +218,7 @@ void fillColemakDh(Config &model) {
   set_key(Key::Key_Tab,       Hand::Left,   Finger::Lp,   1.8);
   set_key(Key::Key_Enter,     Hand::Right,  Finger::Rp,   1.0);
   set_key(Key::Key_Backspace, Hand::Right,  Finger::Rp,   0.8);
-  set_key(Key::Key_Space,     Hand::Right,   Finger::Lt, 0.8);
+  set_key(Key::Key_Space,     Hand::Right,   Finger::Rt, 0.8);
   set_key(Key::Key_Delete,    Hand::Right,  Finger::Ri,   2.5);
 
   set_key(Key::Key_Ctrl,  Hand::Left, Finger::Lp, 1.2);

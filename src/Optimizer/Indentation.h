@@ -31,6 +31,9 @@ inline int leadingSpaceCount(std::string_view s) {
 // In autoindent context, <BS> deletes to the previous shiftwidth boundary, not
 // just 1 space. Returns -1 if <BS> overshoots past `to` (can't land exactly).
 inline int bsCountForIndent(int from, int to, int sw = VimOptions::shiftwidth()) {
+  // shiftwidth 0 ("follow tabstop" in Neovim) has no boundary to step to;
+  // signal "use <C-u> fallback" rather than dividing by zero.
+  if (sw <= 0) return -1;
   int count = 0;
   int pos = from;
   while (pos > to) {

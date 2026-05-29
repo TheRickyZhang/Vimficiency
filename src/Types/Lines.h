@@ -125,6 +125,18 @@ struct Lines final : std::vector<Line> {
     return pos.col >= 0 && pos.col <= maxCol;
   }
 
+  // Nearest position that `contains()` accepts: clamp the line into range, then
+  // the column onto a real character of that line. Input boundaries use this
+  // because Neovim can hand back an insert-mode / 'virtualedit' cursor sitting
+  // one past end-of-line, which is not a valid normal-mode target.
+  CursorPos clamp(const CursorPos& pos) const {
+    if (empty()) return CursorPos(0, 0);
+    const int line = std::clamp(pos.line, 0, lastLine());
+    const auto& l = data()[line];
+    const int maxCol = l.empty() ? 0 : static_cast<int>(l.size()) - 1;
+    return CursorPos(line, std::clamp(pos.col, 0, maxCol));
+  }
+
   char get(const CursorPos& pos) const {
     assert(pos.line < static_cast<int>(size()) && "Lines::get() position out of bounds");
     return data()[pos.line].get(pos.col);

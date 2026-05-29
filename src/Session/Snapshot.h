@@ -34,6 +34,7 @@ enum class SnapshotParseErrorKind {
   InvalidCursorPosition,
   MissingNavContext,
   InvalidNavContext,
+  CannotRead,
 };
 
 struct SnapshotParseError {
@@ -42,4 +43,4 @@ struct SnapshotParseError {
 
 std::string formatSnapshotParseError(const SnapshotParseError& error);
 std::expected<Snapshot, SnapshotParseError> parseSnapshot(std::string_view bytes);
-Snapshot load_snapshot(const std::filesystem::path &path);
+std::expected<Snapshot, SnapshotParseError> load_snapshot(const std::filesystem::path &path);

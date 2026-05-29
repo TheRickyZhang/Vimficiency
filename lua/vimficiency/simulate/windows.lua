@@ -180,7 +180,7 @@ function M.escape(ctx)
     default_rank = first.default_rank,
   } }
   for i = 2, #saved_entries do
-    cmd("vsplit")
+    cmd("rightbelow vsplit")
     local new_win = v.nvim_get_current_win()
     local saved = saved_entries[i]
     v.nvim_win_set_buf(new_win, saved.buf)
@@ -201,9 +201,17 @@ function M.escape(ctx)
   end
 
   cmd("wincmd =")
-  v.nvim_set_current_win(new_windows[focused_idx].win)
-
   ctx.state.windows = new_windows
+
+  -- focus()'s `cmd("only")` closed the status bar; recreate it (as build_grid
+  -- does) so the step/label bar returns after un-focusing.
+  local primary = new_windows[focused_idx].win
+  v.nvim_set_current_win(primary)
+  ctx.create_status_bar()
+  if v.nvim_win_is_valid(primary) then
+    v.nvim_set_current_win(primary)
+  end
+
   ctx.set_focus_state(nil)
   ctx.seek_to(ctx.state.global_step)
 end

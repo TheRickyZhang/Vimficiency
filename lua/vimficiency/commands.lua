@@ -489,6 +489,9 @@ function M.handle(arg_string)
 end
 
 function M.complete(arg_lead, cmd_line, cursor_pos)
+  -- Escape pattern magic up front: arg_lead is used only as a `^`-anchored
+  -- match prefix below, and the user can type `(`, `[`, `%`, etc.
+  arg_lead = vim.pesc(arg_lead)
   local args = vim.split(cmd_line:sub(1, cursor_pos), "%s+")
   table.remove(args, 1)
 
@@ -538,6 +541,7 @@ function M.complete(arg_lead, cmd_line, cursor_pos)
 
   if subcmd == "play" then
     local candidates = session.list()
+    table.insert(candidates, "@")
     for _, t in ipairs(alias_mod.TIME_HINTS) do
       table.insert(candidates, t)
     end

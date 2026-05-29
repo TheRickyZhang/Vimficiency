@@ -801,7 +801,11 @@ Outcome View::acceptSnapshot(const Lines& liveLines, CursorPos liveCursor,
             next.partialEditSpanBegin = static_cast<uint32_t>(next.seq.size());
           }
           appendRawKeys(next, rawKeys, config_);
-          next.phase = Transform{editIndex};
+          // The deletion may leave the cursor off the residual insertion start
+          // (e.g. deleting the last char clamps it back one column). Derive the
+          // phase so a non-start cursor becomes Navigate(i) rather than a
+          // Transform(i) that recommendTransform would reject.
+          next.phase = phaseForCursor(editIndex, next.lines, next.cursor);
         }
         return commit(std::move(next));
       }

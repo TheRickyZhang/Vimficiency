@@ -259,7 +259,13 @@ VFByteSlice vf_simulate_movements(
           .and_then(payload::decodeLineArray)
           .and_then([&](const Lines& lines) {
             return helpers::requiredBytes(seq, seq_len, "seq")
-                .transform([&](string_view movementSeq) {
+                .and_then([&](string_view movementSeq) -> Result<std::string> {
+                  // Validate before simulateMovements (which .value()s the
+                  // parse): an exception must never cross this extern "C" ABI.
+                  if (!parseMovements(movementSeq)) {
+                    return helpers::unexpectedError(
+                        ExportErrorKind::InvalidValue, "invalid movement sequence");
+                  }
                   CursorPos pos(start_row, start_col);
                   const CursorPos landed = simulateMovements(pos, movementSeq, lines, NavContext());
                   return helpers::packInts(landed.line, landed.col);

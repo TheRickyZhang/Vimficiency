@@ -112,6 +112,15 @@ std::expected<std::vector<ParsedMovement>, MovementParseError> parseMovements(st
       continue;
     }
 
+    // f/F/t/T with no following target char is incomplete; reject it here so
+    // the longest-match below can't accept a bare "f" the applier asserts on.
+    if (isFindCommand(c)) {
+      return std::unexpected(MovementParseError{
+          .kind = MovementParseErrorKind::UnknownMotion,
+          .offset = i,
+      });
+    }
+
     // Handle <C-_> for special bindings (e.g., <C-_>, <C-d>, <CR>)
     if (c == '<') {
       size_t close = sv.find('>', i);

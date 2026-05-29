@@ -85,6 +85,12 @@ function M.validate(data)
   if type(data.start_col) ~= "number" then
     return "missing or non-numeric 'start_col' field"
   end
+  if type(data.end_row) ~= "number" then
+    return "missing or non-numeric 'end_row' field"
+  end
+  if type(data.end_col) ~= "number" then
+    return "missing or non-numeric 'end_col' field"
+  end
   if data.has_lines_above ~= nil and type(data.has_lines_above) ~= "boolean" then
     return "non-boolean 'has_lines_above' field"
   end

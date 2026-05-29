@@ -77,8 +77,12 @@ VF::LuaExports::Result<string> analyzeImpl(
   const Lines goalLines = std::move(*goalLinesResult);
   const string keyseqText(*keyseqTextResult);
 
-  const CursorPos initialPos(start_row, start_col);
-  const CursorPos goalPos(end_row, end_col);
+  // Neovim can capture an insert-mode / 'virtualedit' cursor one past
+  // end-of-line, or (for recall windows) a row outside the sliced buffer. The
+  // optimizer requires normal-mode-valid endpoints, so clamp at the boundary
+  // rather than aborting on the downstream CHECK.
+  const CursorPos initialPos = initialLines.clamp(CursorPos(start_row, start_col));
+  const CursorPos goalPos = goalLines.clamp(CursorPos(end_row, end_col));
   const NavContext navigationContext(window_height, scroll_amount);
 
   vector<::Result> results;

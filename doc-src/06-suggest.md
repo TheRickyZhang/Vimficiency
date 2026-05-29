@@ -20,13 +20,14 @@ With no `auto_suggest` block in `setup{}`, Suggest arms a built-in **cost
 gate** (`auto_suggest.default_cost`, default
 `{ m = 1.5, b = 2.0, ms = 1000, window = "3s" }`): after a brief idle pause it
 analyzes the last ~3s of editing and surfaces a result only when your typed
-effort exceeds `1.5 * optimal + 2`. The toast is one line —
-`<your effort> → <optimal>  <suggested keys>` — and the result is already
-saved as a session, reachable with the `@` selector:
+effort exceeds `1.5 * optimal + 2`. The toast is compact —
+`<your keys> (<your cost>) → <suggested keys> (<best cost>)` — and the result
+is already saved as a session, reachable with the `@` selector (the most
+recently finished session):
 
 ```vim
-:Vimfy explore @        " inspect interactively
-:Vimfy play @           " replay side-by-side
+:Vimfy play @           " side-by-side: before/after buffer + your vs suggested sequences
+:Vimfy explore @        " step through interactively
 :Vimfy save @ <name>    " persist to disk
 ```
 
@@ -44,13 +45,16 @@ require('vimficiency').setup({
         idle = { ms = 3000, window = "3s" },
         keys = { every = 50 },              -- every 50 keystrokes
         cost = { m = 1.5, b = 2.0, ms = 300, window = "100" },
-        cooldown_ms = 5000,                 -- feature-level, applies to all
+        cooldown_ms = 5000,                 -- how often the optimizer may run
+        notif_cooldown_ms = 2000,           -- min gap between *shown* toasts
     },
 })
 ```
 
 Any subset of triggers may be configured; presence of the sub-table
 enables the trigger. Omit the sub-table to disable that trigger.
+Configuring any trigger also auto-enables Suggest at startup (no
+`:Vimfy suggest on` needed) — this is the way to make it **default on**.
 
 Because Suggest is (auto, auto), both halves have a config pointer:
 
@@ -100,6 +104,13 @@ Beyond `cooldown_ms`, Suggest also fingerprints the computed result
 (edit region + user sequence + top suggestion) and suppresses a fire
 whose result matches the previously shown one. The fingerprint resets
 when you disable Suggest.
+
+`notif_cooldown_ms` is a separate, finer guard at the notification
+layer: a suggestion landing within that window of the previous *shown*
+toast is not displayed. It is still finished and stored, so it stays
+reachable via the `@` selector and `:Vimfy list` — only the toast is
+dropped. This lets you lower `cooldown_ms` (so the optimizer keeps
+re-analyzing as you work) without the toasts becoming spammy.
 
 For `cooldown_ms` and the `idle.ms` threshold itself, see [Idle
 end-detection](09-configuration.md#idle-end-detection) — Watch and
