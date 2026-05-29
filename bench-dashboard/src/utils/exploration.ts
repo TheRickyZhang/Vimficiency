@@ -1,4 +1,5 @@
 import type {
+  ExplorationData,
   ExplorationCase,
   ExploredStateEntry,
   FoundResultEntry,
@@ -38,15 +39,33 @@ export function findCase(cases: ExplorationCase[], query: string | null): Explor
   if (!query) return cases[0];
   const exact = cases.find((c) => c.name === query);
   if (exact) return exact;
-  const partial = cases.find((c) => c.name.endsWith(query) || query.endsWith(c.name));
-  if (partial) return partial;
-  return cases[0];
+  // Exact param missing: land on the same category's first case if it exists,
+  // otherwise the first case overall (caseCategoryExists tells the caller it was a miss).
+  const queryCat = parseCaseName(query).category;
+  const sameCat = cases.find((c) => parseCaseName(c.name).category === queryCat);
+  return sameCat ?? cases[0];
 }
 
 export function parseCaseName(name: string): { category: string; param: string } {
   const slash = name.indexOf('/');
   if (slash === -1) return { category: name, param: '' };
   return { category: name.substring(0, slash), param: name.substring(slash + 1) };
+}
+
+/** Categories present in the latest exploration entry — used to gate Explore buttons. */
+export function exploreCategoryNames(data: ExplorationData): string[] {
+  const latest = data.entries[data.entries.length - 1];
+  if (!latest) return [];
+  const cats = new Set<string>();
+  for (const c of latest.cases) cats.add(parseCaseName(c.name).category);
+  return [...cats];
+}
+
+/** Whether any case shares the requested query's category. */
+export function caseCategoryExists(cases: ExplorationCase[], query: string | null): boolean {
+  if (!query) return true;
+  const cat = parseCaseName(query).category;
+  return cases.some((c) => parseCaseName(c.name).category === cat);
 }
 
 /** Derive sub-tree data for a chunk (edit or motion) from a chunked case */

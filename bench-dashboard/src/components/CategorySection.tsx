@@ -16,6 +16,7 @@ interface Props {
   repoUrl: string;
   initialBench?: string | null;
   showExplore?: boolean;
+  exploreCategories?: string[] | null;
   categoryActionLabel?: string;
   onCategoryAction?: (category: string) => void;
   onBenchOpened?: () => void;
@@ -35,11 +36,15 @@ export function CategorySection({
   repoUrl,
   initialBench,
   showExplore = true,
+  exploreCategories,
   categoryActionLabel,
   onCategoryAction,
   onBenchOpened,
 }: Props) {
   const [modal, setModal] = useState<{ title: string; idx: number } | null>(null);
+  // Only offer Explore where exploration data exists for this category. null =
+  // unknown (explore.json unavailable): don't gate, keep prior behavior.
+  const canExplore = showExplore && (exploreCategories == null || exploreCategories.includes(category));
 
   const charts = benchNames.map((benchName) => {
     const detail = parseName(benchName).detail;
@@ -87,7 +92,7 @@ export function CategorySection({
           }}>
             <div className="flex justify-between items-center mb-2">
               <h4 className="m-0 text-base font-bold text-[#333]">{c.detail}</h4>
-              {showExplore && (
+              {canExplore && (
                 <Link
                   to="/$optimizer/explore"
                   params={{ optimizer }}
@@ -112,7 +117,7 @@ export function CategorySection({
           series={modalData.series}
           unit={modalData.unit}
           onClose={() => setModal(null)}
-          exploreLink={showExplore ? { optimizer, case: category + '/' + modalData.detail } : undefined}
+          exploreLink={canExplore ? { optimizer, case: category + '/' + modalData.detail } : undefined}
           activeMetrics={activeMetrics}
           onMetricsChange={setActiveMetrics}
         />

@@ -16,6 +16,7 @@ interface Props {
   subtitle?: string;
   inlinePanel?: ReactNode;
   headerChart?: ReactNode;
+  exploreCategories?: string[] | null;
   categoryActionLabel?: string;
   onCategoryAction?: (category: string) => void;
   onNavigate: (cat: string | null, benchName?: string) => void;
@@ -34,6 +35,7 @@ export function App({
   subtitle,
   inlinePanel,
   headerChart,
+  exploreCategories,
   categoryActionLabel,
   onCategoryAction,
   onNavigate,
@@ -63,6 +65,7 @@ export function App({
           repoUrl={repoUrl}
           initialBench={openBench}
           showExplore={showExplore}
+          exploreCategories={exploreCategories}
           categoryActionLabel={categoryActionLabel}
           onCategoryAction={onCategoryAction}
           onBenchOpened={onBenchConsumed}

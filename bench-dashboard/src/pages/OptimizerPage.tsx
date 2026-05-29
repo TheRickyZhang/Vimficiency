@@ -4,7 +4,7 @@ import { App } from '../components/App';
 import { AggregateDurationChart } from '../components/AggregateDurationChart';
 
 export function OptimizerPage() {
-  const { data, categories, optimizerName, repoUrl } = optimizerIndexRoute.useLoaderData();
+  const { data, categories, optimizerName, repoUrl, exploreCategories } = optimizerIndexRoute.useLoaderData();
   const { cat, bench } = optimizerIndexRoute.useSearch();
   const { optimizer } = optimizerIndexRoute.useParams();
   const navigate = useNavigate({ from: optimizerIndexRoute.fullPath });
@@ -28,6 +28,7 @@ export function OptimizerPage() {
       activeCategory={cat ?? null}
       openBench={bench ?? null}
       headerChart={<AggregateDurationChart data={data} repoUrl={repoUrl} label={optimizerName} />}
+      exploreCategories={exploreCategories}
       onNavigate={(newCat, benchName) => {
         void navigate({
           search: { cat: newCat || undefined, bench: benchName || undefined },

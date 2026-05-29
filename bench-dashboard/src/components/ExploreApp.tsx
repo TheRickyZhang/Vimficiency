@@ -12,6 +12,7 @@ import {
   chunkedStatesToFlat,
   chunkedResultsToFlat,
   findCase,
+  caseCategoryExists,
   parseCaseName,
   deriveChunkDetail,
 } from '../utils/exploration';
@@ -181,6 +182,14 @@ export function ExploreApp({ data, initialCase }: Props) {
     <div>
       <h1>Search Space Explorer</h1>
       <p className="text-[#666] text-[1.1rem] mb-10">A* explored states visualization</p>
+
+      {initialCase && !selectedCaseName && !caseCategoryExists(cases, initialCase) && (
+        <div className="mb-6 rounded-md border border-[#e6c200] bg-[#fffbe6] text-[#7a5d00] text-sm px-4 py-3 text-center">
+          No exploration data for <code className="font-semibold">{initialCase}</code>
+          {activeCase && <> — showing <code className="font-semibold">{activeCase.name}</code> instead.</>}
+          {categories.length > 0 && <> Explored: {categories.join(', ')}.</>}
+        </div>
+      )}
 
       {/* Commit row */}
       <div className="mb-4 flex flex-col items-center">

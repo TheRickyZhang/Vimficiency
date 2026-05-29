@@ -3,6 +3,7 @@ import type { BenchmarkData, BenchmarkRun } from './types/benchmark';
 import type { ExplorationData } from './types/exploration';
 import type { CoverageData, CoverageBinary } from './types/coverage';
 import { loadBenchmarkData, discoverCategories, type TimePoint } from './utils/data';
+import { exploreCategoryNames } from './utils/exploration';
 import { RootLayout } from './components/RootLayout';
 import { HomePage } from './pages/HomePage';
 import { OptimizerPage } from './pages/OptimizerPage';
@@ -83,30 +84,51 @@ export interface OptimizerLoaderData {
   categories: ReturnType<typeof discoverCategories>;
   optimizerName: string;
   repoUrl: string;
+  // Categories that actually have exploration data, for gating Explore buttons.
+  // null = unknown (explore.json missing/failed): don't gate, preserve old behavior.
+  exploreCategories: string[] | null;
+}
+
+function emptyOptimizerData(): OptimizerLoaderData {
+  return { data: null, categories: {}, optimizerName: 'Benchmarks', repoUrl: '', exploreCategories: null };
+}
+
+async function loadExploreCategories(optimizer: string): Promise<string[] | null> {
+  try {
+    const res = await fetch(`${base}${optimizer}/explore.json?_=${Date.now()}`);
+    if (!res.ok) return null;
+    return exploreCategoryNames(await res.json());
+  } catch {
+    return null;
+  }
 }
 
 export const optimizerIndexRoute = createRoute({
   getParentRoute: () => optimizerLayoutRoute,
   path: '/',
   loader: async ({ params }): Promise<OptimizerLoaderData> => {
+    const isTests = params.optimizer === 'tests';
     try {
-      const res = await fetch(`${base}${params.optimizer}/data.json?_=${Date.now()}`);
-      if (!res.ok) return { data: null, categories: {}, optimizerName: 'Benchmarks', repoUrl: '' };
+      const [res, exploreCategories] = await Promise.all([
+        fetch(`${base}${params.optimizer}/data.json?_=${Date.now()}`),
+        isTests ? Promise.resolve<string[] | null>(null) : loadExploreCategories(params.optimizer),
+      ]);
+      if (!res.ok) return emptyOptimizerData();
       const raw: BenchmarkData = await res.json();
-      const data = params.optimizer === 'tests'
+      const data = isTests
         ? loadTestSuiteBenchmarkData(raw, 'unit')
         : loadBenchmarkData(raw);
       const categories = discoverCategories(data);
       let optimizerName = 'Benchmarks';
       const firstName = data[data.length - 1]?.benches[0]?.name;
-      if (params.optimizer === 'tests') {
+      if (isTests) {
         optimizerName = 'Unit Tests';
       } else if (firstName) {
         optimizerName = firstName.split('/')[0] ?? 'Benchmarks';
       }
-      return { data: data.length > 0 ? data : null, categories, optimizerName, repoUrl: raw.repoUrl };
+      return { data: data.length > 0 ? data : null, categories, optimizerName, repoUrl: raw.repoUrl, exploreCategories };
     } catch {
-      return { data: null, categories: {}, optimizerName: 'Benchmarks', repoUrl: '' };
+      return emptyOptimizerData();
     }
   },
   validateSearch: (search: Record<string, unknown>) => ({
