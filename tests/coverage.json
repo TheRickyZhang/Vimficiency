@@ -1,0 +1,359 @@
+{
+  "generated": 1780046887097,
+  "binaries": {
+    "Property": {
+      "totalCases": 39,
+      "failures": 0,
+      "suites": [
+        {
+          "name": "DiffStateGeneratedPropertyTest",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "RoundTripAndStructureAcrossBufferStyles",
+              "passed": true
+            },
+            {
+              "name": "SequentialApplicationMatchesBatchApplication",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "EffortCompositionGeneratedPropertyTest",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "MergeEqualsSequentialAppend",
+              "passed": true
+            },
+            {
+              "name": "AssociativityMatchesSequentialAppend",
+              "passed": true
+            },
+            {
+              "name": "AppendFromMatchesMergeAndSequentialAppend",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "InterpreterMatchesOracle",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "MovementSequences",
+              "passed": true
+            },
+            {
+              "name": "CharFindRepeatState",
+              "passed": true
+            },
+            {
+              "name": "EditCommands",
+              "passed": true
+            },
+            {
+              "name": "ParagraphSentenceChangeOperators",
+              "passed": true
+            },
+            {
+              "name": "MixedNormalModeSequences",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyBracketObjects",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "BracketObjectsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyCharOperators",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "CharOperatorsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyClearedShellEntry",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "EntryAndCollapseMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyCountedWord",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "CountedWordEditsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyCountedLine",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "CountedLineEditsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyDotRepeat",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "DotRepeatMatchesOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyInsertNewline",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "InsertNewlineMatchesOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyJoinLines",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "SingleJoinMatchesOracle",
+              "passed": true
+            },
+            {
+              "name": "MultiJoinMatchesOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyLinewiseEdits",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "LinewiseEditsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyParagraphCommands",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "ParagraphCommandsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyParagraphTextObjects",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "ParagraphTextObjectsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyQuoteObjects",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "QuoteObjectsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyScrollMotions",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "ScrollMotionsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifySentenceCommands",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "SentenceCommandsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifySentenceTextObjects",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "SentenceTextObjectsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyWordOperator",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "WordOperatorMatchesOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "VerifyWordTextObjects",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "WordTextObjectsMatchOracle",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "TransformExplorerBoundaryPropertyTest",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "EmittedDeletesPreserveBoundaries",
+              "passed": true
+            },
+            {
+              "name": "SafeLocalUnboundedDeletesRemainAvailable",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "CompositionOptimizerGeneratedPropertyTest",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "ShrinkableBufferMutationsTopResultsReplay",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "NavOptimizerGeneratedPropertyTest",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "SubBufferMotionCorrectness",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "TransformOptimizerGeneratedPropertyTest",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "SingleLineEmbeddedTopResultsReplay",
+              "passed": true
+            },
+            {
+              "name": "MultiLineFullBufferTopResultsReplay",
+              "passed": true
+            },
+            {
+              "name": "SameLengthReplacementTopResultsReplay",
+              "passed": true
+            },
+            {
+              "name": "MultiLineEmbeddedTopResultsReplay",
+              "passed": true
+            },
+            {
+              "name": "SingleLineChangeTopResultsReplay",
+              "passed": true
+            },
+            {
+              "name": "MultiLineFullBufferChangeTopResultsReplay",
+              "passed": true
+            },
+            {
+              "name": "MultiLineEmbeddedChangeTopResultsReplay",
+              "passed": true
+            }
+          ]
+        }
+      ]
+    },
+    "Safety": {
+      "totalCases": 6,
+      "failures": 0,
+      "suites": [
+        {
+          "name": "ParserBoundarySafetyTest",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "MovementTokensBorrowInput",
+              "passed": true
+            },
+            {
+              "name": "EditTokensBorrowInput",
+              "passed": true
+            },
+            {
+              "name": "SnapshotsAreReadable",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "PayloadSafetyTest",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "LengthPrefixedPayloadsRoundTrip",
+              "passed": true
+            },
+            {
+              "name": "LineArraysRoundTrip",
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "SequenceParserSafetyTest",
+          "failures": 0,
+          "cases": [
+            {
+              "name": "SequenceTokensAreStable",
+              "passed": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
