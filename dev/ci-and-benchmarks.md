@@ -45,40 +45,26 @@ Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.
 
 ## Benchmark pipeline (`scripts/bench-local-run.sh`)
 
-Two triggers drive the same `bench-local-run.sh` script:
+One automatic trigger drives `bench-local-run.sh`:
 
-1. **`main` pushes** — `.github/workflows/bench-main.yml` runs on a
-   self-hosted macOS runner (the "spare machine"). Fires on every push to
-   main, including PR merges done via the web UI. Source of truth for the
-   chart's main-history points.
-2. **Feature branch pushes** — `.githooks/pre-push` on the maintainer's
-   dev machine. Local hook, fires on `git push origin <feature-branch>`.
-   Useful for pre-merge perf intuition; not on the chart's main-history
-   path.
+- **`main` pushes** — `.github/workflows/bench-main.yml` runs on a
+  self-hosted macOS runner (the "spare machine"). Fires on every push to
+  main, including PR merges done via the web UI. It is the only source of
+  timeline points.
 
-Cross-machine note: feature-branch entries come from the dev machine and
-main entries from the spare. The two hardware profiles produce different
-absolute numbers. Within a single regime (main-to-main, feature-to-feature
-on the same dev machine) comparisons are stable; cross-regime baseline
-comparisons (e.g. `bench-compare` against a parent SHA benched on the
-other machine) are apples-to-oranges and worth reading with that caveat.
+Feature branches are **not** benched automatically. A `.githooks/pre-push`
+hook on the dev machine used to bench them, but that put two hardware
+profiles (Linux dev machine vs the macOS spare) on one timeline and made
+every cross-regime comparison apples-to-oranges. The hook and its
+`core.hooksPath` install step (formerly in the top-level `CMakeLists.txt`)
+were removed; the timeline is now all-main, all-macOS-runner, so points are
+directly comparable.
 
-### Pre-push hook (feature branches)
-
-Installs itself the first time you run `cmake -B build` — the top-level
-`CMakeLists.txt` sets `core.hooksPath=.githooks` if it isn't already, so
-`.githooks/pre-push` fires on every `git push origin`. The install step is
-skipped in CI (`CI` env var present) since CI clones don't push from these
-checkouts.
-
-For each pushed branch ref the hook applies guardrails (working tree
-clean, `HEAD` matches the pushed SHA, on AC power if a
-`/sys/class/power_supply/AC/online` sensor exists). It also **skips
-`main`** — those go through the self-hosted runner. Failed guardrails log
-a skip reason; they never block the push itself. If guardrails pass, it
-backgrounds `scripts/bench-local-run.sh <sha> <branch>` via `setsid
-nohup`, so the bench keeps running even after the terminal that ran `git
-push` is closed.
+For ad-hoc pre-merge perf intuition, run the benchmark binary directly —
+`./build/tests/vimfy_benchmarks --benchmark_filter=<suite>` — which prints
+numbers without touching the chart. `bench-local-run.sh` itself still
+ingests and pushes to gh-pages, so only run it by hand when you actually
+want a point on the timeline (see *Re-running manually*).
 
 ### Self-hosted macOS runner (`main`)
 
@@ -104,20 +90,18 @@ never touched. Two `git worktree`s sharing `.git` with the main repo:
 - `repo/` — detached worktree at the pushed SHA, used to build and run benches
 - `gh-pages/` — worktree on the `gh-pages` branch, written into and pushed back to `origin`
 - `logs/run-<ts>-<sha>-<branch>.log` — full output of each run
-- `last-status` — written on every exit; pre-push hook reads this so failures from a previous run surface on the next push
+- `last-status` — written on every exit; records the last run's exit code, sha, branch, and log path for manual inspection
 - `lock` — `flock`-based single-flight; concurrent invocations exit immediately rather than queue stale runs
 
 ### Single-source data model
 
-Every bench — main on the spare machine, feature branches on the dev
-machine — ingests into the same root timeline at
+Every bench ingests into the same root timeline at
 `gh-pages/{edit,motion,composition}/data.json`. There are no per-branch
 dashboards, no promotion-on-PR-merge logic, no `branches.json` index.
-Each commit in the chart corresponds to an actual measurement on one of
-the two machines (with the cross-regime caveat noted above). Feature-branch
-SHAs that never reach `main` (squashed away, rebased, abandoned) still
-appear on the timeline as historical points — accepted as the cost of
-keeping the bench/merge concerns decoupled.
+With benches now main-only on the spare machine, each chart point is a real
+main-SHA measurement on one consistent machine. (A manual
+`bench-local-run.sh` on a non-main SHA would still ingest a point; that is
+the one remaining way an off-main entry can land, so do it deliberately.)
 
 Main-only extras are conditional on `BRANCH=main` (a cheap optimization,
 not a correctness boundary): exploration data via `vimfy_explore`
@@ -143,27 +127,26 @@ Steps:
 - **Self-hosted runner (main):** the workflow run shows up under the
   Actions tab; failures send the standard GitHub notification. Logs are
   retained per GitHub's defaults.
-- **Local hook (feature branches):** runner is backgrounded with output
-  redirected, so crashes aren't immediately visible. Mechanisms:
-  - `notify-send` desktop notification on completion — critical urgency on
-    failure, low on success. Silently skipped if no notification daemon.
-  - `~/.cache/vimficiency-bench/last-status` records exit code, SHA,
-    branch, and log path.
-  - The next `git push` (via the pre-push hook) reads `last-status` and
-    prints a warning if the previous exit was non-zero. A successful run
-    overwrites the status so the warning clears.
+- **Manual `bench-local-run.sh` runs:** the script emits a `notify-send`
+  desktop notification on completion (critical urgency on failure, low on
+  success; silently skipped if no notification daemon) and records exit
+  code, SHA, branch, and log path to
+  `~/.cache/vimficiency-bench/last-status` for inspection.
 
 ### Re-running manually
 
-If a push happened with the hook disabled or guardrails skipped it, run
-the runner directly from any machine that has the build deps installed:
+To re-ingest a `main` SHA (e.g. the self-hosted runner was offline for a
+push), run the pipeline directly from a machine with the build deps
+installed:
 
 ```bash
 scripts/bench-local-run.sh <sha> <branch>
 ```
 
-The script's behavior is identical whether `<branch>` is `main` or a
-feature branch — only the optional main-only extras differ.
+This ingests and pushes to gh-pages, so it adds or overwrites a timeline
+point. Behavior is identical for any `<branch>` — only the optional
+main-only extras differ — which is also why running it on a non-main SHA
+deliberately lands an off-main point.
 
 ## Self-hosted macOS runner setup (one-time)
 

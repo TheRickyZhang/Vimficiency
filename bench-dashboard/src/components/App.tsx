@@ -54,7 +54,6 @@ export function App({
       <>
         <h1>{optimizerName}</h1>
         <p className="subtitle">{pageSubtitle}</p>
-        {headerChart}
         {inlinePanel}
         <CategorySection
           category={validCategory}
@@ -76,6 +75,7 @@ export function App({
     <>
       <h1>{optimizerName}</h1>
       <p className="subtitle">{pageSubtitle}</p>
+      {headerChart}
       {inlinePanel}
       <OverviewSection
         categories={categories}

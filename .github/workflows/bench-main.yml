@@ -1,8 +1,8 @@
 name: bench-main
 # Triggered on every push to main (including PR merges), runs the local
-# bench pipeline on the self-hosted macOS runner. Replaces the pre-push hook
-# as the source of truth for main-branch chart entries — the hook only fires
-# from the maintainer's machine and misses PR-merged commits.
+# bench pipeline on the self-hosted macOS runner. This is the only automatic
+# bench trigger — the former dev-machine pre-push hook (feature branches) was
+# removed so the whole timeline stays on one machine.
 on:
   push:
     branches: [main]
@@ -51,8 +51,7 @@ jobs:
       - name: Run bench pipeline
         env:
           # Tells bench-local-run.sh to skip the flock-based single-flight
-          # (the concurrency group above already serializes runs) and to
-          # skip the pre-push hook self-install step in CMakeLists.txt.
+          # (the concurrency group above already serializes runs).
           CI: "true"
           GH_TOKEN: ${{ github.token }}
         # checkout's token auth (http.extraheader) doesn't reliably survive the

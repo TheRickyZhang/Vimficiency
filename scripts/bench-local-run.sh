@@ -3,12 +3,13 @@
 # benchmark-store CI jobs used to do, but on this machine for consistent
 # hardware. Builds the pushed commit in a private cache, runs the three
 # suites with fixed seeds, ingests results into a local gh-pages worktree, and
-# pushes. Main and feature-branch pushes share the root benchmark timeline.
+# pushes into the root benchmark timeline.
 #
 # Usage:
 #   scripts/bench-local-run.sh <pushed-sha> <branch-name>
 #
-# Invoked in the background by .githooks/pre-push. Logs to
+# Invoked by .github/workflows/bench-main.yml on the self-hosted runner, or by
+# hand for recovery / deliberate off-main ingests. Logs to
 # ~/.cache/vimficiency-bench/logs/. Single-flight via flock — concurrent
 # invocations exit immediately rather than queue.
 set -euo pipefail
@@ -65,18 +66,16 @@ fi
 
 LOG_FILE="$LOG_DIR/run-$(date +%Y%m%d-%H%M%S)-${PUSHED_SHA:0:8}-${SAFE_BRANCH}.log"
 # Under CI, leave stdout/stderr connected to the workflow log so failures
-# are visible in the Actions tab; the local log file is only useful when
-# the runner is backgrounded by the pre-push hook on the dev machine.
+# are visible in the Actions tab; the local log file is only useful for a
+# by-hand (non-CI) run.
 if [ -z "${CI:-}" ]; then
   exec >"$LOG_FILE" 2>&1
 fi
 
-# Failure surfacing. The runner is backgrounded with stdout/stderr already
-# redirected to /dev/null by the hook, so without these mechanisms a crash
-# is invisible to the user:
-#   - $STATUS_FILE: pre-push hook reads this on the next push and prints a
-#     warning if the last exit was non-zero. Successful runs overwrite it,
-#     so the warning naturally clears.
+# Failure surfacing for a by-hand run (stdout/stderr go to $LOG_FILE, not the
+# terminal), so without these mechanisms a crash is easy to miss:
+#   - $STATUS_FILE: records the last exit code/sha/branch/log for inspection.
+#     Successful runs overwrite it.
 #   - notify-send: desktop notification on completion (low urgency on
 #     success, critical on failure). Silently skipped if not installed.
 STATUS_FILE="$CACHE_DIR/last-status"
@@ -120,9 +119,9 @@ git -C "$REPO_ROOT" worktree prune
 
 # --- Source worktree ---
 # Detached worktree at PUSHED_SHA, sharing .git with the user's main repo.
-# Two reasons over a separate clone: (1) the commit being pushed is already
-# in the main repo's object store, so we sidestep the pre-push race where
-# `git fetch origin` runs before GitHub has the new tree; (2) one shared
+# Two reasons over a separate clone: (1) the commit being benched is already
+# in the main repo's object store, so we don't depend on `git fetch origin`
+# landing it first (a real race back when this ran mid-push from a hook); (2) one shared
 # .git instead of duplicating it. Pinned detached HEAD means whatever the
 # user does in their main checkout next can't move our source out from
 # under the in-progress build.

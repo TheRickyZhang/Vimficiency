@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router';
 import { optimizerIndexRoute } from '../router';
 import { App } from '../components/App';
+import { AggregateDurationChart } from '../components/AggregateDurationChart';
 
 export function OptimizerPage() {
   const { data, categories, optimizerName, repoUrl } = optimizerIndexRoute.useLoaderData();
@@ -26,6 +27,7 @@ export function OptimizerPage() {
       repoUrl={repoUrl}
       activeCategory={cat ?? null}
       openBench={bench ?? null}
+      headerChart={<AggregateDurationChart data={data} repoUrl={repoUrl} label={optimizerName} />}
       onNavigate={(newCat, benchName) => {
         void navigate({
           search: { cat: newCat || undefined, bench: benchName || undefined },

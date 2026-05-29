@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { testSuiteRoute } from '../router';
 import { App } from '../components/App';
-import { BenchmarkChart } from '../components/BenchmarkChart';
+import { AggregateDurationChart } from '../components/AggregateDurationChart';
 import { CoverageView } from '../components/CoverageView';
 import { approvalFixturesForCategory, testSuiteDescription, getTestSuite, type ApprovalFixture, type TestSuiteSlug } from '../utils/testSuites';
-import { bestUnit } from '../utils/format';
 import { approvalFixtureContents } from '../utils/approvalFixtureContents';
 
 export function TestSuitePage() {
@@ -54,16 +53,14 @@ export function TestSuitePage() {
     )
     : undefined;
 
-  const headerChart = binaryTotal.length > 0
-    ? (
-      <section className="card p-4 mb-8 max-w-[60%] mx-auto max-md:max-w-full">
-        <h4 className="m-0 mb-2 text-base font-bold text-[#333]">Total {getTestSuite(suiteSlug).label} duration</h4>
-        <div style={{ height: 220 }}>
-          <BenchmarkChart series={binaryTotal} unit={bestUnit(binaryTotal.map((p) => p.val))} />
-        </div>
-      </section>
-    )
-    : undefined;
+  const headerChart = (
+    <AggregateDurationChart
+      data={data}
+      repoUrl={repoUrl}
+      label={getTestSuite(suiteSlug).label}
+      totalOverride={binaryTotal.length > 0 ? binaryTotal : undefined}
+    />
+  );
 
   return (
     <>
