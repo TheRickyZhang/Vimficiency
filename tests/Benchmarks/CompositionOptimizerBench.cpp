@@ -301,6 +301,20 @@ static int registerCompositionBenchmarks = []() {
         "CompositionOpt/CharDist/" + name, BM_CompCharDist, type);
   }
 
+  // Large-scale sweeps past the catalog ceilings, to characterize worst-case
+  // latency. EditCount drives the superlinear cost (catalog stops at 8);
+  // BufferSize probes toward the Lua MAX_SEARCH_LINES=500 ceiling — the largest
+  // slice the plugin ever hands the optimizer (catalog stops at 40). Bench-only;
+  // the big cases are slow by design.
+  for (int editCount : {8, 12, 16, 20}) {
+    CompositionCaseSpec spec{"EditCountLarge/" + to_string(editCount), 40, 20, editCount};
+    benchmark::RegisterBenchmark("CompositionOpt/" + spec.name, BM_CompCatalogCase, spec);
+  }
+  for (int numLines : {100, 250, 500}) {
+    CompositionCaseSpec spec{"BufferSizeLarge/" + to_string(numLines), numLines, 20, 5};
+    benchmark::RegisterBenchmark("CompositionOpt/" + spec.name, BM_CompCatalogCase, spec);
+  }
+
   return 0;
 }();
 

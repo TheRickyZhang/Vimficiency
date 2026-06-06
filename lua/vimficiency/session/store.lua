@@ -53,15 +53,21 @@ local config = require("vimficiency.config")
 ---@field end_col integer              # 0-indexed
 ---@field has_lines_above boolean|nil  # Whether the optimization slice omitted lines above
 ---@field has_lines_below boolean|nil  # Whether the optimization slice omitted lines below
+---@field prefix string|nil            # Reserved boundary prefix; empty at the whole-buffer level (see compute.lua)
+---@field suffix string|nil            # Reserved boundary suffix; empty at the whole-buffer level
+---@field diffs VF.Diff.Region[]|nil   # Optimizer character-level diff regions for column highlighting; absent on pre-diff saved files
 ---@field window_height integer|nil    # Captured window height for page/scroll semantics
 ---@field scroll_amount integer|nil    # Captured 'scroll' option for Ctrl-D/U semantics
----@field user_seq string              # What the user typed (keytrans string)
+---@field user_seq string              # What the user typed (keytrans string), mouse events stripped
 ---@field user_cost number             # Effort cost of user's sequence
+---@field had_mouse boolean|nil        # Whether mouse/scroll events were stripped from the capture
 ---@field optimal_results VF.Optimizer.Result[] # Top N results from optimizer (seq + cost)
 ---@field capture_debug table|nil      # Captured key events and reducer output, persisted only for debugging
 ---@field start_time integer           # hrtime when the session started
 ---@field key_count integer            # Captured key events at finish (authoritative; user_seq is bytes, not keys)
 ---@field timestamp integer            # hrtime when the result was computed (finish time)
+---@field analyze_ms number|nil        # Wall-time of the optimizer analyze() FFI call (ms); running-model telemetry
+---@field compute_ms number|nil        # Wall-time of the full compute_result_for_active block (ms): analyze + diff + marshaling
 ---@field finish_reason? VF.Session.FinishReason  # Why the session ended; set by finish_session, absent on pre-reason saved files
 
 --- Normalized view-model for list/suggest UIs.
@@ -157,6 +163,13 @@ local recall_id_order = {}
 ---                   eviction, recall disable).
 local last_finished_id = nil
 
+---@type string|nil  The id of the most recent suggest regression that was
+---                   surfaced (auto_suggest gate passed). Drives the `$`
+---                   selector. A subset of `last_finished_id` history: only
+---                   set for Suggest finishes that actually fired a toast,
+---                   not for gate-suppressed or duplicate ones.
+local last_suggest_id = nil
+
 --------------------------------------------------------------------------------
 -- Recall lookup
 --------------------------------------------------------------------------------
@@ -244,6 +257,7 @@ local function destroy_record(id)
   end
   session_records[id] = nil
   if last_finished_id == id then last_finished_id = nil end
+  if last_suggest_id == id then last_suggest_id = nil end
   return true
 end
 
@@ -482,6 +496,46 @@ function M.get_last_finished_id()
   if not last_finished_id then return nil end
   if not session_records[last_finished_id] then return nil end
   return last_finished_id
+end
+
+--- Mark a session as the most recent suggest regression (drives `$`).
+--- Called by auto_suggest only when a toast is surfaced.
+---@param id string
+function M.set_last_suggest_id(id)
+  last_suggest_id = id
+end
+
+--- Id of the most recent suggest regression, or nil if none / evicted.
+---@return string|nil id
+function M.get_last_suggest_id()
+  if not last_suggest_id then return nil end
+  if not session_records[last_suggest_id] then return nil end
+  return last_suggest_id
+end
+
+--- The finish_alias of a record by id (used as the default `:Vimfy save` name).
+---@param id string
+---@return string|nil
+function M.get_alias_by_id(id)
+  local rec = session_records[id]
+  return rec and rec.finish_alias or nil
+end
+
+--- Resolve a special workspace selector (`@` most-recent finished, `$`
+--- most-recent suggest regression) to its session id and result. Single source
+--- of truth so callers (`save`/`store`/`play`/`explore`/`view`) handle both
+--- alike. The id is internally sourced and trusted, so the result is read
+--- straight from the record (no `is_session_id` re-validation).
+---@param selector string
+---@return string|nil id              # nil when special but nothing is recorded yet
+---@return VF.Session.Result|nil result
+---@return boolean is_special
+function M.resolve_special(selector)
+  if selector ~= "@" and selector ~= "$" then return nil, nil, false end
+  local id = (selector == "@") and M.get_last_finished_id() or M.get_last_suggest_id()
+  if not id then return nil, nil, true end
+  local rec = session_records[id]
+  return id, rec and rec.result or nil, true
 end
 
 --- Insert a disk-loaded result as a finished session under `alias`.
@@ -731,7 +785,7 @@ function M.teardown_active()
 end
 
 --- Snapshot finished records and indexes for plugin reload.
----@return { records: table, manual: table, order: string[], last_finished: string|nil }
+---@return { records: table, manual: table, order: string[], last_finished: string|nil, last_suggest: string|nil }
 function M.dump_for_reload()
   local records_copy = {}
   for id, rec in pairs(session_records) do
@@ -750,6 +804,7 @@ function M.dump_for_reload()
     manual        = manual_copy,
     order         = order_copy,
     last_finished = last_finished_id,
+    last_suggest  = last_suggest_id,
   }
 end
 
@@ -760,7 +815,7 @@ end
 --- already be clean, but this guard keeps the invariant explicit: after
 --- restore, every entry in `manual_alias_to_id` and `recall_id_order`
 --- resolves to a real record.
----@param dump { records: table, manual: table, order: string[], last_finished: string|nil }
+---@param dump { records: table, manual: table, order: string[], last_finished: string|nil, last_suggest: string|nil }
 function M.restore_from_dump(dump)
   session_records = dump.records or {}
 
@@ -781,6 +836,11 @@ function M.restore_from_dump(dump)
   last_finished_id =
     (dump.last_finished and session_records[dump.last_finished])
       and dump.last_finished
+      or nil
+
+  last_suggest_id =
+    (dump.last_suggest and session_records[dump.last_suggest])
+      and dump.last_suggest
       or nil
 end
 

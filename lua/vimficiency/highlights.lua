@@ -39,6 +39,13 @@ M.REPLAY_CURSOR_INSERT = "VimficiencyReplayCursorInsert"  -- cursor cell in inse
 M.REPLAY_CURSOR_VISUAL = "VimficiencyReplayCursorVisual"  -- cursor / visual selection
 M.REPLAY_ACTIVE        = "VimficiencyReplayActive"        -- active window's label
 
+-- Result view (full-screen side-by-side initial/final)
+M.VIEW_DIFF_DELETE  = "VimficiencyViewDiffDelete"  -- changed columns on the initial pane
+M.VIEW_DIFF_ADD     = "VimficiencyViewDiffAdd"     -- changed columns on the final pane
+M.VIEW_CONTEXT_DIM  = "VimficiencyViewContextDim"  -- faded out-of-slice/boundary context
+M.VIEW_CURSOR_START = "VimficiencyViewCursorStart" -- start cursor cell (initial pane)
+M.VIEW_CURSOR_END   = "VimficiencyViewCursorEnd"   -- end cursor cell (final pane)
+
 -- Shared settings modal
 M.SETTINGS_ACTION_ACTIVE = "VimficiencySettingsActionActive" -- selected action row
 M.SETTINGS_CURSOR_HIDDEN = "VimficiencySettingsCursorHidden" -- selected row only; no cursor cell
@@ -61,6 +68,12 @@ function M.refresh()
   v.nvim_set_hl(0, M.REPLAY_CURSOR_INSERT, { link = "DiffAdd",    default = true })
   v.nvim_set_hl(0, M.REPLAY_CURSOR_VISUAL, { link = "Visual",     default = true })
   v.nvim_set_hl(0, M.REPLAY_ACTIVE,        { link = "Title",      default = true })
+
+  v.nvim_set_hl(0, M.VIEW_DIFF_DELETE,  { link = "DiffDelete", default = true })
+  v.nvim_set_hl(0, M.VIEW_DIFF_ADD,     { link = "DiffAdd",    default = true })
+  v.nvim_set_hl(0, M.VIEW_CONTEXT_DIM,  { link = "Comment",    default = true })
+  v.nvim_set_hl(0, M.VIEW_CURSOR_START, { link = "Search",     default = true })
+  v.nvim_set_hl(0, M.VIEW_CURSOR_END,   { link = "IncSearch",  default = true })
 
   v.nvim_set_hl(0, M.SETTINGS_ACTION_ACTIVE, { bold = true, default = true })
   -- `blend = 100` makes the cursor cell fully transparent. Combined with the

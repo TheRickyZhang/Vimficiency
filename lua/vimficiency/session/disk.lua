@@ -97,6 +97,20 @@ function M.validate(data)
   if data.has_lines_below ~= nil and type(data.has_lines_below) ~= "boolean" then
     return "non-boolean 'has_lines_below' field"
   end
+  if data.had_mouse ~= nil and type(data.had_mouse) ~= "boolean" then
+    return "non-boolean 'had_mouse' field"
+  end
+  if data.prefix ~= nil and type(data.prefix) ~= "string" then
+    return "non-string 'prefix' field"
+  end
+  if data.suffix ~= nil and type(data.suffix) ~= "string" then
+    return "non-string 'suffix' field"
+  end
+  -- diffs are recomputable from lines/goal_lines, so a missing or coarse value
+  -- is tolerated (the view recomputes); we only reject a wrong top-level type.
+  if data.diffs ~= nil and type(data.diffs) ~= "table" then
+    return "non-array 'diffs' field"
+  end
   if data.window_height ~= nil and type(data.window_height) ~= "number" then
     return "non-numeric 'window_height' field"
   end

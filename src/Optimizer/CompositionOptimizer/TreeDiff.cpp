@@ -3,6 +3,7 @@
 #include <cassert>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -41,6 +42,27 @@ using Node = Tree::Node;
 Level childLevel(Level level) {
   assert(level != Level::Char);
   return level + 1;
+}
+
+// Keystroke cost of the bare motion to traverse one unit at a given level:
+// l/w/j = 1, W/} (shifted) = 2. Movement sums this per kept child between edits.
+double levelCost(Level level) {
+  switch (level) {
+    case Level::Paragraph: return 2.0;  // }
+    case Level::Line:      return 1.0;  // j
+    case Level::BigWord:   return 2.0;  // W
+    case Level::Word:      return 1.0;  // w
+    case Level::Char:      return 1.0;  // l
+    default:               return 0.0;  // Root: whole buffer, never a diff unit
+  }
+}
+
+// Keystroke cost of deleting a contiguous run at a given level: the motion plus
+// the `d` operator, count-independent (one command). char is `x` (a single key,
+// no operator). Pricing a counted delete as one command is what keeps a
+// fine-level multi-delete (4dd) from being dominated by a coarse one (dap).
+double deleteCost(Level level) {
+  return level == Level::Char ? 1.0 : levelCost(level) + 1.0;
 }
 
 struct EditSpan {
@@ -166,17 +188,12 @@ private:
     };
   }
 
-  double typedTextEffort(string_view text) const {
+  RunningEffort rangeEffort(const Tree& tree, TextRange range) const {
     KeyedSequence typed;
-    typed.append(text);
-    RunningEffort effort(typed.keys, config);
-    return effort.getEffort(config);
-  }
-
-  double typedRangeEffort(const Tree& tree, TextRange range) const {
-    return typedTextEffort(string_view(tree.text).substr(
+    typed.append(string_view(tree.text).substr(
         range.begin,
         range.end - range.begin));
+    return RunningEffort(typed.keys, config);
   }
 
   double diffSpanCost(const EditSpan& span) const {
@@ -205,6 +222,10 @@ private:
 
     Solver& solver;
     Level childLevel_;
+    double unitCost_;    // movement keystrokes per kept child at childLevel_
+    double deleteUnit_;  // deletion keystrokes per delete region at childLevel_
+    int prefixMatchLen_ = 0;  // leading run of identical children (free, pre-first-edit)
+    int suffixMatchLen_ = 0;  // trailing run of identical children (free tail)
     const Node& oldParent;
     const Node& newParent;
     int oldBegin;
@@ -218,6 +239,9 @@ private:
     vector<vector<OuterChoice>> outerChoice;
     vector<vector<InnerBuild>> innerChoice;
     vector<vector<double>> newRangeEffort;
+    // Memoized suffix-min over old-end r: min_{r>=i} outer(r, c).
+    vector<vector<double>> bestRCost;
+    vector<vector<int>> bestRArg;
 
     ListDp(Solver& solver,
            Level parentLevel,
@@ -225,6 +249,8 @@ private:
            const Node& newParent)
         : solver(solver),
           childLevel_(childLevel(parentLevel)),
+          unitCost_(levelCost(childLevel_) * solver.options.moveDeleteScale),
+          deleteUnit_(deleteCost(childLevel_) * solver.options.moveDeleteScale),
           oldParent(oldParent),
           newParent(newParent),
           oldBegin(oldParent.children.begin),
@@ -247,13 +273,35 @@ private:
               vector<InnerBuild>(newCount + 1)),
           newRangeEffort(
               newCount + 1,
-              vector<double>(newCount + 1, 0.0)) {
-      for (int begin = 0; begin <= newCount; begin++) {
-        for (int end = begin + 1; end <= newCount; end++) {
+              vector<double>(newCount + 1, 0.0)),
+          bestRCost(
+              oldCount + 1,
+              vector<double>(newCount + 1, INF)),
+          bestRArg(
+              oldCount + 1,
+              vector<int>(newCount + 1, -1)) {
+      while (prefixMatchLen_ < oldCount && prefixMatchLen_ < newCount &&
+             sameText(solver.oldTree, oldChild(prefixMatchLen_),
+                      solver.newTree, newChild(prefixMatchLen_)))
+        prefixMatchLen_++;
+      while (suffixMatchLen_ < oldCount && suffixMatchLen_ < newCount &&
+             sameText(solver.oldTree, oldChild(oldCount - 1 - suffixMatchLen_),
+                      solver.newTree, newChild(newCount - 1 - suffixMatchLen_)))
+        suffixMatchLen_++;
+      // Effort over each child segment is computed once, then ranges are built
+      // by O(1) monoid merges instead of re-walking every [begin,end) substring.
+      vector<RunningEffort> segEffort;
+      segEffort.reserve(newCount);
+      for (int k = 0; k < newCount; k++) {
+        segEffort.push_back(solver.rangeEffort(
+            solver.newTree, TextRange{boundaryNew(k), boundaryNew(k + 1)}));
+      }
+      for (int begin = 0; begin < newCount; begin++) {
+        RunningEffort acc = segEffort[begin];
+        newRangeEffort[begin][begin + 1] = acc.getEffort(solver.config);
+        for (int end = begin + 2; end <= newCount; end++) {
           newRangeEffort[begin][end] =
-              solver.typedRangeEffort(
-                  solver.newTree,
-                  TextRange{boundaryNew(begin), boundaryNew(end)});
+              acc.appendFrom(segEffort[end - 1], solver.config);
         }
       }
     }
@@ -265,8 +313,22 @@ private:
       };
     }
 
+    // Remaining children are an identical run to the end: kept for free, no
+    // movement charged (there is no edit after them to traverse toward).
+    bool tailFree(int i, int j) const {
+      return oldCount - i == newCount - j && oldCount - i <= suffixMatchLen_;
+    }
+
+    // Matched children before the first edit: kept for free. Movement is only
+    // charged for traversal *between* edits; the run to the first edit is the
+    // start bumper, which is partition-neutral and excluded.
+    bool leadingFree(int i, int j) const {
+      return i == j && i < prefixMatchLen_;
+    }
+
     double outer(int i, int j) {
       if (i == oldCount && j == newCount) return 0;
+      if (tailFree(i, j)) return 0;
 
       double& res = outerCost[i][j];
       if (res != INF) return res;
@@ -282,13 +344,15 @@ private:
         const Node& oldNode = oldChild(i);
         const Node& newNode = newChild(j);
         if (sameText(solver.oldTree, oldNode, solver.newTree, newNode)) {
-          update(outer(i + 1, j + 1), OuterChoice::Keep);
+          // Traversing a kept child costs movement, except on the leading run.
+          double move = leadingFree(i, j) ? 0.0 : unitCost_;
+          update(outer(i + 1, j + 1) + move, OuterChoice::Keep);
         } else if (childLevel_ != Level::Char &&
                    sameTextOutsideChildren(
                        solver.oldTree, oldNode,
                        solver.newTree, newNode,
                        childLevel_)) {
-          Plan child = solver.solveChildren(childLevel_, oldNode, newNode);
+          const Plan& child = solver.solveChildren(childLevel_, oldNode, newNode);
           update(child.cost + outer(i + 1, j + 1), OuterChoice::Recurse);
         }
       }
@@ -298,6 +362,33 @@ private:
       }
 
       return res;
+    }
+
+    // Suffix-min over the old-end r in [i, oldCount] of outer(r, c), ties to the
+    // smallest r. Deletion is a flat per-region command cost, so it is not
+    // folded here — this just finds the cheapest place to resume after deleting.
+    double bestOldEnd(int i, int c, int& argR) {
+      double& memo = bestRCost[i][c];
+      if (memo != INF) {
+        argR = bestRArg[i][c];
+        return memo;
+      }
+      double here = outer(i, c);
+      if (i == oldCount) {
+        bestRArg[i][c] = oldCount;
+        argR = oldCount;
+        return memo = here;
+      }
+      int restArg;
+      double rest = bestOldEnd(i + 1, c, restArg);
+      if (here <= rest) {
+        bestRArg[i][c] = i;
+        argR = i;
+        return memo = here;
+      }
+      bestRArg[i][c] = restArg;
+      argR = restArg;
+      return memo = rest;
     }
 
     double inner(int i, int j) {
@@ -313,11 +404,19 @@ private:
         }
       };
 
-      for (int nextI = i; nextI <= oldCount; nextI++) {
-        for (int nextJ = j; nextJ <= newCount; nextJ++) {
-          if (nextI == i && nextJ == j) continue;
-          double insertedCost = newRangeEffort[j][nextJ];
-          update(insertedCost + outer(nextI, nextJ), nextI, nextJ);
+      // A diff region deletes old [i, nextI) and inserts new [j, nextJ). Two
+      // shapes per end column nextJ:
+      //  - pure insert (nextI == i): no delete cost; valid only when nextJ > j.
+      //  - delete + insert (nextI > i): one delete command (deleteUnit_, flat),
+      //    plus the cheapest resume point via the outer suffix-min.
+      for (int nextJ = j; nextJ <= newCount; nextJ++) {
+        if (nextJ > j) {
+          update(newRangeEffort[j][nextJ] + outer(i, nextJ), i, nextJ);
+        }
+        if (i < oldCount) {
+          int argR;
+          double endCost = bestOldEnd(i + 1, nextJ, argR);
+          update(newRangeEffort[j][nextJ] + deleteUnit_ + endCost, argR, nextJ);
         }
       }
 
@@ -326,6 +425,7 @@ private:
 
     vector<EditSpan> buildOuter(int i, int j) {
       if (i == oldCount && j == newCount) return {};
+      if (tailFree(i, j)) return {};
 
       outer(i, j);
       switch (outerChoice[i][j]) {
@@ -333,9 +433,9 @@ private:
           return buildOuter(i + 1, j + 1);
 
         case OuterChoice::Recurse: {
-          Plan child = solver.solveChildren(
+          const Plan& child = solver.solveChildren(
               childLevel_, oldChild(i), newChild(j));
-          vector<EditSpan> result = std::move(child.spans);
+          vector<EditSpan> result = child.spans;
           appendSpans(result, buildOuter(i + 1, j + 1));
           return result;
         }
@@ -405,16 +505,21 @@ private:
         const EditSpan& span) {
       if (childLevel_ == Level::Char) return {span};
 
-      Plan refined = solver.solveChildren(
+      const Plan& refined = solver.solveChildren(
           childLevel_,
           Node{.text = span.oldText,
                .children = childRangeForOld(startI, endI)},
           Node{.text = span.newText,
                .children = childRangeForNew(startJ, endJ)});
 
-      double coarseCost = solver.diffSpanCost(span);
+      // Coarse = this span as one diff: penalty + inserted effort + deleting the
+      // whole old span at this level. Refined prices the same span split a level
+      // down (with its own finer deletions/movement), so both must charge the
+      // deletion for the comparison to be fair.
+      double coarseCost =
+          solver.diffSpanCost(span) + (endI - startI) * unitCost_;
       if (!refined.spans.empty() && refined.cost <= coarseCost) {
-        return std::move(refined.spans);
+        return refined.spans;
       }
       return {span};
     }
@@ -460,13 +565,65 @@ private:
     }
   };
 
-  Plan solveChildren(Level parentLevel,
-                     const Node& oldParent,
-                     const Node& newParent) {
+  // A ListDp is fully determined by its child level, the old/new child ranges,
+  // and the parent text starts (the latter only matter for empty child ranges).
+  // Memoizing on this key collapses the cost-pass / build-pass / refine
+  // re-solves that otherwise recompute the same subtree many times over.
+  struct PlanKey {
+    int childLevel;
+    int oldBegin;
+    int oldEnd;
+    int newBegin;
+    int newEnd;
+    int oldTextBegin;
+    int newTextBegin;
+    auto operator<=>(const PlanKey&) const = default;
+  };
+
+  std::map<PlanKey, Plan> planCache;
+
+  const Plan& solveChildren(Level parentLevel,
+                            const Node& oldParent,
+                            const Node& newParent) {
+    PlanKey key{
+        levelIndex(childLevel(parentLevel)),
+        oldParent.children.begin,
+        oldParent.children.end,
+        newParent.children.begin,
+        newParent.children.end,
+        oldParent.text.begin,
+        newParent.text.begin,
+    };
+    auto it = planCache.find(key);
+    if (it != planCache.end()) return it->second;
+
     ListDp dp(*this, parentLevel, oldParent, newParent);
-    return dp.solve();
+    Plan plan = dp.solve();
+    return planCache.emplace(key, std::move(plan)).first->second;
   }
 };
+
+// A contiguous edit that straddles a token boundary is emitted as two adjacent
+// regions across the recursion seam (e.g. inserting " " then "world"). Those are
+// a representational artifact, not a partition decision — merge regions that abut
+// in both old and new coordinates back into one. See dev/optimizer/diff-generation.md.
+vector<EditSpan> mergeAdjacentSpans(vector<EditSpan> spans) {
+  vector<EditSpan> merged;
+  for (const EditSpan& span : spans) {
+    if (span.empty()) continue;
+    if (!merged.empty()) {
+      EditSpan& prev = merged.back();
+      if (prev.oldText.end == span.oldText.begin &&
+          prev.newText.end == span.newText.begin) {
+        prev.oldText.end = span.oldText.end;
+        prev.newText.end = span.newText.end;
+        continue;
+      }
+    }
+    merged.push_back(span);
+  }
+  return merged;
+}
 
 } // namespace
 
@@ -510,10 +667,11 @@ vector<DiffState> calculate(
   if (initialTree.text == goalTree.text) return {};
 
   Plan plan = Solver(initialTree, goalTree, config, options).solve();
+
+  vector<EditSpan> spans = mergeAdjacentSpans(std::move(plan.spans));
   vector<DiffState> result;
-  result.reserve(plan.spans.size());
-  for (const EditSpan& span : plan.spans) {
-    if (span.empty()) continue;
+  result.reserve(spans.size());
+  for (const EditSpan& span : spans) {
     result.push_back(diffFromSpan(
         initialLines, initialTree, goalTree, span));
   }

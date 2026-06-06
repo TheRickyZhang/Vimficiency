@@ -74,6 +74,13 @@ VFByteSlice vf_analyze(
   int results_calculated,
   const char* optimizer_overrides,
   size_t optimizer_overrides_len);
+VFByteSlice vf_compute_diffs(
+  const char* encoded_initial_lines,
+  size_t encoded_initial_lines_len,
+  const char* encoded_goal_lines,
+  size_t encoded_goal_lines_len,
+  int diff_algorithm,
+  double tree_open_penalty);
 VFByteSlice vf_get_debug();
 VFByteSlice vf_get_warnings();
 VFByteSlice vf_get_optimizer_defaults();

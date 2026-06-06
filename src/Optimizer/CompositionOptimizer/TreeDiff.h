@@ -19,7 +19,15 @@ const char* name(int algorithm);
 namespace TreeDiff {
 
 struct CostOptions {
-  double diffOpenPenalty = 8.0;
+  // Fixed per-region overhead beyond the operator (mode entry, etc.). Distance
+  // is carried by movement and the operator key by deletion. ~2: large enough
+  // that the recurse won't fragment a nested edit at a token seam (e.g. keep the
+  // outer parens of ((b))->(X) as one (b)->X region), small enough not to merge
+  // genuinely separate edits.
+  double diffOpenPenalty = 2.0;
+  // Calibrates keystroke movement/deletion against inserted-text effort. Both
+  // are now in keystroke units (matching insert effort), so this is ~1.
+  double moveDeleteScale = 1.0;
 };
 
 std::vector<DiffState> calculate(

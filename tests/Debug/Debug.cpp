@@ -9,6 +9,7 @@
 #include <cassert>
 
 #include <gtest/gtest.h>
+#include <chrono>
 #include <queue>
 
 #include "Interpreter/EditInterpreter.h"
@@ -18,6 +19,7 @@
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"
 #include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/CompositionOptimizer/TreeDiff.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Boundary/TransformBoundary.h"
 #include "Boundary/NavBoundary.h"
@@ -240,6 +242,105 @@ protected:
 TEST_F(DebugTest, DISABLED_SearchStatsCodegen) {
   cerr << "NoTrace=" << searchStatsHotLoop<false>(1000) << endl;
   cerr << "WithTrace=" << searchStatsHotLoop<true>(1000) << endl;
+}
+
+TEST_F(DebugTest, DISABLED_ProfileSlowPromptMapSlice) {
+  // Replay of the real ~11s auto_suggest fire (prompt_map config edit).
+  // Finding: TreeDiff::calculate dominates (~95%); cost scales with whole-buffer
+  // size, not edit size. Myers does the same 3 diffs in ~0.14ms.
+  Lines initial = {
+      R"#(    prompt_map("<leader>vb", "start", "Start mark"))#",
+      R"#(    prompt_map("<leader>vf", "finish", "Finish mark"))#",
+      R"#(    prompt_map("<leader>vw", "watch", "Start watch"))#",
+      R"#(    prompt_map("<leader>vr", "recall", "Finish recall"))#",
+      R"#()#",
+      R"#(    prompt_map("<leader>vs", "save",  "Vimfy save"))#",
+      R"#(    prompt_map("<leader>vp", "play",  "play") -- maybe change simulate -> replay)#",
+      R"#(    prompt_map("<leader>ve", "explore", "Explore mark"))#",
+      R"#(    prompt_map("<leader>vv", "view", "View session"))#",
+      R"#()#",
+      R"#(    cmd_map("<leader>vS", "save $",    "Save recent suggestion"))#",
+      R"#(    cmd_map("<leader>vP", "play $",    "Play recent suggestion"))#",
+      R"#(    cmd_map("<leader>vE", "explore $", "Explore recent suggestion"))#",
+  };
+  Lines goal = {
+      R"#(    prompt_map("<leader>vb", "start", "Start mark"))#",
+      R"#(    prompt_map("<leader>vf", "finish", "Finish mark"))#",
+      R"#(    prompt_map("<leader>vw", "watch", "Start watch"))#",
+      R"#(    prompt_map("<leader>vr", "recall", "Finish recall"))#",
+      R"#()#",
+      R"#(    prompt_map("<leader>vs", "save",  "save session"))#",
+      R"#(    prompt_map("<leader>vp", "play",  "play session") -- maybe change simulate -> replay)#",
+      R"#(    prompt_map("<leader>ve", "explore", "explore mark"))#",
+      R"#(    prompt_map("<leader>vv", "view", "View session"))#",
+      R"#()#",
+      R"#(    cmd_map("<leader>vS", "save $",    "Save recent suggestion"))#",
+      R"#(    cmd_map("<leader>vP", "play $",    "Play recent suggestion"))#",
+      R"#(    cmd_map("<leader>vE", "explore $", "Explore recent suggestion"))#",
+  };
+  CursorPos initialPos(6, 42);
+  CursorPos goalPos(7, 42);
+
+  auto ms = [](auto a, auto b) {
+    return chrono::duration<double, milli>(b - a).count();
+  };
+
+  // 1. TreeDiff alone (default algo). This is the work compute_diffs re-runs.
+  double treeMs = 0, myersMs = 0;
+  vector<DiffState> tree;
+  for (int i = 0; i < 5; i++) {
+    auto t0 = chrono::steady_clock::now();
+    tree = TreeDiff::calculate(initial, goal, config, TreeDiff::CostOptions{});
+    treeMs += ms(t0, chrono::steady_clock::now());
+  }
+  treeMs /= 5;
+  for (int i = 0; i < 5; i++) {
+    auto t0 = chrono::steady_clock::now();
+    auto m = Myers::calculate(initial, goal);
+    myersMs += ms(t0, chrono::steady_clock::now());
+  }
+  myersMs /= 5;
+
+  // 2. Full composition search (what vf_analyze drives).
+  CompositionOptimizer opt(config);
+  CompositionOptimizerParams p = CompositionOptimizerParams{}.withMaxResults(20);
+  auto t0 = chrono::steady_clock::now();
+  auto result = opt.optimize(initial, initialPos, goal, goalPos, p);
+  double compMs = ms(t0, chrono::steady_clock::now());
+
+  cerr << "\n=== ProfileSlowPromptMapSlice (DEBUG build) ===" << endl;
+  cerr << "TreeDiff::calculate  avg = " << treeMs  << " ms  (diffs=" << tree.size() << ")" << endl;
+  cerr << "Myers::calculate     avg = " << myersMs << " ms" << endl;
+  cerr << "CompositionOptimizer::optimize = " << compMs << " ms  (results=" << result.getResults().size() << ")" << endl;
+  cerr << "  -> TreeDiff is " << (treeMs / compMs * 100.0) << "% of the composition run" << endl;
+  for (size_t i = 0; i < result.getResults().size() && i < 3; i++) {
+    cerr << "  [" << i << "] cost=" << result.getResults()[i].getCost()
+         << " '" << result.getResults()[i].getSequence() << "'" << endl;
+  }
+
+  // What drives the TreeDiff blowup? Time it on subsets.
+  auto timeTree = [&](const Lines& a, const Lines& b, const char* label) {
+    auto t = chrono::steady_clock::now();
+    auto d = TreeDiff::calculate(a, b, config, TreeDiff::CostOptions{});
+    cerr << "  TreeDiff[" << label << "] = " << ms(t, chrono::steady_clock::now())
+         << " ms (diffs=" << d.size() << ", lines=" << a.size() << ")" << endl;
+  };
+  cerr << "\n--- TreeDiff scaling ---" << endl;
+  // (a) Just the 3 changed lines (rows 5,6,7).
+  timeTree(Lines{initial[5], initial[6], initial[7]},
+           Lines{goal[5], goal[6], goal[7]}, "3 changed lines only");
+  // (b) Rows 4..8 (changed lines + a little unchanged context).
+  timeTree(Lines{initial[4], initial[5], initial[6], initial[7], initial[8]},
+           Lines{goal[4], goal[5], goal[6], goal[7], goal[8]}, "rows 4..8");
+  // (c) Full 13 lines but content de-duplicated (break repeated prompt_map prefix).
+  {
+    Lines ua = initial, ub = goal;
+    for (int i = 0; i < static_cast<int>(ua.size()); i++) {
+      ua[i] = to_string(i) + "uniq" + ua[i];
+      ub[i] = to_string(i) + "uniq" + ub[i];
+    }
+    timeTree(ua, ub, "full 13, de-duplicated content");
+  }
 }
 
 TEST_F(DebugTest, DISABLED_InvestigateMovementSequences) {

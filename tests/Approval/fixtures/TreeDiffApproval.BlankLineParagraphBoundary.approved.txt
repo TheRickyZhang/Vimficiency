@@ -14,10 +14,10 @@ a\nxy\n\nd
 4   ⟦a ↵┃x y ↵┃↵┃d⟧
 4   ⟦a ↵┃x y ↵┃↵┃d⟧
 
-cost 10
+cost 4
 1   ⟦a ↵ b c ↵ ↵ d⟧
 2   ⟦a ↵ b c ↵ ↵┃d⟧
 4   ⟦a ↵┃b c ↵┃↵┃d⟧
 4   ⟦a ↵┃b c ↵┃↵┃d⟧
-         x y  10: 8 + 2
+         x y  4: 2 + 2
 4   ⟦a ↵┃b c ↵┃↵┃d⟧

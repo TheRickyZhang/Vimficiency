@@ -76,8 +76,10 @@ Because Suggest is (auto, auto), both halves have a config pointer:
 
 ### `idle = { ms, window }`
 
-Fires on a pure pause. `window` is the analysis slice; specify the full
-trigger object when `idle` is present.
+Fires on a pure pause. `window` is the analysis slice — everything back to
+`window` ago (e.g. `"3s"` = all keys in the last 3 seconds), not a fixed-size
+window anchored in the past. Specify the full trigger object when `idle` is
+present.
 
 ### `keys = { every }`
 

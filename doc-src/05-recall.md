@@ -22,6 +22,12 @@ retrospective windows go through `:Vimfy recall`.
 | `N`      | Last N keystrokes          | You can estimate how many keys the edit took |
 | `Ns`     | Last N seconds of activity | You can estimate time better than key count  |
 
+Both forms are measured back from *now*, and name the **whole span** up to
+that point — not a fixed-size window floating in the past. `3s` analyzes
+everything typed in the last 3 seconds (the range from 3s-ago through the
+present), and `50` the last 50 keystrokes. The number sets how far *back* the
+range reaches; the range always ends at the current cursor.
+
 Mixing forms (`3m`, `3ms`, `2h`, etc.) is not supported. Seconds is the
 only time unit; if you want 90 seconds, use `90s`.
 

@@ -78,9 +78,11 @@ TEST(CompositionResultPlannedEditView, ReversedDiffOrderKeepsFencepostsAligned) 
   CursorPos goalPos = goal.lastPos();
   NavBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
+  // Reverse-order diff processing is a Myers-only heuristic; the TreeDiff
+  // planner is forward-only (see CompositionSearchContext.cpp).
   CompositionResult result = opt.optimize(
       initial, initialPos, goal, goalPos,
-      CompositionOptimizerParams{}.withMaxResults(1), "", boundary);
+      CompositionOptimizerParams{}.withMaxResults(1).withDiffAlgorithm(0), "", boundary);
 
   ASSERT_EQ(result.totalEdits(), 2);
   EXPECT_EQ(result.getPlan().diffAt(0).beginPos.line, 2);

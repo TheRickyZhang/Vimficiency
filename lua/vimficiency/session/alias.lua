@@ -52,6 +52,16 @@ function M.is_recall(s)
   return t == "recall_key" or t == "recall_time"
 end
 
+--- True iff `s` is a special workspace selector. `@` = most-recent finished
+--- session (any kind); `$` = most-recent suggest regression. These are
+--- resolved by the store (`resolve_special`), not by `M.parse`, whose
+--- grammar only covers manual/recall aliases.
+---@param s any
+---@return boolean
+function M.is_special_selector(s)
+  return s == "@" or s == "$"
+end
+
 --- True iff `s` is a safe saved-result name.
 --- Grammar: `^[%w_][%w._-]*$`.
 ---@param s any

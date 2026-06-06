@@ -4,6 +4,10 @@ local ffi_display = require("vimficiency.ffi.display")
 
 local M = {}
 
+--- Shown wherever a result is surfaced if mouse/scroll input was stripped from
+--- the capture (see `compute.lua` `filter_mouse_events`).
+M.MOUSE_WARNING = "⚠ mouse/scroll input ignored — vimfy optimizes keyboard motion"
+
 ---@param result VF.Session.Result
 ---@return string  e.g. "(1,2) → (3,4)"
 function M.format_position(result)

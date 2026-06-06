@@ -101,8 +101,10 @@ bool tokenInJoinScope(const DiffState& diff, const Lines& lines,
   CursorPos afterPos = cursor;
   VimCore::joinLines(after, afterPos, /*addSpace=*/true);
   if (after == lines) return false;
-  if (after == Myers::applyDiffState(diff, lines)) return false;
 
+  // Accept J whether it partially progresses the diff or fully completes it
+  // (after == applyDiffState). A composition-level join that completes a scoped
+  // `\n`->` ` diff has no diff-local transform lane, so this validates both.
   double remaining = residualDistanceAfter(lines, after, diff);
   return remaining < diffDistance(diff);
 }
