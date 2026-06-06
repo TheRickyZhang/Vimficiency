@@ -78,12 +78,12 @@ subcommands.close = {
 
 subcommands.play = {
   desc = "Play your sequence side-by-side with the optimizer's suggestions",
-  usage = "play <alias> [windows]",
+  usage = "play <selector>|@|$ [windows]",
   fn = function(args)
     local alias = args[1]
     local window_count = args[2] and tonumber(args[2]) or nil
     if not alias or alias == "" then
-      vim.notify("Usage: Vimfy play <alias> [windows]  (1..4)", vim.log.levels.ERROR)
+      vim.notify("Usage: Vimfy play <selector>|@|$ [windows]  (1..4)", vim.log.levels.ERROR)
       return
     end
     session.simulate(alias, window_count)
@@ -123,17 +123,17 @@ end
 
 subcommands.save = {
   desc = "Copy a finished session result to disk (keeps the session copy)",
-  usage = "save <selector>|@ [<name>]",
+  usage = "save <selector>|@|$ [<name>]",
   fn = function(args)
     local selector = args[1]
     if not selector or selector == "" then
-      vim.notify("Usage: Vimfy save <selector>|@ [<name>]", vim.log.levels.ERROR)
+      vim.notify("Usage: Vimfy save <selector>|@|$ [<name>]", vim.log.levels.ERROR)
       return
     end
     local name = resolve_save_name(selector, args[2])
     if not name then
-      vim.notify("save @: no recently finished session. Run ':Vimfy finish <alias>' first.",
-        vim.log.levels.ERROR)
+      vim.notify("save " .. selector .. ": nothing to name automatically. " ..
+        "Pass an explicit <name>, or run a session first.", vim.log.levels.ERROR)
       return
     end
     session.save(selector, name)
@@ -142,17 +142,17 @@ subcommands.save = {
 
 subcommands.store = {
   desc = "Move a finished session from memory to disk (removes the session copy)",
-  usage = "store <selector>|@ [<name>]",
+  usage = "store <selector>|@|$ [<name>]",
   fn = function(args)
     local selector = args[1]
     if not selector or selector == "" then
-      vim.notify("Usage: Vimfy store <selector>|@ [<name>]", vim.log.levels.ERROR)
+      vim.notify("Usage: Vimfy store <selector>|@|$ [<name>]", vim.log.levels.ERROR)
       return
     end
     local name = resolve_save_name(selector, args[2])
     if not name then
-      vim.notify("store @: no recently finished session. Run ':Vimfy finish <alias>' first.",
-        vim.log.levels.ERROR)
+      vim.notify("store " .. selector .. ": nothing to name automatically. " ..
+        "Pass an explicit <name>, or run a session first.", vim.log.levels.ERROR)
       return
     end
     session.store(selector, name)
@@ -174,8 +174,8 @@ subcommands.fetch = {
 }
 
 subcommands.view = {
-  desc = "View saved results",
-  usage = "view [name]",
+  desc = "View a finished result full-screen (selector or saved name)",
+  usage = "view [<selector>|@|$|<name>]",
   fn = function(args)
     session.view(args[1])
   end,
@@ -427,11 +427,11 @@ subcommands.help = {
 
 subcommands.explore = {
   desc = "Open the interactive explore scratch view for a finished result",
-  usage = "explore <selector>|@",
+  usage = "explore <selector>|@|$",
   fn = function(args)
     local selector = args[1]
     if not selector or selector == "" then
-      vim.notify("Usage: Vimfy explore <selector>|@", vim.log.levels.ERROR)
+      vim.notify("Usage: Vimfy explore <selector>|@|$", vim.log.levels.ERROR)
       return
     end
     local result, err = session.resolve_result(selector)
@@ -488,6 +488,26 @@ function M.handle(arg_string)
   M.run(subcmd, args)
 end
 
+--- Selector candidates shared by replay-style subcommands. In-memory aliases
+--- plus the special selectors (`@` last finished, `$` last regression) and
+--- recall time hints; optionally the saved disk names too.
+---@param include_saved boolean
+---@return string[]
+local function selector_candidates(include_saved)
+  local candidates = session.list()
+  table.insert(candidates, "@")
+  table.insert(candidates, "$")
+  for _, t in ipairs(alias_mod.TIME_HINTS) do
+    table.insert(candidates, t)
+  end
+  if include_saved then
+    for _, name in ipairs(session.list_saved()) do
+      table.insert(candidates, name)
+    end
+  end
+  return candidates
+end
+
 function M.complete(arg_lead, cmd_line, cursor_pos)
   -- Escape pattern magic up front: arg_lead is used only as a `^`-anchored
   -- match prefix below, and the user can type `(`, `[`, `%`, etc.
@@ -512,9 +532,13 @@ function M.complete(arg_lead, cmd_line, cursor_pos)
     return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, { "on", "off", "toggle" })
   end
 
-  if subcmd == "view" or subcmd == "rm" then
+  if subcmd == "rm" then
     local saved = session.list_saved()
     return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, saved)
+  end
+
+  if subcmd == "view" then
+    return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, selector_candidates(true))
   end
 
   if subcmd == "start" or subcmd == "watch" then
@@ -539,38 +563,13 @@ function M.complete(arg_lead, cmd_line, cursor_pos)
     return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, aliases)
   end
 
-  if subcmd == "play" then
-    local candidates = session.list()
-    table.insert(candidates, "@")
-    for _, t in ipairs(alias_mod.TIME_HINTS) do
-      table.insert(candidates, t)
-    end
-    for _, name in ipairs(session.list_saved()) do
-      table.insert(candidates, name)
-    end
-    return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, candidates)
-  end
-
-  if subcmd == "explore" then
-    local candidates = session.list()
-    table.insert(candidates, "@")
-    for _, t in ipairs(alias_mod.TIME_HINTS) do
-      table.insert(candidates, t)
-    end
-    for _, name in ipairs(session.list_saved()) do
-      table.insert(candidates, name)
-    end
-    return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, candidates)
+  if subcmd == "play" or subcmd == "explore" then
+    return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, selector_candidates(true))
   end
 
   if subcmd == "save" or subcmd == "store" then
     if #args == 2 then
-      local selectors = session.list()
-      table.insert(selectors, "@")
-      for _, t in ipairs(alias_mod.TIME_HINTS) do
-        table.insert(selectors, t)
-      end
-      return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, selectors)
+      return vim.tbl_filter(function(v) return v:find("^" .. arg_lead) end, selector_candidates(false))
     end
     return {}
   end

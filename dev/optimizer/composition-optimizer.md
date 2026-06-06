@@ -3,18 +3,21 @@
 - Heuristic: Estimated suffix cost of transforms not completed + distance to next transform (+ effort)
 
 ## Diff Generation
-- Our first step is to generate planned edit regions. The default is a
-  character-level Myers diff analysis (similar algorithm to git). It separates
-  individual diffs by local heuristics:
+- Our first step is to generate planned edit regions. The **default is the
+  `TreeDiff` planner** (`composition:diffAlgorithm=1`). It uses a
+  paragraph/line/BigWord/Word/Char tree to choose flat diff regions, priced in
+  approximate keystrokes: per-region penalty (~2) + inserted-text effort +
+  keystroke movement between edits + count-independent deletion. Adjacent
+  contiguous regions are merged to undo token-seam fragmentation. Some Myers-only
+  behaviors (reverse processing order, certain boundary-crossing J plans) are
+  still not surfaced. Details are in `dev/optimizer/diff-generation.md`.
+- `composition:diffAlgorithm=0` switches back to the historical character-level
+  Myers diff analysis (similar algorithm to git). It separates individual diffs
+  by local heuristics:
   - Match count >= MIN_MATCH_LENGTH -> separate, but otherwise merge
   - Don't count matches across new lines as much (likely share much tab whitespace)
   - Don't include boundary at end, cut off exactly since no more content
   - Have exceptions for well-formed short content inside "", (), etc. (To be expanded upon)
-- `composition:diffAlgorithm=1` selects the experimental `TreeDiff` planner
-  instead. It uses a paragraph/line/BigWord/Word/Char tree to choose flat diff
-  regions. Current cost is diff-open penalty plus inserted-text effort;
-  deletion and movement costs are deferred. Details are in
-  `dev/optimizer/diff-generation.md`.
 - Using the selected generator, we track intermediate buffer states, compute
   suffix cost sums, and calculate a transform result for each planned edit
   region.

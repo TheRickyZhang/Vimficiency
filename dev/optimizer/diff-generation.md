@@ -3,11 +3,11 @@
 ## Overview
 
 The CompositionOptimizer breaks buffer changes into individual planned edit
-regions. The default generator is character-level Myers diff; `TreeDiff` is an
-alternate generator selected with `composition:diffAlgorithm=1`. Both methods
-return `DiffState`s computed against the **original** buffer, but the diffs must
-be applied **sequentially** to intermediate buffer states. This requires
-adjusting diff positions as earlier diffs shift content.
+regions. The default generator is now `TreeDiff` (`composition:diffAlgorithm=1`);
+`composition:diffAlgorithm=0` switches back to the historical character-level
+Myers diff. Both methods return `DiffState`s computed against the **original**
+buffer, but the diffs must be applied **sequentially** to intermediate buffer
+states. This requires adjusting diff positions as earlier diffs shift content.
 
 ## Diff Output Contract
 
@@ -69,23 +69,29 @@ common gap. Recursion into a child pair is allowed only when the text outside
 the child coverage is identical; otherwise the parent remains a replacement
 candidate.
 
-### Current Cost Model
+### Cost Model
 
-The prototype uses only:
+Every term is in approximate keystrokes, on the same scale as inserted-text
+effort, so the planner trades retyping against moving/deleting honestly:
 
-```
-cost = diffOpenCost * number_of_diffs
-     + typed_effort(inserted_text)
-```
+- **Per region:** `diffOpenPenalty` (default `2`, from
+  `composition:treeDiffOpenPenalty`) — fixed operator/mode-entry overhead.
+- **Insert:** `typed_effort(inserted_text)` via `KeyedSequence` + `RunningEffort`
+  on the active `Config`.
+- **Deletion** (`deleteCost`): the delete command's keystrokes for the region's
+  level, **count-independent** — `x`=1, `dw`=2, `dd`=2, `dW`/`d}`=3. Charged
+  once per region that deletes anything (one command), so a fine-level counted
+  delete (`4dd`) is not dominated by a coarse one (`dap`).
+- **Movement** (`levelCost`): bare motion keystrokes per *kept* child traversed
+  *between* edits — `l`/`w`/`j`=1, `W`/`}`=2. Matched runs before the first edit
+  and after the last are free (`leadingFree`/`tailFree`); those end "bumpers"
+  are partition-neutral. The count-dependent per-child sum is partition-
+  equivalent to one counted motion (`4j`), so no gap-extent tracking is needed.
 
-- `diffOpenCost` comes from `composition:treeDiffOpenPenalty`, default `8`.
-- Inserted text is converted through `KeyedSequence` and scored with
-  `RunningEffort` using the active keyboard `Config`.
-- Deleted text and movement currently cost `0`.
-
-This means large replacements can win when retyping unchanged middle text is
-cheaper than opening another diff. That is intentional until deletion and
-movement costs are modeled.
+`diffOpenPenalty` is ~2, not 1: at 1 the recurse fragments a nested edit at a
+token seam (e.g. `((b))`->`(X)` splits into `(b`->`X` + delete `)` instead of one
+`(b)`->`X`); 2 makes the single region win without merging genuinely separate
+edits. The deep fix (next section) would let it drop to 1.
 
 ### DP Structure
 
@@ -94,18 +100,26 @@ level. `i` and `j` are offsets into those old/new child lists.
 
 `outer(i, j)` is the best cost while no diff is active:
 
-- keep identical child text
+- keep identical child text (charges `levelCost` movement, free on the
+  leading/trailing matched run via `leadingFree`/`tailFree`)
 - recurse into a paired child node when non-child text matches
 - open a diff: `diffOpenPenalty + inner(i, j)`
+- a fully-matching remainder short-circuits to 0 (`tailFree`)
 
-`inner(i, j)` chooses one non-empty contiguous range to become that diff:
+`inner(i, j)` chooses one contiguous region, minimizing over the end column
+`nextJ` two shapes:
 
-- old range: `[i, nextI)`
-- new range: `[j, nextJ)`
-- cost: typed effort of the new range plus `outer(nextI, nextJ)`
+- pure insert (`nextI == i`, only when `nextJ > j`): insert effort + `outer(i, nextJ)`
+- delete + insert (`nextI > i`): insert effort + `deleteCost` (flat, one command)
+  + the cheapest resume point via `bestOldEnd` (a suffix-min of `outer`)
 
-The old range is free under the current model. `inner` stores only the chosen
-`nextI`/`nextJ`; spans are rebuilt once from the root plan.
+`inner` stores only the chosen `nextI`/`nextJ`; spans are rebuilt once from the
+root plan.
+
+The per-`ListDp` work is `O(a·b²)` after memoizing `solveChildren` (so each
+node-pair alignment is solved once) — see `optimizer-architecture.md`. The
+earlier formulation re-grid-searched both region endpoints (`O(a²b²)`) and
+re-solved subtrees per cost/build/refine pass.
 
 ### Range Refinement
 
@@ -124,6 +138,24 @@ The BigWord-level replacement refines to:
 ```
 delete " "
 ```
+
+### Seam fragmentation and merge cleanup
+
+`Keep` is token-granular, but real matches are character-granular. When an edit
+boundary falls *inside* a token — insert after `hello` when the new token is
+`hello␣` — the matched part is a char-prefix of that token, so the model recurses
+and emits the in-token piece (`" "`) separately from the adjacent token's change
+(`world`). One contiguous edit becomes two regions across the recursion seam, and
+the model cannot represent the joined region (its only alternatives are the
+fragmented recurse or a worse REPLACE that retypes `hello`).
+
+`mergeAdjacentSpans` (run on the final span list) merges regions that abut in
+both old and new coordinates, removing the artifact when the fragments are
+contiguous: `insert " " + insert "world"` -> `insert " world"`. It cannot merge
+fragments with kept content between them (e.g. `((b))`->`(X)` keeping the inner
+`)`), so those rely on `diffOpenPenalty` ~2 to stay one region. The fundamental
+fix — character-granular matching at region edges (keep a char-prefix/suffix of
+the upcoming content, Myers-affix style) — is deferred.
 
 ### Current Examples
 
@@ -169,10 +201,30 @@ refinement should win when cheaper.
 
 Not implemented yet:
 
-- movement between diffs
-- deletion/edit complexity for the removed span
+- character-granular matching at region edges (see Seam fragmentation) — would
+  remove the dependence on `diffOpenPenalty` >= 2 for nested-token seams
 - open-boundary recursive plans, where a diff can enter or exit a recursive
   child range still open
+- the Myers-only behaviors below
+
+### Why Myers is still selectable (diffAlgorithm=0)
+
+Movement and deletion are now priced (see Cost Model), so the old "two missing
+axes" gap is closed. What still keeps Myers reachable is structural:
+
+- **Forward-only.** The Myers processing-order flip in
+  `CompositionSearchContext.cpp` (gated on `diffAlgorithm == Myers`) reverses
+  diff order when the cursor starts nearer the last diff, to save navigation.
+  TreeDiff is forward-only.
+- **J-plan shapes.** Boundary-crossing `J` plans key off scoped diffs like
+  `\nbbb` -> `" bbb"`; TreeDiff's structural partitioning doesn't reliably emit
+  those shapes, so some join opportunities don't surface (see
+  `composition-optimizer.md` § J Plans).
+- **Partition is final.** The generator only picks regions; A* prices the rest
+  downstream and never re-partitions, so a poor partition can't be repaired.
+
+Retiring Myers needs processing order made a search choice (or order-agnostic)
+and TreeDiff confirmed to subsume the J-plan shapes.
 
 ## The Sequential Application Problem
 

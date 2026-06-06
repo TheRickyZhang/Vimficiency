@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
+#include <cstdlib>
+#include <iostream>
 #include <limits>
 
 #include "PlannedEditArtifacts.h"
@@ -42,6 +45,17 @@ CompositionSearchContext::CompositionSearchContext(
     assert(s.size() < static_cast<size_t>(maxLineLength - 10));
   }
 
+  const bool timePhases = std::getenv("VIMFY_TIME_PHASES") != nullptr;
+  auto phaseClock = std::chrono::steady_clock::now();
+  auto phaseMark = [&](const char* name) {
+    if (!timePhases) return;
+    auto now = std::chrono::steady_clock::now();
+    std::cerr << "[phase] " << name << ": "
+              << std::chrono::duration<double, std::milli>(now - phaseClock).count()
+              << " ms\n";
+    phaseClock = now;
+  };
+
   // Generate planned edit regions between start and end buffers.
   vector<DiffState> rawDiffs;
   switch (params.diffAlgorithm) {
@@ -57,11 +71,13 @@ CompositionSearchContext::CompositionSearchContext(
           config,
           TreeDiff::CostOptions{
               .diffOpenPenalty = params.treeDiffOpenPenalty,
+              .moveDeleteScale = params.treeMoveDeleteScale,
           });
       break;
     default:
       CHECK(false, "unknown composition diff algorithm");
   }
+  phaseMark("diff generation");
   debug("diff algorithm:", DiffAlgorithm::name(params.diffAlgorithm));
 
   // Preserve the historical Myers processing-order heuristic. The tree diff
@@ -99,9 +115,11 @@ CompositionSearchContext::CompositionSearchContext(
 
   // Build intermediate buffer states
   linesAfterNEdits_ = calculateLinesAfterDiffs(initialLines);
+  phaseMark("calculateLinesAfterDiffs");
 
   // Solve each edit region
   calculateTransformResults();
+  phaseMark("calculateTransformResults");
 
   debug("--- edit results ---");
   for (int i = 0; i < totalEdits(); i++) {
@@ -122,6 +140,7 @@ CompositionSearchContext::CompositionSearchContext(
 
   // Compute J (join lines) plans
   computeJoinPlans();
+  phaseMark("computeJoinPlans");
 
   debug("--- join plans ---");
   for (int i = 0; i < totalEdits(); i++) {
@@ -134,6 +153,7 @@ CompositionSearchContext::CompositionSearchContext(
 
   // Compute text object contexts for shortcuts
   computeTextObjectContexts();
+  phaseMark("computeTextObjectContexts");
 
   for (int i = 0; i < totalEdits(); i++) {
     if (edits[i].bracketQuoteContext.hasAnyValid()) {
@@ -144,6 +164,7 @@ CompositionSearchContext::CompositionSearchContext(
 
   // Compute suffix sums for heuristic
   suffixEditCosts_ = computeSuffixEditCosts();
+  phaseMark("computeSuffixEditCosts");
 
   debug("--- suffix edit costs ---");
   for (int i = 0; i <= totalEdits(); i++) {
@@ -277,11 +298,22 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
 }
 
 void CompositionSearchContext::calculateTransformResults() {
+  const bool timePhases = std::getenv("VIMFY_TIME_PHASES") != nullptr;
   for (size_t i = 0; i < edits.size(); i++) {
     const DiffState& diff = edits[i].diffState;
     int nodesExplored = 0;
+    auto t0 = std::chrono::steady_clock::now();
     edits[i].transformResult = computeTransformResultForDiff(diff, params, config, &nodesExplored);
     editNodesExplored += nodesExplored;
+    if (timePhases) {
+      std::cerr << "[phase] diff " << i << " transform: "
+                << std::chrono::duration<double, std::milli>(
+                       std::chrono::steady_clock::now() - t0).count()
+                << " ms, nodes=" << nodesExplored
+                << ", del=" << diff.deletedText.size()
+                << " ins=" << diff.insertedText.size()
+                << " lines=" << (diff.endPos.line - diff.beginPos.line + 1) << "\n";
+    }
   }
 }
 

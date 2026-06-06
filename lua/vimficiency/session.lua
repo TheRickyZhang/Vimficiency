@@ -8,7 +8,7 @@ local end_trigger = require("vimficiency.capture.end_trigger")
 local key_tracking = require("vimficiency.capture.key_tracking")
 local playback = require("vimficiency.session.playback")
 local result_view = require("vimficiency.session.result_view")
-local saved_view = require("vimficiency.session.saved_view")
+local result_window = require("vimficiency.session.result_window")
 local session_store = require("vimficiency.session.store")
 local util = require("vimficiency.util")
 
@@ -189,9 +189,16 @@ local function do_finish(active, alias, reason)
     return
   end
 
-  vim.notify(
-    result_view.format_message("vimfy finished [" .. alias .. "]", result),
-    vim.log.levels.INFO)
+  local message = result_view.format_message("vimfy finished [" .. alias .. "]", result)
+  if result.analyze_ms then
+    message = message .. string.format("\n  optimizer: %.0f ms", result.analyze_ms)
+  end
+  local level = vim.log.levels.INFO
+  if result.had_mouse then
+    message = message .. "\n" .. result_view.MOUSE_WARNING
+    level = vim.log.levels.WARN
+  end
+  vim.notify(message, level)
 end
 
 ---@param alias string
@@ -272,22 +279,34 @@ end
 ---@param selector string
 ---@return string|nil
 function M.default_save_name(selector)
-  if selector == "@" then
-    return session_store.get_last_finished_alias()
+  local special_id, _, is_special = session_store.resolve_special(selector)
+  if is_special then
+    return special_id and session_store.get_alias_by_id(special_id) or nil
   end
   return selector
+end
+
+--- Message for a special selector that has nothing recorded yet.
+---@param selector string
+---@return string
+local function special_missing_message(selector)
+  if selector == "$" then
+    return "No regression captured yet. vimfy records one when it next " ..
+      "suggests a faster sequence."
+  end
+  return "No recently finished session. Run ':Vimfy finish <alias>' first."
 end
 
 ---@param selector string
 ---@return VF.Session.Result|nil result
 ---@return string|nil err
 local function resolve_result_for_selector(selector)
-  if selector == "@" then
-    local result = session_store.get_last_finished_result()
-    if not result then
-      return nil, "No recently finished session. Run ':Vimfy finish <alias>' first."
+  local _, special_result, is_special = session_store.resolve_special(selector)
+  if is_special then
+    if not special_result then
+      return nil, special_missing_message(selector)
     end
-    return result, nil
+    return special_result, nil
   end
   local result = session_store.get_result(selector)
   if not result then
@@ -303,7 +322,7 @@ function M.resolve_result(selector)
   local result, err = resolve_result_for_selector(selector)
   if result then return result, nil end
 
-  if selector ~= "@" and alias_mod.is_valid_saved_name(selector) then
+  if not alias_mod.is_special_selector(selector) and alias_mod.is_valid_saved_name(selector) then
     local data, load_err, is_missing = disk.load(selector)
     if data then return data, nil end
     if not is_missing then
@@ -363,12 +382,8 @@ function M.store(selector, name)
     return
   end
 
-  local id
-  if selector == "@" then
-    id = session_store.get_last_finished_id()
-  else
-    id = session_store.get_id(selector)
-  end
+  local special_id, _, is_special = session_store.resolve_special(selector)
+  local id = is_special and special_id or session_store.get_id(selector)
   if not id then
     vim.notify("No finished result for '" .. selector ..
       "'. Is the session still active?", vim.log.levels.ERROR)
@@ -504,9 +519,26 @@ function M.list_saved()
   return disk.list()
 end
 
----@param name string
-function M.view(name)
-  saved_view.open(name)
+--- View a finished result full-screen. Accepts any selector
+--- (`@`/`$`/alias/recall window) or a saved disk name; no arg lists saves.
+---@param selector string|nil
+function M.view(selector)
+  if not selector or selector == "" then
+    local saved = disk.list()
+    if #saved == 0 then
+      vim.notify("No saved results found", vim.log.levels.INFO)
+    else
+      vim.notify("Saved results:\n  " .. table.concat(saved, "\n  "), vim.log.levels.INFO)
+    end
+    return
+  end
+
+  local result, err = M.resolve_result(selector)
+  if not result then
+    vim.notify("vimfy view failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+    return
+  end
+  result_window.open(selector, result)
 end
 
 return M

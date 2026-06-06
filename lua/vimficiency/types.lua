@@ -8,6 +8,19 @@
 ---@field seq string
 ---@field cost number
 
+--- Half-open [begin, end) span over a buffer, 0-indexed.
+---@class VF.Diff.Span
+---@field begin_row integer
+---@field begin_col integer
+---@field end_row integer
+---@field end_col integer
+
+--- One character-level change region: the initial-side (deleted) span and the
+--- goal-side (inserted) span. Either may be empty (pure insertion/deletion).
+---@class VF.Diff.Region
+---@field init VF.Diff.Span
+---@field goal VF.Diff.Span
+
 ---@class VF.OptimizerOverrides
 ---@field shared? table<string, number|integer|boolean>
 ---@field nav? table<string, number|integer|boolean>

@@ -5,6 +5,7 @@ local disk = require("vimficiency.session.disk")
 local ffi_optimizer = require("vimficiency.ffi.optimizer")
 local ffi_session = require("vimficiency.ffi.session")
 local key_tracking = require("vimficiency.capture.key_tracking")
+local keynorm = require("vimficiency.capture.keynorm")
 local util = require("vimficiency.util")
 
 local M = {}
@@ -13,6 +14,33 @@ local APPROXIMATE_MOTION_CONVERSIONS = {
   ["gj"] = "j",
   ["gk"] = "k",
 }
+
+-- Diagnostic probe for the synchronous optimizer block. During a fire nothing
+-- can render, so a slow run gives no in-the-moment feedback. On any fire over
+-- the threshold, dump the exact slice for offline replay and surface the timing
+-- the instant the main thread frees. Tune/disable via vim.g.vimficiency_slow_fire_ms.
+local SLOW_FIRE_DEFAULT_MS = 500
+
+local function slow_fire_threshold_ms()
+  return tonumber(vim.g.vimficiency_slow_fire_ms) or SLOW_FIRE_DEFAULT_MS
+end
+
+---@param active VF.Session.Active
+---@param result VF.Session.Result
+local function log_slow_fire(active, result)
+  pcall(function()
+    local dir = vim.fn.stdpath("data") .. "/vimficiency/slow"
+    vim.fn.mkdir(dir, "p")
+    local path = string.format("%s/%d-%s.json", dir, os.time(), tostring(active.id))
+    vim.fn.writefile({ vim.json.encode(result) }, path)
+    vim.schedule(function()
+      vim.notify(string.format(
+        "vimfy: optimizer ran %.0fms (analyze %.0fms) on a %d-line slice — repro: %s",
+        result.compute_ms or 0, result.analyze_ms or 0, #result.lines,
+        vim.fn.fnamemodify(path, ":~")), vim.log.levels.WARN)
+    end)
+  end)
+end
 
 ---@param keyseq string
 ---@return string
@@ -89,10 +117,29 @@ local function slice_lines(lines, region_start, region_end)
   return sliced
 end
 
+--- Drop mouse events from the captured stream. They are uncapturable as
+--- keyboard motion and otherwise inflate cost/length wildly (each unknown
+--- `<…>` token is costed character-by-character). `had_mouse` drives a warning.
+---@param key_seq VF.KeyEvent[]|nil
+---@return VF.KeyEvent[] kept
+---@return boolean had_mouse
+local function filter_mouse_events(key_seq)
+  local kept, had_mouse = {}, false
+  for _, ev in ipairs(key_seq or {}) do
+    if keynorm.is_mouse(ev.key_typed) then
+      had_mouse = true
+    else
+      kept[#kept + 1] = ev
+    end
+  end
+  return kept, had_mouse
+end
+
 ---@param active VF.Session.Active
 ---@return VF.Session.Result|nil result
 ---@return string|nil err
 function M.compute_result_for_active(active)
+  local compute_t0 = vim.uv.hrtime()
   if not v.nvim_buf_is_valid(active.buf) then
     return nil, string.format(
       "original buffer %s is no longer valid",
@@ -138,7 +185,8 @@ function M.compute_result_for_active(active)
   local initial_slice = slice_lines(initial_lines, start_search, end_search)
   local goal_slice = slice_lines(goal_lines, start_search, end_search)
 
-  local keyseq_raw = key_tracking.build_sequence(active.key_seq)
+  local kept_events, had_mouse = filter_mouse_events(active.key_seq)
+  local keyseq_raw = key_tracking.build_sequence(kept_events)
   local keyseq_str = apply_motion_conversions(keyseq_raw)
 
   local rel_start_row = start_state.row - start_search
@@ -154,6 +202,7 @@ function M.compute_result_for_active(active)
 
   local optimizer_overrides = ffi_optimizer.encode_optimizer_overrides({ shared = config.optimizer })
 
+  local analyze_t0 = vim.uv.hrtime()
   local ok, results, user_cost, dbg = pcall(
     ffi_optimizer.analyze,
     initial_slice, goal_slice,
@@ -169,6 +218,7 @@ function M.compute_result_for_active(active)
     config.RESULTS_CALCULATED,
     optimizer_overrides
   )
+  local analyze_ms = (vim.uv.hrtime() - analyze_t0) / 1e6
 
   if not ok then
     return nil, "FFI error: " .. tostring(results)
@@ -191,6 +241,18 @@ function M.compute_result_for_active(active)
     optimal_results = disk.empty_array()
   end
 
+  -- The optimizer's own character-level diff, for column highlighting in views.
+  -- Pass the same composition diff settings analyze used so the stored diff is
+  -- the breakdown the optimizer planned against. Same validated slices, so it
+  -- can't fail here.
+  local comp = (config.optimizer or {}).composition or {}
+  local diffs = ffi_optimizer.compute_diffs(
+    initial_slice, goal_slice, comp.diffAlgorithm, comp.treeDiffOpenPenalty)
+  if #diffs == 0 then
+    diffs = disk.empty_array()
+  end
+
+  local compute_ms = (vim.uv.hrtime() - compute_t0) / 1e6
   local result = {
     lines = initial_slice,
     goal_lines = goal_slice,
@@ -200,16 +262,29 @@ function M.compute_result_for_active(active)
     end_col = rel_end_col,
     has_lines_above = has_lines_above,
     has_lines_below = has_lines_below,
+    -- Reserved boundary context. At the whole-buffer level the slice IS the
+    -- edit region (boundary_first_col=0, boundary_last_col=last), so horizontal
+    -- prefix/suffix are always empty; nonempty values only arise per planned
+    -- edit inside CompositionOptimizer. Views render them faded when present.
+    prefix = "",
+    suffix = "",
+    diffs = diffs,
     window_height = start_state.window_height,
     scroll_amount = start_state.scroll_amount,
     user_seq = keyseq_str,
     user_cost = user_cost,
+    had_mouse = had_mouse,
     optimal_results = optimal_results,
     capture_debug = build_capture_debug(active.key_seq, keyseq_raw, keyseq_str),
     start_time = active.time_started,
-    key_count = #active.key_seq,
+    key_count = #kept_events,
     timestamp = vim.uv.hrtime(),
+    analyze_ms = analyze_ms,
+    compute_ms = compute_ms,
   }
+  if compute_ms >= slow_fire_threshold_ms() then
+    log_slow_fire(active, result)
+  end
   return result, nil
 end
 

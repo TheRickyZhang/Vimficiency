@@ -67,6 +67,14 @@ local function safe_tokenize(seq)
   return tokens
 end
 
+--- Nearest-rank percentile of a pre-sorted ascending list.
+local function percentile(sorted, p)
+  local idx = math.ceil(p / 100 * #sorted)
+  if idx < 1 then idx = 1 end
+  if idx > #sorted then idx = #sorted end
+  return sorted[idx]
+end
+
 --- Reduce a list of log records into the summary the UI renders.
 ---@param records table[]
 ---@return table
@@ -90,6 +98,7 @@ function M.aggregate(records)
 
   local user_hist, opt_hist = {}, {}
   local user_total, opt_total = 0, 0
+  local analyze_samples = {}
 
   for _, rec in ipairs(records) do
     summary.total_sessions = summary.total_sessions + 1
@@ -98,6 +107,9 @@ function M.aggregate(records)
     end
     summary.total_keys = summary.total_keys + (rec.key_count or 0)
     if rec.beats then summary.beats_count = summary.beats_count + 1 end
+    if type(rec.analyze_ms) == "number" then
+      analyze_samples[#analyze_samples + 1] = rec.analyze_ms
+    end
 
     -- Efficiency: capped ratio × 100. Beats clamp at 100 so an optimizer
     -- miss doesn't inflate the lifetime score past "as good as optimal".
@@ -134,6 +146,17 @@ function M.aggregate(records)
 
   if log_count > 0 then
     summary.efficiency_score = math.exp(log_sum / log_count)
+  end
+
+  if #analyze_samples > 0 then
+    table.sort(analyze_samples)
+    summary.analyze_timing = {
+      n   = #analyze_samples,
+      p50 = percentile(analyze_samples, 50),
+      p95 = percentile(analyze_samples, 95),
+      p99 = percentile(analyze_samples, 99),
+      max = analyze_samples[#analyze_samples],
+    }
   end
   for day, sum in pairs(day_log_sum) do
     summary.efficiency_by_day[day] = math.exp(sum / day_count[day])
@@ -313,6 +336,12 @@ function M.build_lines(summary)
   -- Dev
   push_title("  Dev")
   push(string.format("    Optimizer beats queued: %d", summary.beats_count))
+  local t = summary.analyze_timing
+  if t then
+    push(string.format(
+      "    Optimizer time (analyze): p50 %.1f · p95 %.1f · p99 %.1f · max %.1f ms  (n=%d)",
+      t.p50, t.p95, t.p99, t.max, t.n))
+  end
   push(string.format("    Log: %s", vim.fn.fnamemodify(log._log_path(), ":~")))
   push("")
   push("  Press q / <Esc> to close.")

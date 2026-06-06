@@ -9,9 +9,10 @@
     F(int,    navPaddingAbove, withNavLinePaddingAbove, 1, parseInt)                       \
     F(int,    navPaddingBelow, withNavLinePaddingBelow, 1, parseInt)                       \
     F(double, overshootPenalty, withOvershootPenalty, 3.0, parseDouble)                    \
-    F(double, treeDiffOpenPenalty, withTreeDiffOpenPenalty, 8.0, parseDouble)              \
+    F(double, treeDiffOpenPenalty, withTreeDiffOpenPenalty, 2.0, parseDouble)              \
+    F(double, treeMoveDeleteScale, withTreeMoveDeleteScale, 1.0, parseDouble)              \
     F(int,    transformMaxResultsPerStartPos, withTransformMaxResultsPerStartPos, 1, parseInt) \
-    F(int,    diffAlgorithm, withDiffAlgorithm, 0, parseInt)
+    F(int,    diffAlgorithm, withDiffAlgorithm, 1, parseInt)  /* 1 = DiffAlgorithm::Tree; 0 = Myers (switch-back) */
 
 #define COMPOSITION_FIELDS(F)     \
     MOTION_CLASS_FIELDS(F)        \

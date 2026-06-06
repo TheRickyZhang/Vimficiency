@@ -57,14 +57,15 @@ function M.simulate(alias, count)
     return
   end
 
-  -- `@` = the most recently finished session (e.g. the last auto-suggestion).
-  if alias == "@" then
-    local result = session_store.get_last_finished_result()
-    if not result then
-      vim.notify("No recently finished session to replay.", vim.log.levels.ERROR)
+  -- `@` = most recently finished session; `$` = most recent suggest regression.
+  local _, special_result, is_special = session_store.resolve_special(alias)
+  if is_special then
+    if not special_result then
+      local what = alias == "$" and "suggest regression" or "finished session"
+      vim.notify("No recent " .. what .. " to replay.", vim.log.levels.ERROR)
       return
     end
-    run_compare(result, "@", count)
+    run_compare(special_result, alias, count)
     return
   end
 

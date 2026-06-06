@@ -13,15 +13,14 @@ test("explore flow: insert recommendation accepts matching scratch edit", functi
     explore_helpers.open_scenario_flow("flow-insert-ok", "basic_insert", function(scratch_buf)
       move_to_first_edit_target(scratch_buf)
 
-      -- Feed structural + typed + <Esc> as one unit. The fake_result's
-      -- diff is "abc" → "aBc", so the picked structural's deletion range
-      -- determines the required typed continuation. For `ce`/`C`-style
-      -- structurals (which delete "bc"), the typed continuation is "Bc".
-      -- We can't observe intermediate Insert state in headless tests
-      -- because feedkeys "x" mode triggers an implicit InsertLeave when
-      -- it returns mid-insert, so we feed everything at once.
+      -- Feed structural + typed + <Esc> as one unit. The diff is "abc" →
+      -- "aBc" (single char b→B), whose first insert structural is `s`
+      -- (delete "b"), so the typed continuation is "B". A mismatching
+      -- continuation is rejected and the scratch reverts. We can't observe
+      -- intermediate Insert state in headless tests because feedkeys "x" mode
+      -- triggers an implicit InsertLeave mid-insert, so we feed it all at once.
       local edit = first_recommendation_in_phase("Transform", enters_insert_mode)
-      feed(edit.text .. "Bc<Esc>")
+      feed(edit.text .. "B<Esc>")
 
       -- After Stage 2: completion requires the cursor to actually reach
       -- goalPos, not merely "all edits applied". Insert exits at the

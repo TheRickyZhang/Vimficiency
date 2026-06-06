@@ -38,6 +38,24 @@ vimficiency finished [a] (0,0) -> (2,2)
   3. 3rx Wlj ciw yyy <Esc> (13.00)
 ```
 
+The full multi-line display above is for explicit finishes (`:Vimfy finish`).
+
+### Auto-suggest regression toast
+
+When `auto_suggest` detects a regression, it shows a deliberately terse,
+in-place-replaceable toast (`capture/auto_suggest.lua` `render_suggestion`) —
+just enough to decide whether to look closer:
+
+```
+vimfy regression · 17 keys · 3s ago · 15 → 8
+:Vimfy view $  ·  play $  ·  explore $
+```
+
+"how long ago" is `key_count` + wall-clock since `start_time`; the delta is
+`user_cost → best_cost` (rounded). The `$` selector resolves to this exact
+regression (see [session-storage.md](session-storage.md)); `:Vimfy view $`
+opens the full side-by-side breakdown.
+
 ### Sequence Formatting
 
 Sequences are tokenized into logical units using `SequenceParser`:
@@ -64,6 +82,14 @@ User cost is calculated using `getEffort(keyseq, config)` from `RunningEffort.h`
 - Converts the sequence to physical key presses
 - Applies keyboard effort model (finger travel, hand alternation, etc.)
 - Returns total effort score
+
+Mouse events (`<ScrollWheelDown>`, `<LeftRelease>`, clicks, drags, …) are
+**stripped before the sequence is built** (`compute.lua` `filter_mouse_events`,
+via `keynorm.is_mouse`). They are uncapturable as keyboard motion and, being
+unknown `<…>` tokens, the C++ tokenizer would otherwise cost them
+character-by-character (one wheel event ≈ 17 keystrokes). The stripped capture
+sets `result.had_mouse`, which surfaces a one-line warning wherever the result
+is shown (toast, `:Vimfy finish` output, `:Vimfy view` header).
 
 ## After a session finishes
 

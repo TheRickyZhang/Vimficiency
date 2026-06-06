@@ -5,6 +5,7 @@ local M = {}
 
 local config        = require("vimficiency.config")
 local end_trigger   = require("vimficiency.capture.end_trigger")
+local result_view   = require("vimficiency.session.result_view")
 local session       = require("vimficiency.session")
 local session_store = require("vimficiency.session.store")
 
@@ -32,10 +33,11 @@ local function fingerprint_result(result)
     result.user_seq or "", opt_str)
 end
 
--- Compact, nonintrusive toast. Full breakdown is one command away via the `@`
--- selector (the record is already finished + stored at this point). `id` lets a
--- notifier (snacks/nvim-notify) replace the prior suggestion in place instead of
--- stacking; plain `vim.notify` ignores it.
+-- Compact, glanceable toast: how long ago the capture was (keys + seconds) and
+-- the effort delta (user → best). The full side-by-side breakdown is one command
+-- away via the `$` selector (the record is already finished + stored at this
+-- point). `id` lets a notifier (snacks/nvim-notify) replace the prior suggestion
+-- in place instead of stacking; plain `vim.notify` ignores it.
 ---@param summary VF.Session.Summary
 local function render_suggestion(summary)
   local result = summary.result
@@ -45,7 +47,7 @@ local function render_suggestion(summary)
 
   -- Drop toasts landing within notif_cooldown_ms of the previous shown one.
   -- The record is already finished + stored, so a suppressed suggestion is
-  -- still reachable via `@` / `:Vimfy list`.
+  -- still reachable via `$` / `:Vimfy list`.
   local cfg = config.auto_suggest
   local notif_cooldown_ns = ((cfg and cfg.notif_cooldown_ms) or 0) * 1e6
   local now = vim.uv.hrtime()
@@ -54,11 +56,20 @@ local function render_suggestion(summary)
   end
   last_notify_hrtime = now
 
-  vim.notify(
-    string.format("%s (%.1f)  →  %s (%.1f)\n:Vimfy play @  ·  explore @  ·  save @ <name>",
-      summary.preview or "", result.user_cost or 0, optimal.seq or "", optimal.cost or 0),
-    vim.log.levels.INFO,
-    { title = "vimfy suggest", id = "vimfy_suggest" })
+  local ago = string.format("%d keys", result.key_count or 0)
+  if result.start_time then
+    ago = ago .. string.format(" · %.0fs ago", (now - result.start_time) / 1e9)
+  end
+
+  local timing = result.analyze_ms and string.format(" · %.0fms", result.analyze_ms) or ""
+  local body = string.format(
+    "vimfy regression · %s · %.0f → %.0f%s\n:Vimfy view $  ·  play $  ·  explore $",
+    ago, result.user_cost or 0, optimal.cost or 0, timing)
+  if result.had_mouse then
+    body = body .. "\n" .. result_view.MOUSE_WARNING
+  end
+
+  vim.notify(body, vim.log.levels.INFO, { title = "vimfy suggest", id = "vimfy_suggest" })
 end
 
 --- Shared path for every trigger.
@@ -97,6 +108,8 @@ local function fire_with_window(window, gate, reason)
   end
 
   last_fingerprint = fp
+  -- Pin this regression as `$` (distinct from `@`'s any-finish history).
+  session_store.set_last_suggest_id(id)
 
   local summary = session_store.summarize(id)
   if summary then render_suggestion(summary) end

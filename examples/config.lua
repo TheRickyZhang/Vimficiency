@@ -9,14 +9,15 @@ return {
       -- Lua-side knobs
       ----------------------------------------------------------------
 
-      -- Optimizer/search
+      -- Search / performance and recall-safety knobs (values shown are the
+      -- defaults). These bound how much work each synchronous optimizer run
+      -- does; see doc-src/09-configuration.md for what each one means and for
+      -- the `optimizer = { ... }` A* overrides (e.g. maxNodesPopped).
       RESULTS_CALCULATED = 20,
       RESULTS_SAVED = 5,
       SLICE_PADDING = 5,
       SLICE_EXPAND_TO_PARAGRAPH = false,
       MAX_SEARCH_LINES = 500,
-
-      -- Recall/session safety
       KEY_SESSION_CAPACITY = 200,
       MAX_RETENTION_SECONDS = 120,
       MANUAL_IDLE_TIMEOUT_SECONDS = 300,
@@ -28,26 +29,15 @@ return {
         cooldown_ms = 5000,
       },
 
-      -- Auto-suggest: omit triggers you do not want.
-      -- If a trigger is present, specify the whole trigger.
+      -- Auto-suggest (`:Vimfy suggest on`): omit a trigger to disable it; if a
+      -- trigger is present, specify the whole trigger. Configuring any trigger
+      -- auto-enables suggest at startup. Field reference: doc-src/06-suggest.md.
       -- auto_suggest = {
-      --   cooldown_ms = 5000,
-      --
-      --   idle = {
-      --     ms = 3000,
-      --     window = "3s",
-      --   },
-      --
-      --   -- keys = {
-      --   --   every = 50,
-      --   -- },
-      --
-      --   -- cost = {
-      --   --   m = 1.5,
-      --   --   b = 2.0,
-      --   --   ms = 300,
-      --   --   window = "100",
-      --   -- },
+      --   cooldown_ms = 5000,        -- min gap between optimizer runs
+      --   notif_cooldown_ms = 2000,  -- min gap between shown toasts
+      --   idle = { ms = 3000, window = "3s" },
+      --   -- keys = { every = 50 },
+      --   -- cost = { m = 1.5, b = 2.0, ms = 300, window = "100" },
       -- },
 
 

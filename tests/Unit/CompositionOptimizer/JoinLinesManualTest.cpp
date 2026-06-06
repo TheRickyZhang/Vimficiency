@@ -128,7 +128,11 @@ TEST_F(CompositionOptimizer_ManualTest, JoinPlanEntryLineIsColumnInsensitive) {
   CursorPos initialPos(0, 2);
   CursorPos goalPos = goal.lastPos();
 
-  CompositionResult res = opt.optimize(initial, initialPos, goal, goalPos);
+  // Pinned to Myers: the J-plan path keys off this diff shape, which the
+  // TreeDiff first-draft planner does not yet surface (it still solves the
+  // transform, just not via a leading J).
+  CompositionResult res = opt.optimize(
+      initial, initialPos, goal, goalPos, CompositionOptimizerParams{}.withDiffAlgorithm(0));
 
   expectHasValidResults(
       res.getResults(), initial, initialPos, goal,

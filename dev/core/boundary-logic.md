@@ -144,6 +144,25 @@ The `BoundaryContext` struct extracts the shared logic (hasLinesAbove/Below comp
 offset storage) so both types compute boundaries consistently. Use `NavBoundary(eb)`
 or `eb.context()` to convert when switching between optimizer types.
 
+### Whole-buffer vs per-planned-edit prefix/suffix
+
+`BoundaryContext` excludes two things: vertically (`hasLinesAbove`/`hasLinesBelow`)
+and horizontally (`leftColOffset`/`rightColOffset` = `prefix_.size()`/`suffix_.size()`).
+These live at different levels:
+
+- **Whole-buffer (session) level**: the boundary handed to the top-level
+  `analyze`/composition covers the entire slice (`boundary_first_col = 0`,
+  `boundary_last_col = last`), so **horizontal prefix/suffix are always empty** —
+  the edit region *is* the slice. Only `hasLinesAbove`/`Below` vary.
+- **Per-planned-edit level**: inside `CompositionOptimizer`, each diff's
+  `TransformBoundary` carries the real same-line `prefix_`/`suffix_` bordering
+  that region.
+
+The Lua `VF.Session.Result` therefore stores `prefix`/`suffix` (empty at the
+whole-buffer level, reserved for future per-edit views) plus `has_lines_above`/
+`below`. The full-screen viewer (`result_window.lua`) renders the above/below
+booleans as faded placeholders and prefix/suffix faded only when nonempty.
+
 ## Endpoint Functions (VimEndpointUtils.h)
 
 Return sentinel values (`POSITION_OUTSIDE_BOUNDARY`, `LINE_OUTSIDE_BOUNDARY`, etc.) when crossing:

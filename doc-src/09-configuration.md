@@ -4,9 +4,10 @@ title: "Configuration"
 
 # Configuration
 
-All settings are optional. For the canonical full setup, including the config
-shape and recommended keymaps, see
-[`examples/config.lua`](../examples/config.lua).
+All settings are optional, and this page documents each one in detail. For a
+copy-pasteable starting point with recommended keymaps, see
+[`examples/config.lua`](../examples/config.lua) — it sets the common toggles at
+their defaults and points back here for the advanced knobs.
 
 Minimal setup:
 
@@ -15,6 +16,54 @@ require('vimficiency').setup()
 ```
 
 Unknown keys produce a loud warning at setup — typos don't silently no-op.
+
+## Search and performance
+
+The optimizer runs **synchronously on Neovim's main thread**, so each run
+blocks the editor until it returns. These knobs bound how much work a run
+does — reach for them first if [Suggest](06-suggest.md) or interactive Explore
+ever feels laggy. All are optional and default as shown.
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `MAX_SEARCH_LINES` | `500` | Hard ceiling on the analyzed slice height. A region taller than this is skipped entirely instead of analyzed — the strongest guard against a runaway search. Lower it to cap worst-case latency. |
+| `SLICE_PADDING` | `5` | Context lines included above and below the detected edit region before searching. More padding means a larger search. |
+| `SLICE_EXPAND_TO_PARAGRAPH` | `false` | When `true`, grows the analyzed slice out to the surrounding paragraph boundaries. Off keeps slices tight. |
+| `RESULTS_CALCULATED` | `20` | How many candidate sequences the search computes per run. |
+| `RESULTS_SAVED` | `5` | How many of those candidates are kept and shown. |
+
+## Optimizer overrides
+
+`optimizer = { ... }` forwards low-level A\* parameters to **every** optimizer
+call (mark, watch, recall, suggest, and explore defaults). Leave it empty to
+use the built-in defaults; set only the keys you want to change. Confirm the
+values actually in effect with `:Vimfy config`.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `maxNodesPopped` | `50000` | A\* search budget — the most states the search will expand before stopping. The main lever for per-run cost; lower it to trade thoroughness for speed. |
+| `maxResults` | `20` | Upper bound on results retained inside the search. |
+| `effortWeight` | `1.0` | Weight on keystroke effort in the cost function. |
+| `distanceWeight` | `1.0` | Weight on the distance-to-goal heuristic. Set to `0` for an exact Dijkstra search — guaranteed cheapest result, but slower. |
+| `exploreFactor` | `2.0` | Effort cutoff multiplier: the search only keeps candidate sequences whose effort is at most `exploreFactor ×` your typed effort (default `2.0` = up to twice as costly). Lower it to prune the search harder (faster, but may discard distant alternatives). |
+| `minPrefixCount` / `maxPrefixCount` | `4` / `16` | Range of count prefixes the search tries (e.g. `3w`). Setting `minPrefixCount > maxPrefixCount` disables count-prefixed exploration while leaving unprefixed search intact. |
+
+The distance heuristic is intentionally inadmissible (it can overestimate), so
+a higher `distanceWeight` searches faster but may miss the cheapest sequence;
+`distanceWeight = 0` recovers optimality at the cost of speed.
+
+## Recall and session safety
+
+[Recall](05-recall.md) keeps a rolling ring of recent keystrokes so you can
+analyze "N keys / Ns ago" after the fact. These knobs bound that ring and the
+lifetime of in-progress sessions.
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `KEY_SESSION_CAPACITY` | `200` | Maximum keystrokes retained in the recall ring. |
+| `MAX_RETENTION_SECONDS` | `120` | Maximum age of recall history. The oldest entries are evicted once **both** the capacity and the age limit are exceeded. |
+| `MANUAL_IDLE_TIMEOUT_SECONDS` | `300` | A manual (`start`/`finish`) session left idle this long is auto-ended with a warning. |
+| `SNAP_LOOKBACK_KEYS` | `20` | When resolving a recall window, snap its start to a nearby clean key boundary lying within this many keys. |
 
 ## Idle end-detection
 

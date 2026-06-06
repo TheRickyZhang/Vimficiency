@@ -32,7 +32,7 @@ Subdirectories hold supporting modules for each domain:
 | `session/disk.lua` | Saved-result JSON encoding, validation, and disk operations. |
 | `session/playback.lua` | Converts stored results into replay sequence pools. |
 | `session/result_view.lua` | Lua adapter for C++ result report formatting shared by `finish` and auto-suggest. |
-| `session/saved_view.lua` | Scratch-buffer view for saved result files. |
+| `session/result_window.lua` | Full-screen side-by-side viewer (`:Vimfy view`): initial/final panes, diff + cursor highlights. |
 | `session/store.lua` | Canonical session records + manual/recall indexing. |
 
 ### `session/picker/` — session picker support

@@ -81,6 +81,32 @@ test("workspace/storage: fetch copies from disk to memory, disk preserved", func
   end)
 end)
 
+test("workspace/storage: diffs survive a disk round-trip", function()
+  h.use_temp_data_home()
+  h.silence_notify(function()
+    local result = fake_result("seq")
+    result.prefix = ""
+    result.suffix = ""
+    result.diffs = {
+      { init = { begin_row = 0, begin_col = 1, end_row = 0, end_col = 4 },
+        goal = { begin_row = 0, begin_col = 1, end_row = 0, end_col = 5 } },
+    }
+    local id = session_store.register_fetched_result("diffroundtrip", result)
+    assert_true(id, "seed failed")
+    session.save("diffroundtrip", "diffroundtrip")
+    remove_alias("diffroundtrip")
+
+    session.fetch("diffroundtrip", "diffroundtrip")
+    local loaded = assert(session_store.get_result("diffroundtrip"))
+    assert_eq(#loaded.diffs, 1, "diffs array survived JSON round-trip")
+    assert_eq(loaded.diffs[1].init.end_col, 4, "init span preserved")
+    assert_eq(loaded.diffs[1].goal.end_col, 5, "goal span preserved")
+    assert_eq(loaded.prefix, "", "prefix preserved")
+
+    remove_alias("diffroundtrip")
+  end)
+end)
+
 test("workspace/storage: fetch refuses to overwrite an in-memory alias", function()
   h.use_temp_data_home()
   h.silence_notify(function()

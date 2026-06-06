@@ -13,4 +13,17 @@ function M.normalize(input)
   end))
 end
 
+--- True for any mouse event token (clicks, drags, releases, wheel, move).
+--- These reach `vim.on_key` as `<...>` names that the C++ tokenizer does not
+--- recognize, so they would otherwise be costed character-by-character.
+---@param normalized string  output of `M.normalize`
+---@return boolean
+function M.is_mouse(normalized)
+  if not normalized or normalized == "" then return false end
+  return normalized:find("Mouse") ~= nil
+    or normalized:find("ScrollWheel") ~= nil
+    or normalized:find("Drag") ~= nil
+    or normalized:find("Release") ~= nil
+end
+
 return M

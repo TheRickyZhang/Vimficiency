@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cstdint>
+#include <cstdlib>
+#include <iostream>
 #include <optional>
 #include <queue>
 #include <span>
@@ -673,9 +676,17 @@ CompositionResult CompositionOptimizer::optimize(
     debug("only support forward motion in CompositionOptimizer");
   }
 
+  const bool timePhases = std::getenv("VIMFY_TIME_PHASES") != nullptr;
+  auto setupT0 = std::chrono::steady_clock::now();
   CompositionSearchContext ctx(initialLines, initialPos, goalLines, goalPos,
                                userSequence, navigationContext, boundary,
                                params, config);
+  if (timePhases) {
+    std::cerr << "[phase] setup (ctx ctor) total: "
+              << std::chrono::duration<double, std::milli>(
+                     std::chrono::steady_clock::now() - setupT0).count()
+              << " ms, diffs=" << ctx.totalEdits() << "\n";
+  }
 
   if (ctx.totalEdits() > 16) {
     debug("Cannot support more than 16 edits");
@@ -683,9 +694,16 @@ CompositionResult CompositionOptimizer::optimize(
   }
 
   NoTrace trace;
+  auto loopT0 = std::chrono::steady_clock::now();
   auto out = optimizeImpl<NoTrace>(
       config, initialLines, initialPos, goalLines, goalPos,
       params, userSequence, boundary, navigationContext, ctx, trace);
+  if (timePhases) {
+    std::cerr << "[phase] A* loop total: "
+              << std::chrono::duration<double, std::milli>(
+                     std::chrono::steady_clock::now() - loopT0).count()
+              << " ms\n";
+  }
   if (out.first.empty()) {
     if (auto fallback = buildWholeBufferRewriteFallback(
             config, initialLines, goalLines, goalPos, navigationContext)) {
