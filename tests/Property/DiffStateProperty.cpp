@@ -10,7 +10,7 @@
 #include <fuzztest/fuzztest.h>
 #include <gtest/gtest.h>
 
-#include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
 #include "Property/PropertyDomains.h"
 #include "Types/Lines.h"
 

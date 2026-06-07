@@ -7,6 +7,7 @@ local list_render      = require("vimficiency.explore.render.list")
 local tags_render      = require("vimficiency.explore.render.tags")
 local settings         = require("vimficiency.explore.settings")
 local insert_helpers   = require("vimficiency.explore.insert_helpers")
+local timing           = require("vimficiency.explore.timing")
 
 local M = {}
 
@@ -25,9 +26,12 @@ end
 ---@param a VF.Explore.Active
 function M.fetch(a)
   a.state = ffi_explore.explore_state(a.view_id)
+  local t0 = vim.uv.hrtime()
   a.recommendations = ffi_explore.explore_recommendations(
     a.view_id, a.recommendation_count, M.resolve_overrides(),
     a.recommendation_sort)
+  a.last_recommend_ms = (vim.uv.hrtime() - t0) / 1e6
+  timing.note("recommendations", a.last_recommend_ms)
   a.header_rows = ffi_explore.explore_header_rows(a.view_id)
   for i, rec in ipairs(a.recommendations) do rec.rank = i end
 end

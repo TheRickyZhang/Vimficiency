@@ -141,7 +141,7 @@ optimizer uses `A` + content + `<CR>` + `<Esc>` (e.g., `Ab<CR><Esc>`).
 
 ## Code Location
 
-`src/Optimizer/CompositionOptimizer/DiffState.cpp`:
+`src/Optimizer/DiffPlanner/DiffState.cpp`:
 - Pure newlines rule: lines 309-312
 - Rule 0 (cross-line weak content): lines 273-302
 - Rules 1-4 (short match handling): lines 314-371

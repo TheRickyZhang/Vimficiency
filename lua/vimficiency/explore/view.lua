@@ -19,7 +19,7 @@ local v = vim.api
 ---@class VF.Explore.Active : VF.Explore.ViewSettings
 ---@field label string
 ---@field result VF.Explore.OpenResult
----@field view_id integer
+---@field view_id integer|nil
 ---@field scratch VF.Explore.Scratch
 ---@field list_buf integer
 ---@field state VF.Explore.State
@@ -33,10 +33,12 @@ local v = vim.api
 ---@field plan_reconfigure_pending boolean|nil
 ---@field header_handlers table<string, function>
 ---@field winclosed_autocmd integer|nil
+---@field poll_handle VF.Explore.PollHandle|nil
+---@field last_recommend_ms number|nil
 
 ---@param label string
 ---@param result VF.Explore.OpenResult
----@param view_id integer
+---@param view_id integer|nil
 ---@param layout VF.Explore.Layout
 ---@param header_handlers table<string, function>
 ---@return VF.Explore.Active

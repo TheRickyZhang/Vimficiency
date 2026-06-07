@@ -18,6 +18,7 @@
 #include "CompositionStrategies.h"
 #include "EditSequenceSpan.h"
 #include "Optimizer/BuildTypedCommands.h"
+#include "Optimizer/SearchControl.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
 
@@ -383,6 +384,7 @@ optimizeImpl(
   debug("=== CompositionOptimizer A* search ===");
 
   while (!pq.empty() && ctx.totalPops < params.maxNodesPopped) {
+    if (ctx.control && ctx.control->stopRequested(ctx.totalPops)) break;
     Entry current = pq.top();
     pq.pop();
     const CompositionState& s = current.state;
@@ -669,7 +671,7 @@ CompositionResult CompositionOptimizer::optimize(
     const Lines& initialLines, const CursorPos initialPos, const Lines& goalLines,
     const CursorPos goalPos, CompositionOptimizerParams params,
     string_view userSequence, const NavBoundary& boundary,
-    const NavContext& navigationContext) {
+    const NavContext& navigationContext, const SearchControl* control) {
   CHECK(goalLines.contains(goalPos),
         "goalPos must be a valid normal-mode cursor position in goalLines");
   if(goalPos < initialPos) {
@@ -681,6 +683,7 @@ CompositionResult CompositionOptimizer::optimize(
   CompositionSearchContext ctx(initialLines, initialPos, goalLines, goalPos,
                                userSequence, navigationContext, boundary,
                                params, config);
+  ctx.control = control;
   if (timePhases) {
     std::cerr << "[phase] setup (ctx ctor) total: "
               << std::chrono::duration<double, std::milli>(
@@ -717,7 +720,7 @@ CompositionTraceResult CompositionOptimizer::optimizeWithEditSpans(
     const Lines& initialLines, const CursorPos initialPos, const Lines& goalLines,
     const CursorPos goalPos, CompositionOptimizerParams params,
     string_view userSequence, const NavBoundary& boundary,
-    const NavContext& navigationContext) {
+    const NavContext& navigationContext, const SearchControl* control) {
   CHECK(goalLines.contains(goalPos),
         "goalPos must be a valid normal-mode cursor position in goalLines");
   if(goalPos < initialPos) {
@@ -727,6 +730,7 @@ CompositionTraceResult CompositionOptimizer::optimizeWithEditSpans(
   CompositionSearchContext ctx(initialLines, initialPos, goalLines, goalPos,
                                userSequence, navigationContext, boundary,
                                params, config);
+  ctx.control = control;
 
   if (ctx.totalEdits() > 16) {
     debug("Cannot support more than 16 edits");

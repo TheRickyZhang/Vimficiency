@@ -29,7 +29,7 @@
 
 #include "Boundary/NavBoundary.h"
 #include "Keyboard/Config.h"
-#include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
 #include "Optimizer/FrontierCommon.h"
 #include "Types/NavContext.h"
 

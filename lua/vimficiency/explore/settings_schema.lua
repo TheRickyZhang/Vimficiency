@@ -159,7 +159,7 @@ function M.build(a, refresh_ui)
       set = opt_set("composition", "navPaddingBelow") },
     { kind = "setting",
       label = "Diff algorithm",
-      value_kind = "int", min = 0, max = 1,
+      value_kind = "int", min = 0, max = 2,  -- 0 myers, 1 tree, 2 char
       get = opt_get("composition", "diffAlgorithm"),
       set = opt_set("composition", "diffAlgorithm") },
 

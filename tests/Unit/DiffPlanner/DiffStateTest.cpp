@@ -1,6 +1,6 @@
-// tests/Unit/CompositionOptimizer/DiffStateTest.cpp
+// tests/Unit/DiffPlanner/DiffStateTest.cpp
 //
-// Tests for DiffState computation used in CompositionOptimizer.
+// Tests for DiffState computation used by diff planners.
 // Manual edge case tests. Generated invariant coverage lives in Property/.
 //
 // Run: ./build/tests/vimfy_unit_tests --gtest_filter="*DiffState*"
@@ -12,9 +12,9 @@
 #include <iterator>
 #include <string_view>
 
-#include "Optimizer/CompositionOptimizer/DiffState.h"
-#include "Optimizer/CompositionOptimizer/Tree.h"
-#include "Optimizer/CompositionOptimizer/TreeDiff.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
+#include "Optimizer/DiffPlanner/Tree.h"
+#include "Optimizer/DiffPlanner/TreeDiff.h"
 #include "Keyboard/Config.h"
 #include "Types/Lines.h"
 

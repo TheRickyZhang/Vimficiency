@@ -6,7 +6,7 @@
 - Our first step is to generate planned edit regions. The **default is the
   `TreeDiff` planner** (`composition:diffAlgorithm=1`). It uses a
   paragraph/line/BigWord/Word/Char tree to choose flat diff regions, priced in
-  approximate keystrokes: per-region penalty (~2) + inserted-text effort +
+  approximate keystrokes: per-region penalty (~1) + inserted-text effort +
   keystroke movement between edits + count-independent deletion. Adjacent
   contiguous regions are merged to undo token-seam fragmentation. Some Myers-only
   behaviors (reverse processing order, certain boundary-crossing J plans) are

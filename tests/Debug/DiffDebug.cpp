@@ -14,8 +14,9 @@
 #include <iostream>
 #include <string>
 
-#include "Optimizer/CompositionOptimizer/DiffState.h"
-#include "Optimizer/CompositionOptimizer/TreeDiff.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
+#include "Optimizer/DiffPlanner/CharDiff.h"
+#include "Optimizer/DiffPlanner/TreeDiff.h"
 #include "Keyboard/Config.h"
 #include "Types/Lines.h"
 #include "Utils/PrettyText.h"
@@ -75,6 +76,10 @@ static void printDiffs(const Lines& initial, const Lines& goal) {
   printDiffs("Myers", Myers::calculate(initial, goal), initial, goal);
   cout << endl;
   printDiffs("Tree", TreeDiff::calculate(initial, goal, Config::uniform()), initial, goal);
+  cout << endl;
+  auto charPlans = CharDiff::calculate(initial, goal, Config::uniform());
+  printDiffs("Char", charPlans.empty() ? std::vector<DiffState>{} : charPlans.front().diffs,
+             initial, goal);
 }
 
 int main(int argc, char* argv[]) {

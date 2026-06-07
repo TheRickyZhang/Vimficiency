@@ -1,0 +1,60 @@
+two word edits keeping a word  (top 4)
+aaa bbb ccc  ->  xxx bbb yyy
+  plan 0: cost 14 = diffs 1 + del 2 + ins 11 + move 0
+    [0] replace "aaa bbb ccc" -> "xxx bbb yyy"  P=1 del=2 ins=11 move=0  [retyped " bbb " = 5]
+  plan 1: cost 15 = diffs 2 + del 4 + ins 7 + move 2
+    [0] replace "aaa " -> "xxx "  P=1 del=2 ins=4 move=0  [retyped " " = 1]
+    [1] replace "ccc" -> "yyy"  P=1 del=2 ins=3 move=2
+  plan 2: cost 15 = diffs 2 + del 4 + ins 6 + move 3
+    [0] replace "aaa" -> "xxx"  P=1 del=2 ins=3 move=0
+    [1] replace "ccc" -> "yyy"  P=1 del=2 ins=3 move=3
+  plan 3: cost 17 = diffs 2 + del 4 + ins 8 + move 3
+    [0] replace "aaa " -> "xxx "  P=1 del=2 ins=4 move=0  [retyped " " = 1]
+    [1] replace " ccc" -> " yyy"  P=1 del=2 ins=4 move=3  [retyped " " = 1]
+
+two char edits across a space  (top 4)
+abc xyz  ->  aXc xYz
+  plan 0: cost 9 = diffs 2 + del 2 + ins 2 + move 3
+    [0] replace "b" -> "X"  P=1 del=1 ins=1 move=0
+    [1] replace "y" -> "Y"  P=1 del=1 ins=1 move=3
+  plan 1: cost 10 = diffs 1 + del 4 + ins 5 + move 0
+    [0] replace "bc xy" -> "Xc xY"  P=1 del=4 ins=5 move=0  [retyped "c x" = 3]
+  plan 2: cost 10 = diffs 2 + del 3 + ins 3 + move 2
+    [0] replace "b" -> "X"  P=1 del=1 ins=1 move=0
+    [1] replace "xy" -> "xY"  P=1 del=2 ins=2 move=2  [retyped "x" = 1]
+  plan 3: cost 10 = diffs 2 + del 3 + ins 4 + move 1
+    [0] replace "bc " -> "Xc "  P=1 del=2 ins=3 move=0  [retyped "c " = 2]
+    [1] replace "y" -> "Y"  P=1 del=1 ins=1 move=1
+
+first+last char, short kept gap  (top 4)
+ab cd ef  ->  Xb cd eY
+  plan 0: cost 11 = diffs 1 + del 2 + ins 8 + move 0
+    [0] replace "ab cd ef" -> "Xb cd eY"  P=1 del=2 ins=8 move=0  [retyped "b cd e" = 6]
+  plan 1: cost 11 = diffs 2 + del 2 + ins 2 + move 5
+    [0] replace "a" -> "X"  P=1 del=1 ins=1 move=0
+    [1] replace "f" -> "Y"  P=1 del=1 ins=1 move=5
+  plan 2: cost 12 = diffs 2 + del 3 + ins 3 + move 4
+    [0] replace "a" -> "X"  P=1 del=1 ins=1 move=0
+    [1] replace "ef" -> "eY"  P=1 del=2 ins=2 move=4  [retyped "e" = 1]
+  plan 3: cost 12 = diffs 2 + del 3 + ins 4 + move 3
+    [0] replace "ab " -> "Xb "  P=1 del=2 ins=3 move=0  [retyped "b " = 2]
+    [1] replace "f" -> "Y"  P=1 del=1 ins=1 move=3
+
+clean single word change  (top 3)
+the quick fox  ->  the slow fox
+  plan 0: cost 7 = diffs 1 + del 2 + ins 4 + move 0
+    [0] replace "quick" -> "slow"  P=1 del=2 ins=4 move=0
+  plan 1: cost 8 = diffs 1 + del 2 + ins 5 + move 0
+    [0] replace " quick" -> " slow"  P=1 del=2 ins=5 move=0  [retyped " " = 1]
+  plan 2: cost 8 = diffs 1 + del 2 + ins 5 + move 0
+    [0] replace "quick " -> "slow "  P=1 del=2 ins=5 move=0  [retyped " " = 1]
+
+trailing deletion  (top 3)
+hello world  ->  hello
+  plan 0: cost 3 = diffs 1 + del 2 + ins 0 + move 0
+    [0] delete " world" -> ""  P=1 del=2 ins=0 move=0
+  plan 1: cost 5 = diffs 1 + del 3 + ins 1 + move 0
+    [0] replace "o world" -> "o"  P=1 del=3 ins=1 move=0  [retyped "o" = 1]
+  plan 2: cost 7 = diffs 1 + del 4 + ins 2 + move 0
+    [0] replace "lo world" -> "lo"  P=1 del=4 ins=2 move=0  [retyped "lo" = 2]
+

@@ -1,6 +1,7 @@
 #include "LuaExports/Common.h"
-#include "Optimizer/CompositionOptimizer/DiffState.h"
-#include "Optimizer/CompositionOptimizer/TreeDiff.h"
+#include "Optimizer/DiffPlanner/CharDiff.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
+#include "Optimizer/DiffPlanner/TreeDiff.h"
 #include <sstream>
 
 using namespace std;
@@ -52,6 +53,11 @@ VF::LuaExports::Result<string> computeDiffsImpl(
   if (diff_algorithm == DiffAlgorithm::Tree) {
     diffs = TreeDiff::calculate(initialLines, goalLines, g_config_internal,
                                 TreeDiff::CostOptions{.diffOpenPenalty = tree_open_penalty});
+  } else if (diff_algorithm == DiffAlgorithm::Char) {
+    vector<CharDiff::Plan> plans = CharDiff::calculate(
+        initialLines, goalLines, g_config_internal,
+        CharDiff::CostOptions{.diffOpenPenalty = tree_open_penalty});
+    if (!plans.empty()) diffs = std::move(plans.front().diffs);
   } else {
     diffs = Myers::calculate(initialLines, goalLines);
   }

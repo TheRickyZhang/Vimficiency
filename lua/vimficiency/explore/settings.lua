@@ -47,6 +47,11 @@ local VIEW_SETTINGS = {
   { key = "show_result_count",    type = "int",  label = "Results shown",
     default = 1,                  min = 0,
     max = function(a) return #a.header_rows.optimal end },
+  -- Wall-clock budget for the off-thread composition search at session open.
+  -- The worker returns best-so-far past this; 0 = run to the natural caps.
+  -- Responsiveness comes from the search being off-thread, not from this bound.
+  { key = "compute_deadline_ms",  type = "int",  label = "Compute deadline (ms)",
+    default = 2000,               min = 0, max = 60000 },
 }
 M.VIEW_SETTINGS = VIEW_SETTINGS
 
@@ -61,6 +66,7 @@ M.VIEW_SETTING_BY_KEY = VIEW_SETTING_BY_KEY
 ---@field recommendation_count integer
 ---@field show_user_typed boolean
 ---@field show_result_count integer
+---@field compute_deadline_ms integer
 
 ---@class VF.Explore.Settings
 ---@field shared table<string, any>

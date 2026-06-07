@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <iosfwd>
 #include <string>
 #include <vector>
@@ -27,11 +28,28 @@ constexpr Level levelAt(int index) {
   return static_cast<Level>(index);
 }
 
-constexpr Level operator+(Level level, int delta) {
-  return levelAt(levelIndex(level) + delta);
+constexpr Level childLevel(Level level) {
+  assert(level != Level::Char);
+  return levelAt(levelIndex(level) + 1);
 }
-constexpr Level operator-(Level level, int delta) {
-  return levelAt(levelIndex(level) - delta);
+
+// Keystroke cost of the bare motion to traverse one unit at a given level:
+// l/w/j = 1, W/} (shifted) = 2. Root is never a diff unit.
+constexpr double levelCost(Level level) {
+  switch (level) {
+    case Level::Paragraph: return 2.0;  // }
+    case Level::Line:      return 1.0;  // j
+    case Level::BigWord:   return 2.0;  // W
+    case Level::Word:      return 1.0;  // w
+    case Level::Char:      return 1.0;  // l
+    default:               return 0.0;  // Root
+  }
+}
+
+// Keystroke cost of one delete command at a given level: the motion plus the `d`
+// operator, count-independent. char is `x` (a single key, no operator).
+constexpr double deleteCost(Level level) {
+  return level == Level::Char ? 1.0 : levelCost(level) + 1.0;
 }
 
 const char* levelName(Level level);

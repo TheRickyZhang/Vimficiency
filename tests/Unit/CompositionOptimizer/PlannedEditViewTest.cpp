@@ -6,7 +6,7 @@
 #include "Boundary/NavBoundary.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
-#include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 

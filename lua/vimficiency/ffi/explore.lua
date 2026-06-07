@@ -95,17 +95,19 @@ local function parse_explore_recommendations(payload)
   return recs
 end
 
-function M.explore_start(initial_lines, start_row, start_col,
-                         goal_lines, end_row, end_col,
-                         boundary_first_col, boundary_last_col,
-                         has_lines_above, has_lines_below,
-                         window_height, scroll_amount,
-                         user_seq, optimizer_overrides)
+--- Kicks off the composition search on a C++ worker thread and returns a job id
+--- immediately. Poll with `explore_poll` until it returns a view id.
+function M.explore_start_async(initial_lines, start_row, start_col,
+                               goal_lines, end_row, end_col,
+                               boundary_first_col, boundary_last_col,
+                               has_lines_above, has_lines_below,
+                               window_height, scroll_amount,
+                               user_seq, optimizer_overrides, deadline_ms)
   local initial_payload = core.encode_line_array(initial_lines, "initial_lines")
   local goal_payload = core.encode_line_array(goal_lines, "goal_lines")
   local user_payload = user_seq or ""
   local override_payload = optimizer_overrides or ""
-  local payload = require_non_error(core.slice_to_string(lib.vf_explore_start(
+  local payload = require_non_error(core.slice_to_string(lib.vf_explore_start_async(
     initial_payload,
     #initial_payload,
     start_row, start_col,
@@ -118,9 +120,21 @@ function M.explore_start(initial_lines, start_row, start_col,
     user_payload,
     #user_payload,
     override_payload,
-    #override_payload
+    #override_payload,
+    deadline_ms or 0
   )))
-  return tonumber(payload) or error("explore_start returned non-numeric view_id: " .. payload)
+  return tonumber(payload) or error("explore_start_async returned non-numeric job_id: " .. payload)
+end
+
+--- Returns the view_id once the worker finishes, or nil while still computing.
+function M.explore_poll(job_id)
+  local payload = require_non_error(core.slice_to_string(lib.vf_explore_poll(job_id)))
+  if payload == "pending" then return nil end
+  return tonumber(payload) or error("explore_poll returned non-numeric view_id: " .. payload)
+end
+
+function M.explore_cancel(job_id)
+  return lib.vf_explore_cancel(job_id) == 1
 end
 
 function M.explore_destroy(view_id)

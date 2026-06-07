@@ -3,11 +3,14 @@
 ## Overview
 
 The CompositionOptimizer breaks buffer changes into individual planned edit
-regions. The default generator is now `TreeDiff` (`composition:diffAlgorithm=1`);
+regions. The default generator is `TreeDiff` (`composition:diffAlgorithm=1`);
 `composition:diffAlgorithm=0` switches back to the historical character-level
-Myers diff. Both methods return `DiffState`s computed against the **original**
-buffer, but the diffs must be applied **sequentially** to intermediate buffer
-states. This requires adjusting diff positions as earlier diffs shift content.
+Myers diff; `composition:diffAlgorithm=2` selects the experimental `CharDiff`
+planner (character-granular partitioning with the tree demoted to a cost
+oracle — see below). All methods return `DiffState`s computed against the
+**original** buffer, but the diffs must be applied **sequentially** to
+intermediate buffer states. This requires adjusting diff positions as earlier
+diffs shift content.
 
 ## Diff Output Contract
 
@@ -22,9 +25,13 @@ each planned edit into the current intermediate buffer.
 
 - `diffAlgorithm=0`: `Myers::calculate`, the historical character-level
   shortest-edit script plus local split/merge heuristics.
-- `diffAlgorithm=1`: `TreeDiff::calculate`, an experimental structural
-  planner. It builds a fixed-depth, lossless hierarchy over the flattened text
-  and runs a forward DP to choose flat replacement regions.
+- `diffAlgorithm=1`: `TreeDiff::calculate`, a structural planner. It builds a
+  fixed-depth, lossless hierarchy over the flattened text and runs a forward DP
+  to choose flat replacement regions.
+- `diffAlgorithm=2`: `CharDiff::calculate`, the next-generation planner. Same
+  cost model as TreeDiff, but the partition search runs at character granularity
+  and the tree is only a cost oracle (no structural constraint on diff
+  boundaries). See [CharDiff](#chardiff-diffalgorithm2).
 
 ## TreeDiff
 
@@ -74,7 +81,7 @@ candidate.
 Every term is in approximate keystrokes, on the same scale as inserted-text
 effort, so the planner trades retyping against moving/deleting honestly:
 
-- **Per region:** `diffOpenPenalty` (default `2`, from
+- **Per region:** `diffOpenPenalty` (default `1`, from
   `composition:treeDiffOpenPenalty`) — fixed operator/mode-entry overhead.
 - **Insert:** `typed_effort(inserted_text)` via `KeyedSequence` + `RunningEffort`
   on the active `Config`.
@@ -88,10 +95,12 @@ effort, so the planner trades retyping against moving/deleting honestly:
   are partition-neutral. The count-dependent per-child sum is partition-
   equivalent to one counted motion (`4j`), so no gap-extent tracking is needed.
 
-`diffOpenPenalty` is ~2, not 1: at 1 the recurse fragments a nested edit at a
-token seam (e.g. `((b))`->`(X)` splits into `(b`->`X` + delete `)` instead of one
-`(b)`->`X`); 2 makes the single region win without merging genuinely separate
-edits. The deep fix (next section) would let it drop to 1.
+`diffOpenPenalty` is ~1 (operator/mode overhead). At this value a nested
+level-collapse fragments at the token seam — `((b))`->`(X)` splits into
+`(b`->`X` + delete `)` instead of one `(b)`->`X`, and merge can't rejoin them
+(kept `)` between). That is a known limitation pending the char-granular fix
+(see Seam fragmentation); common bracket edits (`(hello)`->`(X)`,
+`((hello))`->`((X))`) keep their single region.
 
 ### DP Structure
 
@@ -153,9 +162,10 @@ fragmented recurse or a worse REPLACE that retypes `hello`).
 both old and new coordinates, removing the artifact when the fragments are
 contiguous: `insert " " + insert "world"` -> `insert " world"`. It cannot merge
 fragments with kept content between them (e.g. `((b))`->`(X)` keeping the inner
-`)`), so those rely on `diffOpenPenalty` ~2 to stay one region. The fundamental
-fix — character-granular matching at region edges (keep a char-prefix/suffix of
-the upcoming content, Myers-affix style) — is deferred.
+`)`); at `diffOpenPenalty` 1 those fragment into two regions — a known
+limitation. The fundamental fix — character-granular matching at region edges
+(keep a char-prefix/suffix of the upcoming content, Myers-affix style) — is
+deferred and would remove it.
 
 ### Current Examples
 
@@ -226,6 +236,135 @@ axes" gap is closed. What still keeps Myers reachable is structural:
 Retiring Myers needs processing order made a search choice (or order-agnostic)
 and TreeDiff confirmed to subsume the J-plan shapes.
 
+## CharDiff (diffAlgorithm=2)
+
+`CharDiff` keeps TreeDiff's cost model but fixes TreeDiff's structural flaw: the
+tree was constraining *where* diffs may fall. Real diffs are character-level — no
+tree partition, however chosen, can express every intuitive cross-level edit.
+CharDiff demotes the tree to a pure **cost oracle** and runs the partition search
+at character granularity. The tree still supplies `moveCost`/`delCost`; it no
+longer dictates region boundaries.
+
+### Objective
+
+A plan aligns old `A` and new `B` as kept runs interleaved with edits:
+
+```
+A = K0 D1 K1 ... Dt Kt        (Di deleted)
+B = K0 I1 K1 ... It Kt        (Ii inserted, Ki kept => byte-identical in both)
+```
+
+minimizing
+
+```
+PENALTY*t + sum delCost(Di) + sum insCost(Ii) + sum moveCost(interior Ki)
+```
+
+`insCost` is the real effort model; `delCost`/`moveCost` are coarsest-cover tree
+approximations. Leading `K0` and trailing `Kt` are free (you start at the first
+edit, end at the last) — and free *globally*, by construction, not per-recurse as
+in TreeDiff.
+
+### Inner/outer DP
+
+Naively, the edit-start minimization is 2-D (`O(N^6)`). Hume's inner/outer split —
+separate the deletion sweep from the insertion sweep — makes each a 1-D min:
+
+```
+G[a][b] = ready to START an edit at (a,b)
+        = (a==b and A[0:a]==B[0:b]) ? 0 : INF                      # leading free
+          OR  min_{t>=1, A[a-t:a]==B[b-t:b]} F[a-t][b-t] + moveCost(a-t, a)
+D[i][b] = started, deleted A[a:i)  (a<i)  = min_{a<i} G[a][b] + delCost(a, i)
+F[i][j] = just completed an edit ending at (i,j)
+        = PENALTY + min( min_b   D[i][b] + insCost(b,j),           # delete + insert
+                         min_{b<j} G[i][b] + insCost(b,j) )        # pure insert
+answer  = min_{A[i:n]==B[j:m]} F[i][j]                             # trailing free
+```
+
+`G` is the matched-gap layer Hume's tree DP doesn't need. Because the search is
+character-level there is **no refinement pass** (it is already finest-grained)
+and **no merge pass** (`G` requires `t>=1`, so adjacent fragments can't form — a
+straddling edit is strictly dominated by the merged one). One DP, and its
+objective *is* the emitted partition's cost — none of TreeDiff's three
+objective-vs-output discrepancies (refine, merge, per-recurse-free) survive.
+
+### Top-K plans
+
+`CostOptions::maxPlans` (default 1) generalizes the same DP to the K cheapest
+*distinct* partitions, ascending by cost. Each cell keeps its `K` best sub-paths
+instead of one min; merging predecessor lists + edge cost and truncating to `K`
+at every cell yields the global top-K, since costs are additive and nonnegative
+(the standard K-best lemma: `K` per cell suffices). Each DP path is a distinct
+edit-span set (a bijection — the matched gaps pin every `(a,i,q,j)`), so the
+plans need no dedup. Cost is `O(maxPlans)` over the single-plan search with a
+sort/truncate per cell; reconstruction walks explicit backpointers rather than
+re-deriving by cost equality. `calculate` returns `vector<Plan>` (production
+takes `front()`); `calculateBreakdown` returns one breakdown per plan, the
+diagnostic surface behind `tests/Approval/CharDiffApprovalTest.cpp`'s
+`TopKPlans`.
+
+### Complexity: O(N^3) exact, and no exact O(N^2)
+
+This is the Waterman–Smith–Beyer regime (alignment with a *general* — here 2-D
+region + movement — gap cost). The three nested 1-D mins (`G` over the matched
+diagonal, `D` over the deletion start, `F` over the insertion start) are each
+`O(N)` per cell over `O(N^2)` cells => **`O(N^3)`** with range-costs memoized.
+
+`O(N^2)`-exact would require the cost to satisfy the quadrangle (Monge)
+inequality so the sweeps become SMAWK row-minima. It does not.
+`moveCost`/`delCost` violate QI extensively; `insCost` satisfies it. The witness
+is `(0,1,1,k)`: `w(0,1)+w(1,k) > w(0,k)` — splitting a range mid-unit costs more
+than the whole, because enclosing a full unit lets one `}`/`dap` replace the
+parts (the *collapse*). Additivity would restore `O(N^2)` via running-min sweeps,
+but additive movement charges per-char traversal and can never collapse a
+spanned unit — it overcharges exactly the long matched gaps we want to skip
+cheaply, so it is a worse model, not a faster equivalent. Verdict: `O(N^3)` exact
+is the ceiling for this cost model. (Empirically: `tests/Debug/CharDiffPrototype.cpp`,
+`QuadrangleInequality` — ~19k violations for move/delete, 0 for insert.)
+
+`N` is the size of a *change region*. Hard-split (below) keeps it proportional to
+the diff, not the buffer.
+
+### Count-aware delete oracle
+
+`delCost(a,i)` prices the cheapest delete of the flat range: a maximal
+text-contiguous run of whole same-level units is one *counted* command
+(`Ndd`, `Ndap` ~ `deleteCost(level)`, count-independent), partial edges recurse
+to finer levels. This differs from a naive per-unit sum, which would overcharge
+multi-unit deletes (4 lines as `4*dd` instead of one `4dd`). `moveCost` stays the
+coarsest-cover collapse (a whole paragraph = one `}`).
+
+### Hard-split decomposition (scaling — deferred)
+
+To make work proportional to the diff rather than the buffer, cut at common runs
+no optimal edit can straddle. For a maximal common run `R`, keeping it beats
+straddling it iff
+
+```
+PENALTY + moveCost(R) < insCost(R) + delCost(R)   (+ a one-bigram seam slack)
+```
+
+Evaluated *per run* (not as an asymptotic threshold `L*`), this is an
+unconditional, loss-free split: it fires only where straddling is provably
+dominated. Runs it doesn't fire on are exactly the ones cheap to retype, which
+the DP can decide itself. **Correctness never depends on it; only region size
+(hence speed) does.** Not in the initial implementation — the composition slice
+already bounds region size — but it is the planned scaling layer.
+
+### Validation
+
+`tests/Debug/CharDiffPrototype.cpp` checks the G/D/F DP against a brute-force
+partition enumerator under the same oracle: 9 handcrafted + 4000 random small
+cases, zero mismatches. The DP is oracle-agnostic, so the delete-oracle
+calibration above can change without re-validating the search.
+
+### Status
+
+Initial implementation: the exact G/D/F DP + count-aware delete, wired as
+`diffAlgorithm=2`, default still TreeDiff. Hard-split is the scaling follow-up
+(correctness-neutral). The QI verdict means we do **not** chase an O(N^2)-exact
+variant for this cost model.
+
 ## The Sequential Application Problem
 
 When applying diffs one at a time to build intermediate states, earlier diffs change the buffer, shifting all subsequent positions. For example:
@@ -283,4 +422,4 @@ After adjustment, `diffStates[i].beginPos`/`endPos` are in intermediate-buffer c
 - Adjustment logic: `CompositionSearchContext::calculateLinesAfterDiffs()` in `CompositionSearchContext.cpp`
 - Helpers: `posToFlat()`, `flatToPos()` (file-static in same file)
 - Myers diff separation heuristics: see `dev/diff-separation-rules.md`
-- Tree diff planner: `src/Optimizer/CompositionOptimizer/TreeDiff.cpp`
+- Tree diff planner: `src/Optimizer/DiffPlanner/TreeDiff.cpp`
