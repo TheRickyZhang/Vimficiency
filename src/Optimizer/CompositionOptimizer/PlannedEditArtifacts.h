@@ -4,9 +4,9 @@
 
 #include "CompositionOptimizerParams.h"
 #include "CompositionSearchContext.h"
-#include "DiffState.h"
 #include "JoinPlan.h"
 #include "Keyboard/Config.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Types/Lines.h"
 

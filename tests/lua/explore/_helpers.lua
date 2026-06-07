@@ -226,6 +226,13 @@ function M.open_flow(label, result, fn)
     assert_true(scratch_buf ~= nil, "missing scratch buffer")
     vim.api.nvim_set_current_win(scratch_win)
 
+    -- Open now computes the plan on a worker thread; pump the loop until the
+    -- poller installs the view (view_id set) before the test interacts with it.
+    local view = require("vimficiency.explore.registry").current()
+    assert_true(
+      vim.wait(5000, function() return view.view_id ~= nil end, 5),
+      "explore plan did not finish computing")
+
     fn(scratch_buf)
   end)
 

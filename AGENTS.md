@@ -12,6 +12,7 @@ Vimficiency is a Vim bindings optimizer that analyzes a user's actions and recom
 - `src/Keyboard`: Keyboard primitives and sequence-to-key conversion
 - `src/Effort`: Effort accumulation/cache built on keyboard primitives
 - `src/Optimizer`: Algorithm logic for optimization
+- `src/Optimizer/DiffPlanner`: Diff state, tree model, and diff-region planners
 - `src/VimCore`: Explicit vim motion simulation
 - `src/Utils`: Utilities
 - `src/lua_exports.cpp`, `src/LuaExports/`: C++ to Lua FFI interface

@@ -11,7 +11,7 @@
 #include "Keyboard/ToKeys/MovementToKeys.h"
 #include "MovementHandler.h"
 #include "Optimizer/BuildTypedCommands.h"
-#include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
 #include "Optimizer/CompositionOptimizer/CompositionFrontier.h"
 #include "Optimizer/NavOptimizer/NavFrontier.h"
 #include "Optimizer/OptimizerParamOverrides.h"
@@ -222,6 +222,23 @@ View::View(Lines initialLines, CursorPos initialPos, Lines goalLines,
   state_.phase = phaseForCursor(0, state_.lines, state_.cursor);
 }
 
+View::View(Lines initialLines, CursorPos initialPos, Lines goalLines,
+           CursorPos goalPos, NavBoundary boundary, NavContext navContext,
+           Config config, string_view userSequence,
+           CompositionOptimizerParams compositionParams,
+           CompositionTraceResult precomputedPlan)
+    : initialLines_(std::move(initialLines)), initialPos_(initialPos),
+      goalLines_(std::move(goalLines)), goalPos_(goalPos),
+      boundary_(std::move(boundary)), navContext_(navContext),
+      config_(std::move(config)),
+      userSequence_(userSequence),
+      compositionParams_(std::move(compositionParams)) {
+
+  resetToInitial();
+  installPlan(std::move(precomputedPlan));
+  state_.phase = phaseForCursor(0, state_.lines, state_.cursor);
+}
+
 // =============================================================================
 // Query
 // =============================================================================
@@ -290,14 +307,26 @@ PlanReconfigureResult View::reconfigurePlan(
 // Internal helpers
 // =============================================================================
 
-CompositionTraceResult View::computePlan(
-    CompositionOptimizerParams compositionParams) const {
+CompositionTraceResult View::computeTrace(
+    const Lines& initialLines, CursorPos initialPos,
+    const Lines& goalLines, CursorPos goalPos,
+    const CompositionOptimizerParams& compositionParams,
+    string_view userSequence,
+    const NavBoundary& boundary, const NavContext& navContext,
+    const Config& config, const SearchControl* control) {
   // Explore opts into the traced variant because it needs plan-aligned edit
   // spans to render the Optimal-N header columns.
-  CompositionOptimizer opt(config_);
+  CompositionOptimizer opt(config);
   return opt.optimizeWithEditSpans(
-      initialLines_, initialPos_, goalLines_, goalPos_,
-      compositionParams, userSequence_, boundary_, navContext_);
+      initialLines, initialPos, goalLines, goalPos,
+      compositionParams, userSequence, boundary, navContext, control);
+}
+
+CompositionTraceResult View::computePlan(
+    CompositionOptimizerParams compositionParams) const {
+  return computeTrace(initialLines_, initialPos_, goalLines_, goalPos_,
+                      compositionParams, userSequence_, boundary_, navContext_,
+                      config_, nullptr);
 }
 
 void View::installPlan(CompositionTraceResult traced) {

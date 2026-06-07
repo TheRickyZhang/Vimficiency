@@ -38,6 +38,25 @@ The scratch buffer:
 
 The real buffer remains unchanged until commit or cancel.
 
+### Async session open
+
+The composition plan is the heavy, blocking part of opening a session, so it is
+computed on a C++ worker thread instead of synchronously across the FFI (Neovim
+is single-threaded; a blocking FFI call freezes the UI). `vf_explore_start_async`
+spawns the worker and returns a job id; the Lua controller opens the scratch tab
+immediately with a "Computing…" placeholder and polls `vf_explore_poll` on a
+`vim.uv` timer. When the worker finishes, poll builds the `View` from the
+precomputed plan (the precomputed-plan `View` constructor — never a half-ready
+View) and returns its id; the controller then installs the interactive handlers
+and renders. Closing or cancelling mid-compute calls `vf_explore_cancel`.
+
+The worker's search honours a `SearchControl` (cancel flag + optional deadline,
+checked in the composition A* loop). Cancel powers prompt teardown; the deadline
+(`compute_deadline_ms`, an explore setting; `0` = run to the natural caps) bounds
+worker latency by returning best-so-far. Responsiveness comes from the search
+being off-thread — the deadline only bounds how long the panel takes to fill,
+not the main thread, which only ever does an O(1) poll.
+
 ### Copied options
 
 At session start, copy these source-buffer settings into the scratch buffer:
@@ -306,6 +325,8 @@ The Lua scratch controller is responsible for:
 - creating and placing the scratch window
 - copying the explicit option set
 - disabling native scratch undo
+- driving the async open: polling the worker job and installing the view (plus
+  interactive handlers) once the plan is ready (see [Async session open](#async-session-open))
 - forwarding live buffer/cursor/mode snapshots and normalized key evidence
 - reverting scratch state after rejected insert-mode edits
 - enforcing commit/cancel lifecycle

@@ -113,7 +113,7 @@ Tree::Tree(const Lines& lines) : text(lines.flatten()) {
   auto closeSpanAt = [&](Level level, int textEnd) {
     ActiveBegins& active = state[level];
     auto& [textBegin, childBegin, hasCore] = active;
-    const int childEnd = size(level + 1);
+    const int childEnd = size(childLevel(level));
 
     [[unlikely]]
     if (textBegin == textEnd) return;
@@ -170,7 +170,7 @@ Tree::Tree(const Lines& lines) : text(lines.flatten()) {
   closeSpanAt(Level::Line, sz);
   closeSpanAt(Level::Paragraph, sz);
   if (sz > 0) {
-    addNode(Level::Root, TextRange{0, sz}, ChildRange{0, size(Level::Root + 1)});
+    addNode(Level::Root, TextRange{0, sz}, ChildRange{0, size(childLevel(Level::Root))});
   }
 }
 

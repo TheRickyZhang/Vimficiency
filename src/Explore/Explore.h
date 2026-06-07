@@ -26,6 +26,7 @@
 
 class OptimizerParamOverrides;
 struct FrontierQuery;
+struct SearchControl;
 
 namespace Explore {
 
@@ -114,6 +115,27 @@ public:
        NavBoundary boundary, NavContext navContext, Config config,
        std::string_view userSequence = "",
        CompositionOptimizerParams compositionParams = {});
+
+  // Async variant: the heavy composition search has already run (on a worker
+  // thread via `computeTrace`); this just installs the precomputed plan, so the
+  // View is always fully formed — never in a "plan pending" state.
+  View(Lines initialLines, CursorPos initialPos,
+       Lines goalLines, CursorPos goalPos,
+       NavBoundary boundary, NavContext navContext, Config config,
+       std::string_view userSequence,
+       CompositionOptimizerParams compositionParams,
+       CompositionTraceResult precomputedPlan);
+
+  // Runs the composition search (the heavy, blocking work). Static so the async
+  // FFI worker can run it off-thread, then hand the result to the precomputed-
+  // plan constructor. `control` is null for the synchronous path.
+  static CompositionTraceResult computeTrace(
+      const Lines& initialLines, CursorPos initialPos,
+      const Lines& goalLines, CursorPos goalPos,
+      const CompositionOptimizerParams& compositionParams,
+      std::string_view userSequence,
+      const NavBoundary& boundary, const NavContext& navContext,
+      const Config& config, const SearchControl* control);
 
   // --- Query ---
   const Phase& phase() const { return state_.phase; }

@@ -8,7 +8,7 @@
 #include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
 #include "Optimizer/CompositionOptimizer/CompositionStrategies.h"
-#include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
 #include "Optimizer/CompositionOptimizer/PlannedEditArtifacts.h"
 #include "Optimizer/FrontierCommon.h"
 #include "Optimizer/OptimizerParamOverrides.h"

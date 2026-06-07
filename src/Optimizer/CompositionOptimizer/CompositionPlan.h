@@ -3,7 +3,7 @@
 #include <cassert>
 #include <vector>
 
-#include "DiffState.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
 #include "Types/CharRange.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"

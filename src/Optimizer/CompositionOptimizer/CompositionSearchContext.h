@@ -7,9 +7,9 @@
 #include <vector>
 
 #include "CompositionOptimizerParams.h"
-#include "DiffState.h"
 #include "JoinPlan.h"
 #include "Keyboard/Config.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/NavBoundary.h"
@@ -19,6 +19,8 @@
 #include "Types/BracketFlags.h"
 #include "Types/Lines.h"
 #include "Types/QuoteFlags.h"
+
+struct SearchControl;
 
 // =============================================================================
 // TextObjectContext
@@ -93,6 +95,10 @@ struct CompositionSearchContext {
   const CompositionOptimizerParams& params;
   const NavContext& navContext;
   const NavBoundary& boundary;
+
+  // Cooperative stop signal (null when the search runs to its normal caps).
+  // Set by the async FFI worker so the main A* loop can bail to best-so-far.
+  const SearchControl* control = nullptr;
 
   // Final cursor target. Search terminates when editsCompleted == totalEdits()
   // AND pos == goalPos. Used by heuristic() to score post-final-edit nav cost.

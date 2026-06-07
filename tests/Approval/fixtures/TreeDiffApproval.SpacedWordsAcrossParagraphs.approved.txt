@@ -14,8 +14,8 @@ abbb\n\n\ncccc
 4   ⟦a b b b ↵┃↵┃↵┃c c c c⟧
 4   ⟦a b b b ↵┃↵┃↵┃c c c c⟧
 
-cost 12
-       b b b ↵ ↵ ↵ c c c c  12: 2 + 10
+cost 11
+       b b b ↵ ↵ ↵ c c c c  11: 1 + 10
 1   ⟦a . ␣ b ↵ ↵ c ␣ ␣ c ↵⟧
 2   ⟦a . ␣ b ↵ ↵┃c ␣ ␣ c ↵⟧
 3   ⟦a . ␣ b ↵┃↵┃c ␣ ␣ c ↵⟧

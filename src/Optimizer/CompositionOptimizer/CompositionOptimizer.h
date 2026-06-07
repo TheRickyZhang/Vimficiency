@@ -23,6 +23,8 @@
 // Lifetime: references remain valid only while the parent CompositionResult
 // remains alive and unmoved. Consumers should treat this as an ephemeral
 // per-edit read view, not something to store long-term.
+struct SearchControl;
+
 struct PlannedEditView {
   int editIndex;
   const DiffState& diff;
@@ -134,7 +136,10 @@ struct CompositionOptimizer {
     const NavBoundary& boundary = NavBoundary(),
 
     // Niche settings
-    const NavContext& navigationContext = NavContext()
+    const NavContext& navigationContext = NavContext(),
+
+    // Cooperative stop signal; null runs the search to its normal caps.
+    const SearchControl* control = nullptr
   );
 
   // Same as `optimize()`, but additionally records a per-edit byte span for
@@ -151,6 +156,7 @@ struct CompositionOptimizer {
     CompositionOptimizerParams params = {},
     std::string_view userSequence = "",
     const NavBoundary& boundary = NavBoundary(),
-    const NavContext& navigationContext = NavContext()
+    const NavContext& navigationContext = NavContext(),
+    const SearchControl* control = nullptr
   );
 };

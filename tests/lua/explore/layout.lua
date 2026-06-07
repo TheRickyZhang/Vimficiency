@@ -22,6 +22,12 @@ test("explore.open creates a 2-pane tab with the header rendered as virt_lines o
       assert_true(scratch_win ~= nil, "missing scratch window")
       scratch_buf = assert(scratch_buf, "missing scratch buffer")
 
+      -- The plan computes on a worker thread; the header virt_lines are only
+      -- rendered once the poller installs the view. Pump the loop until ready.
+      local view = require("vimficiency.explore.registry").current()
+      assert_true(vim.wait(5000, function() return view.view_id ~= nil end, 5),
+        "explore plan did not finish computing")
+
       local strings = assert(explore_helpers.header_virt_strings(scratch_buf),
         "scratch buffer should carry the header virt_lines extmark")
 

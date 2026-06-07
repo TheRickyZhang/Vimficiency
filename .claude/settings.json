@@ -1,6 +1,6 @@
 {
   "permissions": {
-    "allow": ["Bash", "Edit", "Write", "Read", "WebFetch", "WebSearch", "mcp__*"],
+    "allow": ["Bash", "Edit", "Write", "Read", "WebFetch", "WebSearch"],
     "deny": [
       "Bash(rm -rf *)",
       "Bash(sudo *)",

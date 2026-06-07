@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "Keyboard/Config.h"
-#include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
 #include "Optimizer/FrontierCommon.h"
 
 struct TransformFrontierQuery : FrontierQuery {

@@ -22,7 +22,7 @@
 
 #include "Benchmarks/BenchUtils.h"
 #include "Keyboard/Config.h"
-#include "Optimizer/CompositionOptimizer/TreeDiff.h"
+#include "Optimizer/DiffPlanner/TreeDiff.h"
 #include "Types/Lines.h"
 #include "Utils/RandomGeneration.h"
 

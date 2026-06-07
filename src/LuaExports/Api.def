@@ -168,7 +168,7 @@ VFByteSlice vf_simulate_movements(
   const char* seq,
   size_t seq_len);
 
-VFByteSlice vf_explore_start(
+VFByteSlice vf_explore_start_async(
   const char* encoded_initial_lines,
   size_t encoded_initial_lines_len,
   int start_row,
@@ -186,7 +186,10 @@ VFByteSlice vf_explore_start(
   const char* user_seq,
   size_t user_seq_len,
   const char* optimizer_overrides,
-  size_t optimizer_overrides_len);
+  size_t optimizer_overrides_len,
+  int deadline_ms);
+VFByteSlice vf_explore_poll(int job_id);
+int vf_explore_cancel(int job_id);
 int vf_explore_destroy(int view_id);
 VFByteSlice vf_explore_state(int view_id);
 VFByteSlice vf_explore_recommendations(

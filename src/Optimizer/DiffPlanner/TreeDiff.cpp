@@ -1,6 +1,7 @@
 #include "TreeDiff.h"
 
 #include <cassert>
+#include <cmath>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -13,6 +14,7 @@
 #include "Effort/RunningEffort.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Tree.h"
+#include "Utils/Debug.h"
 #include "Utils/PrettyText.h"
 
 using namespace std;
@@ -25,6 +27,8 @@ const char* name(int algorithm) {
       return "myers";
     case Tree:
       return "tree";
+    case Char:
+      return "char";
     default:
       return "unknown";
   }
@@ -39,35 +43,10 @@ using TextRange = Tree::TextRange;
 using ChildRange = Tree::ChildRange;
 using Node = Tree::Node;
 
-Level childLevel(Level level) {
-  assert(level != Level::Char);
-  return level + 1;
-}
-
-// Keystroke cost of the bare motion to traverse one unit at a given level:
-// l/w/j = 1, W/} (shifted) = 2. Movement sums this per kept child between edits.
-double levelCost(Level level) {
-  switch (level) {
-    case Level::Paragraph: return 2.0;  // }
-    case Level::Line:      return 1.0;  // j
-    case Level::BigWord:   return 2.0;  // W
-    case Level::Word:      return 1.0;  // w
-    case Level::Char:      return 1.0;  // l
-    default:               return 0.0;  // Root: whole buffer, never a diff unit
-  }
-}
-
-// Keystroke cost of deleting a contiguous run at a given level: the motion plus
-// the `d` operator, count-independent (one command). char is `x` (a single key,
-// no operator). Pricing a counted delete as one command is what keeps a
-// fine-level multi-delete (4dd) from being dominated by a coarse one (dap).
-double deleteCost(Level level) {
-  return level == Level::Char ? 1.0 : levelCost(level) + 1.0;
-}
-
 struct EditSpan {
   TextRange oldText;
   TextRange newText;
+  Level level = Level::Char;  // tree level emitted at, for delete-cost lookup
 
   bool empty() const { return oldText.empty() && newText.empty(); }
 };
@@ -79,6 +58,30 @@ struct Plan {
 
 int textSize(TextRange range) {
   return range.end - range.begin;
+}
+
+// Movement to traverse a matched gap [from, to): cover it with the coarsest tree
+// units that fit entirely (exactly the units the planner keeps), summing
+// levelCost; edges fall through to finer levels. Equals the planner's per-keep
+// movement for the gap, so the breakdown reconciles to the planner total.
+double moveCost(const Tree& tree, int from, int to, Level level, double scale) {
+  if (from >= to) return 0.0;
+  if (level == Level::Char) {
+    return (to - from) * levelCost(Level::Char) * scale;
+  }
+  double sum = 0.0;
+  int pos = from;
+  for (const Node& node : tree[level]) {
+    if (node.text.begin >= to) break;
+    if (node.text.end <= from) continue;
+    if (node.text.begin >= from && node.text.end <= to) {
+      sum += moveCost(tree, pos, node.text.begin, childLevel(level), scale);
+      sum += levelCost(level) * scale;
+      pos = node.text.end;
+    }
+  }
+  sum += moveCost(tree, pos, to, childLevel(level), scale);
+  return sum;
 }
 
 bool sameTextRange(const Tree& oldTree, TextRange oldRange,
@@ -451,6 +454,7 @@ private:
                   boundaryNew(j),
                   boundaryNew(build.nextJ),
               },
+              .level = childLevel_,
           };
           vector<EditSpan> result = refinedSpans(i, build.nextI, j, build.nextJ, span);
           appendSpans(result, buildOuter(build.nextI, build.nextJ));
@@ -512,12 +516,11 @@ private:
           Node{.text = span.newText,
                .children = childRangeForNew(startJ, endJ)});
 
-      // Coarse = this span as one diff: penalty + inserted effort + deleting the
-      // whole old span at this level. Refined prices the same span split a level
-      // down (with its own finer deletions/movement), so both must charge the
-      // deletion for the comparison to be fair.
+      // Coarse = this span as one diff: penalty + inserted effort + the single
+      // delete command for the whole old span (deleteUnit_, count-independent).
+      // Refined prices the same span split a level down, so both charge deletion.
       double coarseCost =
-          solver.diffSpanCost(span) + (endI - startI) * unitCost_;
+          solver.diffSpanCost(span) + (endI > startI ? deleteUnit_ : 0.0);
       if (!refined.spans.empty() && refined.cost <= coarseCost) {
         return refined.spans;
       }
@@ -676,6 +679,57 @@ vector<DiffState> calculate(
         initialLines, initialTree, goalTree, span));
   }
   return result;
+}
+
+CostBreakdown calculateBreakdown(
+    const Lines& initialLines,
+    const Lines& goalLines,
+    const Config& config,
+    CostOptions options) {
+  Tree initialTree(initialLines);
+  Tree goalTree(goalLines);
+
+  CostBreakdown bd;
+  if (initialTree.text == goalTree.text) return bd;
+
+  // PRE-merge regions: the units the DP actually decided over.
+  Plan plan = Solver(initialTree, goalTree, config, options).solve();
+  const double scale = options.moveDeleteScale;
+
+  double listed = 0.0;
+  int prevOldEnd = -1;
+  for (const EditSpan& span : plan.spans) {
+    if (span.empty()) continue;
+    DiffState diff = diffFromSpan(initialLines, initialTree, goalTree, span);
+    double del = span.oldText.empty() ? 0.0 : deleteCost(span.level) * scale;
+    KeyedSequence typed;
+    typed.append(string_view(goalTree.text).substr(
+        span.newText.begin, textSize(span.newText)));
+    double ins = RunningEffort(typed.keys, config).getEffort(config);
+    double move = prevOldEnd < 0
+                      ? 0.0
+                      : moveCost(initialTree, prevOldEnd, span.oldText.begin,
+                                 Level::Paragraph, scale);
+    prevOldEnd = span.oldText.end;
+    listed += options.diffOpenPenalty + del + ins + move;
+    bd.regions.push_back(RegionBreakdown{std::move(diff), del, ins, move});
+  }
+
+  // bd.total is the honest execution cost of the emitted partition: the sum of
+  // every region's (penalty + delete + insert + move). It can differ from the
+  // DP's internal `plan.cost`, which folds in two heuristics that don't survive
+  // as a per-region execution cost: build-time refinement (lowers a region below
+  // its coarse objective) and per-recurse leading/trailing-free (frees a
+  // recurse's edge matches even when they sit between two edits globally). So we
+  // reconcile the breakdown to itself, not to plan.cost.
+  bd.total = listed;
+  double resum = 0.0;
+  for (const RegionBreakdown& r : bd.regions) {
+    resum += options.diffOpenPenalty + r.del + r.ins + r.move;
+  }
+  CHECK(std::abs(resum - bd.total) < 1e-6,
+        "TreeDiff breakdown total does not equal the sum of its regions");
+  return bd;
 }
 
 } // namespace TreeDiff

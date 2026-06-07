@@ -55,9 +55,11 @@ end
 ---@param result VF.Explore.OpenResult
 ---@param source_win integer
 ---@param optimizer_overrides string|nil
+---Returns a job id; the composition search runs on a worker thread. Poll with
+---`ffi_explore.explore_poll` until it yields a view id.
 ---@return integer
-function M.start_view(result, source_win, optimizer_overrides)
-  return ffi_explore.explore_start(
+function M.start_view_async(result, source_win, optimizer_overrides, deadline_ms)
+  return ffi_explore.explore_start_async(
     result.lines, result.start_row, result.start_col,
     result.goal_lines, result.end_row, result.end_col,
     0, M.boundary_last_col(result),
@@ -65,7 +67,8 @@ function M.start_view(result, source_win, optimizer_overrides)
     v.nvim_win_get_height(source_win),
     v.nvim_get_option_value("scroll", { win = source_win }),
     result.user_seq,
-    optimizer_overrides)
+    optimizer_overrides,
+    deadline_ms)
 end
 
 return M

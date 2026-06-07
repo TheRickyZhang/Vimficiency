@@ -100,8 +100,10 @@ function M.open(label, result)
   end
   ---@cast result VF.Explore.OpenResult
 
-  local view = runtime.start(label, result, header_handlers())
-  state.refresh_ui(view)
+  -- runtime.start opens the tab immediately and computes the plan on a worker
+  -- thread; the panel renders "Computing…" and fills via the poller once ready,
+  -- so there is no refresh_ui here (the view has no view_id yet).
+  runtime.start(label, result, header_handlers())
   vim.notify("vimfy explore opened [" .. label .. "]", vim.log.levels.INFO)
   return true
 end

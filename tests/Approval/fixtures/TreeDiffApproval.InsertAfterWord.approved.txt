@@ -1,0 +1,23 @@
+insert after word
+hello
+hello world
+
+1   ⟦h e l l o⟧
+1   ⟦h e l l o⟧
+1   ⟦h e l l o⟧
+1   ⟦h e l l o⟧
+1   ⟦h e l l o⟧
+
+1   ⟦h e l l o ␣ w o r l d⟧
+1   ⟦h e l l o ␣ w o r l d⟧
+1   ⟦h e l l o ␣ w o r l d⟧
+2   ⟦h e l l o ␣┃w o r l d⟧
+2   ⟦h e l l o ␣┃w o r l d⟧
+
+cost 7
+1   ⟦h e l l o⟧
+1   ⟦h e l l o⟧
+1   ⟦h e l l o⟧
+1   ⟦h e l l o⟧
+              ␣ w o r l d  7: 1 + 6
+1   ⟦h e l l o           ⟧

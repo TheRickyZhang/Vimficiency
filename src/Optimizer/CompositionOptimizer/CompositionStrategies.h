@@ -20,7 +20,7 @@
 
 #include "Optimizer/BuildTypedCommands.h"
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"  // BracketQuoteContext
-#include "Optimizer/CompositionOptimizer/DiffState.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
 #include "Types/BracketFlags.h"
 #include "Types/Lines.h"
 #include "Types/QuoteFlags.h"

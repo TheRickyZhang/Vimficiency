@@ -12,9 +12,9 @@
 
 #include "ApprovalTestUtils.h"
 #include "Effort/RunningEffort.h"
-#include "Optimizer/CompositionOptimizer/DiffState.h"
-#include "Optimizer/CompositionOptimizer/Tree.h"
-#include "Optimizer/CompositionOptimizer/TreeDiff.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
+#include "Optimizer/DiffPlanner/Tree.h"
+#include "Optimizer/DiffPlanner/TreeDiff.h"
 #include "Keyboard/Config.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Types/Lines.h"
@@ -38,12 +38,6 @@ struct RenderedTree {
   vector<RenderedTreeRow> rows;
 };
 
-struct DiffCost {
-  double open = 0.0;
-  double typed = 0.0;
-  double total = 0.0;
-};
-
 string escapedText(string_view text) {
   string out;
   for (char c : text) {
@@ -65,43 +59,11 @@ vector<string> spacedGlyphCells(string_view text) {
   return cells;
 }
 
-double typedTextEffort(string_view text, const Config& config) {
-  KeyedSequence typed;
-  typed.append(text);
-  return RunningEffort(typed.keys, config).getEffort(config);
-}
-
-DiffCost costOf(const DiffState& diff,
-                const Config& config,
-                CostOptions options) {
-  DiffCost cost{
-      .open = options.diffOpenPenalty,
-      .typed = typedTextEffort(diff.insertedText, config),
-  };
-  cost.total = cost.open + cost.typed;
-  return cost;
-}
-
-vector<DiffCost> costsOf(const vector<DiffState>& diffs,
-                         const Config& config,
-                         CostOptions options) {
-  vector<DiffCost> costs;
-  costs.reserve(diffs.size());
-  for (const DiffState& diff : diffs) {
-    costs.push_back(costOf(diff, config, options));
-  }
-  return costs;
-}
-
-double totalCost(const vector<DiffCost>& costs) {
-  double total = 0.0;
-  for (const DiffCost& cost : costs) total += cost.total;
-  return total;
-}
-
-string costLabel(DiffCost cost) {
+// Per-region delete / insert / move. Penalty (diffOpenPenalty per region) is
+// implied, not repeated here; it is folded into the totals line.
+string costLabel(const RegionBreakdown& r) {
   ostringstream out;
-  out << cost.total << ": " << cost.open << " + " << cost.typed;
+  out << "d" << r.del << " i" << r.ins << " m" << r.move;
   return out.str();
 }
 
@@ -209,8 +171,7 @@ void renderDiffTree(
     ostream& out,
     const Tree& tree,
     const Lines& initial,
-    const vector<DiffState>& diffs,
-    const vector<DiffCost>& costs) {
+    const vector<RegionBreakdown>& regions) {
   struct Overlay {
     int col = 0;
     vector<string> cells;
@@ -224,8 +185,8 @@ void renderDiffTree(
   array<vector<BlankSpan>, VISUAL_LEVEL_COUNT> blankSpans;
   const RenderedTree rendered = renderTree(tree);
 
-  for (int i = 0; i < ssize(diffs); i++) {
-    const DiffState& diff = diffs[i];
+  for (int i = 0; i < ssize(regions); i++) {
+    const DiffState& diff = regions[i].diff;
     const int begin = DiffText::positionToFlatIndex(diff.beginPos, initial);
     const int end = DiffText::positionToFlatIndex(diff.endPos, initial);
     const int level = annotationLevel(tree, begin, end);
@@ -243,7 +204,7 @@ void renderDiffTree(
     overlays[level].push_back({
         .col = startCol,
         .cells = std::move(cells),
-        .cost = costLabel(costs[i]),
+        .cost = costLabel(regions[i]),
     });
   }
 
@@ -305,11 +266,17 @@ string renderTreeDiff(
   const Lines goal = Lines::unflatten(goalText);
   const Config config = Config::uniform();
   const CostOptions costOptions;
-  const vector<DiffState> diffs =
-      calculate(initial, goal, config, costOptions);
-  const vector<DiffCost> costs = costsOf(diffs, config, costOptions);
+  // Pre-merge regions: the units the planner actually weighed.
+  const CostBreakdown bd = calculateBreakdown(initial, goal, config, costOptions);
   const Tree initialTree(initial);
   const Tree goalTree(goal);
+
+  double delSum = 0, insSum = 0, moveSum = 0;
+  for (const RegionBreakdown& r : bd.regions) {
+    delSum += r.del;
+    insSum += r.ins;
+    moveSum += r.move;
+  }
 
   ostringstream out;
   out << name << "\n";
@@ -320,9 +287,65 @@ string renderTreeDiff(
   out << "\n";
   writeTree(out, goalTree);
   out << "\n";
-  out << "cost " << totalCost(costs) << "\n";
-  renderDiffTree(out, initialTree, initial, diffs, costs);
+  out << "cost " << bd.total << " = diffs " << bd.regions.size()
+      << " + del " << delSum << " + ins " << insSum
+      << " + move " << moveSum << "\n";
+  renderDiffTree(out, initialTree, initial, bd.regions);
   return out.str();
+}
+
+// Whitespace-seam merge: a contiguous insert stays one region.
+TEST(TreeDiffApproval, InsertAfterWord) {
+  verifyText(renderTreeDiff("insert after word", "hello", "hello world"));
+}
+
+// Trailing kept content is free, so only the removed word is deleted.
+TEST(TreeDiffApproval, DeleteTrailingWord) {
+  verifyText(renderTreeDiff("delete trailing word", "hello world", "hello"));
+}
+
+// Leading lines deleted, last line kept (trailing run is free).
+TEST(TreeDiffApproval, DeleteLeadingLinesKeepLast) {
+  verifyText(renderTreeDiff("delete leading lines", "a\nb\nc\nd", "d"));
+}
+
+// Clean single word replacement.
+TEST(TreeDiffApproval, WordChange) {
+  verifyText(renderTreeDiff("word change", "the quick fox", "the slow fox"));
+}
+
+// Repeated rename surfaces as two targeted edits, not a block retype.
+TEST(TreeDiffApproval, RenameTwice) {
+  verifyText(renderTreeDiff("rename twice", "x + x", "y + y"));
+}
+
+// Inner bracket edit keeps the surrounding parens.
+TEST(TreeDiffApproval, BracketInner) {
+  verifyText(renderTreeDiff("bracket inner", "(hello)", "(X)"));
+}
+
+// Nested level-collapse fragments when the bracket group is a standalone
+// space-delimited token: the "((" / "))" word seam keeps one paren and deletes
+// the other, giving two regions instead of one (b)->X. Known limitation at
+// diffOpenPenalty=1; clean when the group abuts neighbors (e.g. x((b))y). See
+// dev/optimizer/diff-generation.md § Seam fragmentation.
+TEST(TreeDiffApproval, BracketNestedCollapse) {
+  verifyText(renderTreeDiff("bracket nested collapse", "a ((b)) c", "a (X) c"));
+}
+
+// Inner quote edit keeps the surrounding quotes.
+TEST(TreeDiffApproval, QuoteInner) {
+  verifyText(renderTreeDiff("quote inner", "\"hi\"", "\"bye\""));
+}
+
+// A line join (\n -> space) plus a separate insert.
+TEST(TreeDiffApproval, JoinPlusInsert) {
+  verifyText(renderTreeDiff("join plus insert", "a\nb", "a b!"));
+}
+
+// One changed line in a block stays a targeted edit, not a block retype.
+TEST(TreeDiffApproval, OneLineInBlock) {
+  verifyText(renderTreeDiff("one line in block", "aa\nbb\ncc", "aa\nXX\ncc"));
 }
 
 TEST(TreeDiffApproval, BlankLineParagraphBoundary) {

@@ -1,0 +1,23 @@
+one line in block
+aa\nbb\ncc
+aa\nXX\ncc
+
+1   ⟦a a ↵ b b ↵ c c⟧
+1   ⟦a a ↵ b b ↵ c c⟧
+3   ⟦a a ↵┃b b ↵┃c c⟧
+3   ⟦a a ↵┃b b ↵┃c c⟧
+3   ⟦a a ↵┃b b ↵┃c c⟧
+
+1   ⟦a a ↵ X X ↵ c c⟧
+1   ⟦a a ↵ X X ↵ c c⟧
+3   ⟦a a ↵┃X X ↵┃c c⟧
+3   ⟦a a ↵┃X X ↵┃c c⟧
+3   ⟦a a ↵┃X X ↵┃c c⟧
+
+cost 3
+1   ⟦a a ↵ b b ↵ c c⟧
+1   ⟦a a ↵ b b ↵ c c⟧
+3   ⟦a a ↵┃b b ↵┃c c⟧
+3   ⟦a a ↵┃b b ↵┃c c⟧
+           X X  3: 1 + 2
+3   ⟦a a ↵┃b b ↵┃c c⟧

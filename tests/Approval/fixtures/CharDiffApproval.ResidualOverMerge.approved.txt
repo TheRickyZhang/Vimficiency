@@ -1,0 +1,61 @@
+-- REGRESSION: short matched gaps over-merge --
+
+three edits over short gaps
+ehfaf beeac edgae  ->  effaf eeac gdgae
+  CHAR plan 0: cost 17 = diffs 1 + del 5 + ins 11 + move 0
+    [0] replace "hfaf beeac e" -> "ffaf eeac g"  P=1 del=5 ins=11 move=0  [retyped "eeac " = 5]
+  CHAR plan 1: cost 17 = diffs 2 + del 4 + ins 7 + move 4
+    [0] replace "h" -> "f"  P=1 del=1 ins=1 move=0
+    [1] replace "beeac e" -> "eeac g"  P=1 del=3 ins=6 move=4  [retyped "eeac " = 5]
+  CHAR plan 2: cost 17 = diffs 2 + del 4 + ins 6 + move 5
+    [0] replace "hfaf b" -> "ffaf "  P=1 del=3 ins=5 move=0  [retyped "faf " = 4]
+    [1] replace "e" -> "g"  P=1 del=1 ins=1 move=5
+  TREE: cost 17 = diffs 3 + del 3 + ins 2 + move 9
+    [0] replace "h" -> "f"  P=1 del=1 ins=1 move=0
+    [1] delete "b" -> ""  P=1 del=1 ins=0 move=4
+    [2] replace "e" -> "g"  P=1 del=1 ins=1 move=5
+
+two word edits keeping a word
+aaa bbb ccc  ->  xxx bbb yyy
+  CHAR plan 0: cost 14 = diffs 1 + del 2 + ins 11 + move 0
+    [0] replace "aaa bbb ccc" -> "xxx bbb yyy"  P=1 del=2 ins=11 move=0  [retyped " bbb " = 5]
+  CHAR plan 1: cost 15 = diffs 2 + del 4 + ins 7 + move 2
+    [0] replace "aaa " -> "xxx "  P=1 del=2 ins=4 move=0  [retyped " " = 1]
+    [1] replace "ccc" -> "yyy"  P=1 del=2 ins=3 move=2
+  CHAR plan 2: cost 15 = diffs 2 + del 4 + ins 6 + move 3
+    [0] replace "aaa" -> "xxx"  P=1 del=2 ins=3 move=0
+    [1] replace "ccc" -> "yyy"  P=1 del=2 ins=3 move=3
+  TREE: cost 13 = diffs 2 + del 2 + ins 6 + move 3
+    [0] replace "aaa" -> "xxx"  P=1 del=1 ins=3 move=0
+    [1] replace "ccc" -> "yyy"  P=1 del=1 ins=3 move=3
+
+first+last char, short kept gap
+ab cd ef  ->  Xb cd eY
+  CHAR plan 0: cost 11 = diffs 1 + del 2 + ins 8 + move 0
+    [0] replace "ab cd ef" -> "Xb cd eY"  P=1 del=2 ins=8 move=0  [retyped "b cd e" = 6]
+  CHAR plan 1: cost 11 = diffs 2 + del 2 + ins 2 + move 5
+    [0] replace "a" -> "X"  P=1 del=1 ins=1 move=0
+    [1] replace "f" -> "Y"  P=1 del=1 ins=1 move=5
+  CHAR plan 2: cost 12 = diffs 2 + del 3 + ins 3 + move 4
+    [0] replace "a" -> "X"  P=1 del=1 ins=1 move=0
+    [1] replace "ef" -> "eY"  P=1 del=2 ins=2 move=4  [retyped "e" = 1]
+  TREE: cost 11 = diffs 2 + del 2 + ins 2 + move 5
+    [0] replace "a" -> "X"  P=1 del=1 ins=1 move=0
+    [1] replace "f" -> "Y"  P=1 del=1 ins=1 move=5
+
+-- CONTRAST: longer matched gap, CHAR splits correctly --
+
+first+last char, long kept gap
+foo bar baz  ->  Xoo bar baY
+  CHAR plan 0: cost 13 = diffs 2 + del 2 + ins 2 + move 7
+    [0] replace "f" -> "X"  P=1 del=1 ins=1 move=0
+    [1] replace "z" -> "Y"  P=1 del=1 ins=1 move=7
+  CHAR plan 1: cost 14 = diffs 1 + del 2 + ins 11 + move 0
+    [0] replace "foo bar baz" -> "Xoo bar baY"  P=1 del=2 ins=11 move=0  [retyped "oo bar ba" = 9]
+  CHAR plan 2: cost 14 = diffs 2 + del 3 + ins 4 + move 5
+    [0] replace "f" -> "X"  P=1 del=1 ins=1 move=0
+    [1] replace "baz" -> "baY"  P=1 del=2 ins=3 move=5  [retyped "ba" = 2]
+  TREE: cost 13 = diffs 2 + del 2 + ins 2 + move 7
+    [0] replace "f" -> "X"  P=1 del=1 ins=1 move=0
+    [1] replace "z" -> "Y"  P=1 del=1 ins=1 move=7
+

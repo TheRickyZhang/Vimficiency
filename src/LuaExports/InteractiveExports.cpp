@@ -2,9 +2,16 @@
 #include "LuaExports/ViewRegistry.h"
 #include "Explore/Explore.h"
 #include "Optimizer/OptimizerParamOverrides.h"
+#include "Optimizer/SearchControl.h"
 
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <unordered_map>
 #include <utility>
 
 using namespace std;
@@ -132,7 +139,21 @@ string encodeHeaderRows(const View& v) {
   return out;
 }
 
-VF::LuaExports::Result<string> startImpl(
+// Fully-owning decode of the explore-start FFI inputs. Owns `userSeq` as a
+// std::string (not a borrowed view) so it can outlive the original FFI buffers
+// on the async worker thread.
+struct StartInputs {
+  Lines initialLines;
+  CursorPos initialPos{0, 0};
+  Lines goalLines;
+  CursorPos goalPos{0, 0};
+  NavBoundary boundary;
+  NavContext navContext;
+  std::string userSeq;
+  CompositionOptimizerParams compositionParams;
+};
+
+VF::LuaExports::Result<StartInputs> decodeStartInputs(
     const char* encoded_initial_lines,
     size_t encoded_initial_lines_len,
     int start_row,
@@ -167,23 +188,8 @@ VF::LuaExports::Result<string> startImpl(
   auto goalLinesRes = payload::decodeLineArray(*goalTextRes);
   if (!goalLinesRes) return unexpected(goalLinesRes.error());
 
-  Lines initialLines = std::move(*initialLinesRes);
-  Lines goalLines = std::move(*goalLinesRes);
-
-  const CursorPos initialPos(start_row, start_col);
-  const CursorPos goalPos(end_row, end_col);
-
-  NavBoundary boundary(
-      initialLines,
-      CursorPos(0, boundary_first_col),
-      CursorPos(static_cast<int>(initialLines.size()) - 1, boundary_last_col + 1),
-      has_lines_above,
-      has_lines_below);
-
-  NavContext navContext(window_height, scroll_amount);
   auto userSeqRes = helpers::requiredBytes(user_seq, user_seq_len, "user_seq");
   if (!userSeqRes) return unexpected(userSeqRes.error());
-  const string_view userSeq = *userSeqRes;
   auto overridesText = helpers::requiredBytes(
       optimizer_overrides,
       optimizer_overrides_len,
@@ -192,27 +198,95 @@ VF::LuaExports::Result<string> startImpl(
   auto overridesResult = parseOverrides(*overridesText);
   if (!overridesResult) return unexpected(overridesResult.error());
   const OptimizerParamOverrides overrides = std::move(*overridesResult);
-  CompositionOptimizerParams compositionParams =
-      OptimizerParamOverrides::resolved<CompositionOptimizerParams>(&overrides);
 
-  const int view_id = g_registry.create(
-      std::move(initialLines),
-      initialPos,
-      std::move(goalLines),
-      goalPos,
-      std::move(boundary),
-      navContext,
-      VF::LuaExports::g_config_internal,
-      userSeq,
-      compositionParams);
-  return to_string(view_id);
+  StartInputs in;
+  in.initialLines = std::move(*initialLinesRes);
+  in.goalLines = std::move(*goalLinesRes);
+  in.initialPos = CursorPos(start_row, start_col);
+  in.goalPos = CursorPos(end_row, end_col);
+  in.boundary = NavBoundary(
+      in.initialLines,
+      CursorPos(0, boundary_first_col),
+      CursorPos(static_cast<int>(in.initialLines.size()) - 1,
+                boundary_last_col + 1),
+      has_lines_above,
+      has_lines_below);
+  in.navContext = NavContext(window_height, scroll_amount);
+  in.userSeq.assign(*userSeqRes);
+  in.compositionParams =
+      OptimizerParamOverrides::resolved<CompositionOptimizerParams>(&overrides);
+  return in;
 }
 
-}  // namespace
+// Background composition search. Owns its inputs and config so the worker is
+// independent of the FFI buffers and the main thread. The View is constructed
+// from the precomputed plan only once `vf_explore_poll` observes `done`.
+struct ExploreJob {
+  StartInputs inputs;
+  Config config;
+  SearchControl control;
+  std::optional<CompositionTraceResult> trace;
+  std::atomic<bool> done{false};
+  std::jthread worker;
 
-extern "C" {
+  ExploreJob(StartInputs in, Config cfg, int deadlineMs)
+      : inputs(std::move(in)), config(std::move(cfg)) {
+    if (deadlineMs > 0) {
+      control.hasDeadline = true;
+      control.deadline = std::chrono::steady_clock::now() +
+                         std::chrono::milliseconds(deadlineMs);
+    }
+  }
 
-VFByteSlice vf_explore_start(
+  // Spawn only after the job sits at a stable heap address (the worker captures
+  // `this`). Invariant: VimOptions::shiftwidth (the one runtime-mutable VimCore
+  // global the search reads) must not be reconfigured while a worker is live;
+  // it is set once at session setup and stable for the session.
+  void start() {
+    worker = std::jthread([this] {
+      trace = View::computeTrace(
+          inputs.initialLines, inputs.initialPos,
+          inputs.goalLines, inputs.goalPos,
+          inputs.compositionParams, inputs.userSeq,
+          inputs.boundary, inputs.navContext, config, &control);
+      done.store(true, std::memory_order_release);
+    });
+  }
+
+  bool ready() const { return done.load(std::memory_order_acquire); }
+  void cancel() { control.cancelled.store(true, std::memory_order_relaxed); }
+};
+
+// Owns pending async jobs. Like ViewRegistry, only ever touched on the main
+// (Lua) thread; workers touch only their own ExploreJob.
+class JobRegistry {
+ public:
+  int create(std::unique_ptr<ExploreJob> job) {
+    const int id = ++next_id_;
+    jobs_.emplace(id, std::move(job));
+    return id;
+  }
+  ExploreJob& get(int id) {
+    auto it = jobs_.find(id);
+    CHECK(it != jobs_.end(), "job_id from Lua not present in registry");
+    return *it->second;
+  }
+  std::unique_ptr<ExploreJob> take(int id) {
+    auto it = jobs_.find(id);
+    if (it == jobs_.end()) return nullptr;
+    auto job = std::move(it->second);
+    jobs_.erase(it);
+    return job;
+  }
+
+ private:
+  std::unordered_map<int, std::unique_ptr<ExploreJob>> jobs_;
+  int next_id_ = 0;
+};
+
+JobRegistry g_jobs;
+
+VF::LuaExports::Result<string> startAsyncImpl(
     const char* encoded_initial_lines,
     size_t encoded_initial_lines_len,
     int start_row,
@@ -230,9 +304,49 @@ VFByteSlice vf_explore_start(
     const char* user_seq,
     size_t user_seq_len,
     const char* optimizer_overrides,
-    size_t optimizer_overrides_len) {
+    size_t optimizer_overrides_len,
+    int deadline_ms) {
+  auto inputsRes = decodeStartInputs(
+      encoded_initial_lines, encoded_initial_lines_len, start_row, start_col,
+      encoded_goal_lines, encoded_goal_lines_len, end_row, end_col,
+      boundary_first_col, boundary_last_col, has_lines_above, has_lines_below,
+      window_height, scroll_amount, user_seq, user_seq_len,
+      optimizer_overrides, optimizer_overrides_len);
+  if (!inputsRes) return unexpected(inputsRes.error());
+
+  auto job = std::make_unique<ExploreJob>(
+      std::move(*inputsRes), VF::LuaExports::g_config_internal, deadline_ms);
+  job->start();
+  const int job_id = g_jobs.create(std::move(job));
+  return to_string(job_id);
+}
+
+}  // namespace
+
+extern "C" {
+
+VFByteSlice vf_explore_start_async(
+    const char* encoded_initial_lines,
+    size_t encoded_initial_lines_len,
+    int start_row,
+    int start_col,
+    const char* encoded_goal_lines,
+    size_t encoded_goal_lines_len,
+    int end_row,
+    int end_col,
+    int boundary_first_col,
+    int boundary_last_col,
+    bool has_lines_above,
+    bool has_lines_below,
+    int window_height,
+    int scroll_amount,
+    const char* user_seq,
+    size_t user_seq_len,
+    const char* optimizer_overrides,
+    size_t optimizer_overrides_len,
+    int deadline_ms) {
   static string storage;
-  return helpers::storeBytes(storage, startImpl(
+  return helpers::storeBytes(storage, startAsyncImpl(
       encoded_initial_lines, encoded_initial_lines_len,
       start_row, start_col,
       encoded_goal_lines, encoded_goal_lines_len,
@@ -241,7 +355,43 @@ VFByteSlice vf_explore_start(
       has_lines_above, has_lines_below,
       window_height, scroll_amount,
       user_seq, user_seq_len,
-      optimizer_overrides, optimizer_overrides_len));
+      optimizer_overrides, optimizer_overrides_len,
+      deadline_ms));
+}
+
+// Returns "pending" while the worker runs; once done, builds the View from the
+// precomputed plan, registers it, frees the job, and returns the view_id.
+VFByteSlice vf_explore_poll(int job_id) {
+  static string storage;
+  ExploreJob& job = g_jobs.get(job_id);
+  if (!job.ready()) {
+    storage = "pending";
+    return helpers::byteSlice(storage);
+  }
+  std::unique_ptr<ExploreJob> owned = g_jobs.take(job_id);
+  StartInputs& in = owned->inputs;
+  const int view_id = g_registry.create(
+      std::move(in.initialLines),
+      in.initialPos,
+      std::move(in.goalLines),
+      in.goalPos,
+      std::move(in.boundary),
+      in.navContext,
+      std::move(owned->config),
+      in.userSeq,
+      in.compositionParams,
+      std::move(*owned->trace));
+  storage = to_string(view_id);
+  return helpers::byteSlice(storage);
+}
+
+// Signals cancellation and frees the job; the jthread destructor joins the
+// worker, which returns once it observes the flag (within ~one sub-search).
+int vf_explore_cancel(int job_id) {
+  std::unique_ptr<ExploreJob> owned = g_jobs.take(job_id);
+  if (!owned) return 0;
+  owned->cancel();
+  return 1;
 }
 
 int vf_explore_destroy(int view_id) {

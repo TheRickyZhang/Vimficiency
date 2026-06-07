@@ -8,7 +8,8 @@
 #include <limits>
 
 #include "PlannedEditArtifacts.h"
-#include "TreeDiff.h"
+#include "Optimizer/DiffPlanner/CharDiff.h"
+#include "Optimizer/DiffPlanner/TreeDiff.h"
 #include "Utils/Debug.h"
 #include "Utils/PrettyText.h"
 
@@ -74,6 +75,18 @@ CompositionSearchContext::CompositionSearchContext(
               .moveDeleteScale = params.treeMoveDeleteScale,
           });
       break;
+    case DiffAlgorithm::Char: {
+      vector<CharDiff::Plan> plans = CharDiff::calculate(
+          Lines(initialLines.begin(), initialLines.end()),
+          Lines(goalLines.begin(), goalLines.end()),
+          config,
+          CharDiff::CostOptions{
+              .diffOpenPenalty = params.treeDiffOpenPenalty,
+              .moveDeleteScale = params.treeMoveDeleteScale,
+          });
+      if (!plans.empty()) rawDiffs = std::move(plans.front().diffs);
+      break;
+    }
     default:
       CHECK(false, "unknown composition diff algorithm");
   }
