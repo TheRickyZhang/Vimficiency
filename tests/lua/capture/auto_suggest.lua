@@ -34,19 +34,26 @@ local SUMMARY = {
 
 --- Run `fn` with auto_suggest stubs installed. `spec` keys:
 ---   cfg     — config.auto_suggest value (default IDLE_CFG)
----   compute — session.compute_result_for_active stub (default returns fake_result())
+---   compute — analyze stub returning `result` or `nil, err` (default fake_result())
 ---   finish  — session_store.finish_session stub (default no-op true)
 ---   active  — session_store.get_active stub (default returns ACTIVE)
+---
+--- The async compute is stubbed to resolve `on_done` synchronously, so the
+--- fire_* helpers complete in-line and the assertions below stay synchronous.
 local function harness(spec, fn)
   spec = spec or {}
   reset()
+  local compute = spec.compute or function() return h.fake_result() end
   local patches = {
     { config, "auto_suggest", spec.cfg or IDLE_CFG },
     { session_store, "get_active",     spec.active  or function() return ACTIVE end },
     { session_store, "finish_session", spec.finish  or function() return true end },
     { session_store, "summarize",      function() return SUMMARY end },
-    { session,       "compute_result_for_active",
-        spec.compute or function() return h.fake_result() end },
+    { session,       "compute_result_for_active_async",
+        function(active, _deadline_ms, on_done)
+          on_done(compute(active))
+          return nil
+        end },
   }
   h.with_patch(patches, fn)
 end
@@ -133,6 +140,35 @@ test("fire_idle: failures leave end_kind = 'manual'", function()
         spec.label .. " must not mutate end_kind")
     end)
   end
+end)
+
+test("fire_idle: single-flight skips a second fire while one is in flight", function()
+  reset()
+  local pending_on_done
+  local finish_count = 0
+  -- A fake poll handle with no-op lifecycle methods so reset()/disable() can
+  -- safely cancel it on a failure path.
+  local fake_handle = { done = false, cancelled = false,
+    close_timer = function() end, cancel_fn = function() end }
+  h.with_patch({
+    { config, "auto_suggest", IDLE_CFG },
+    { session_store, "get_active",     function() return ACTIVE end },
+    { session_store, "finish_session", function() finish_count = finish_count + 1; return true end },
+    { session_store, "summarize",      function() return SUMMARY end },
+    { session, "compute_result_for_active_async", function(_active, _deadline_ms, on_done)
+        pending_on_done = on_done
+        return fake_handle
+      end },
+  }, function()
+    assert_eq(fire_idle(), true, "first fire kicks the worker and counts")
+    assert_eq(auto_suggest._for_test.is_in_flight(), true, "worker is in flight")
+    assert_eq(fire_idle(), false, "second fire must be skipped while one is in flight")
+
+    pending_on_done(h.fake_result())
+    assert_eq(auto_suggest._for_test.is_in_flight(), false, "in_flight clears on completion")
+    assert_eq(finish_count, 1, "only the first fire's result was finished")
+  end)
+  reset()
 end)
 
 --------------------------------------------------------------------------------

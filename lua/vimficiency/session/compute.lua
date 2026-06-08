@@ -3,6 +3,7 @@ local v = vim.api
 local config = require("vimficiency.config")
 local disk = require("vimficiency.session.disk")
 local ffi_optimizer = require("vimficiency.ffi.optimizer")
+local poller = require("vimficiency.async.poller")
 local ffi_session = require("vimficiency.ffi.session")
 local key_tracking = require("vimficiency.capture.key_tracking")
 local keynorm = require("vimficiency.capture.keynorm")
@@ -15,10 +16,10 @@ local APPROXIMATE_MOTION_CONVERSIONS = {
   ["gk"] = "k",
 }
 
--- Diagnostic probe for the synchronous optimizer block. During a fire nothing
--- can render, so a slow run gives no in-the-moment feedback. On any fire over
--- the threshold, dump the exact slice for offline replay and surface the timing
--- the instant the main thread frees. Tune/disable via vim.g.vimficiency_slow_fire_ms.
+-- Diagnostic probe for a slow optimizer run. On any compute over the threshold,
+-- dump the exact slice for offline replay and surface the timing. compute_ms is
+-- a main-thread stall on the sync (explicit-finish) path, but worker wall-time
+-- on the async (auto_suggest) path. Tune/disable via vim.g.vimficiency_slow_fire_ms.
 local SLOW_FIRE_DEFAULT_MS = 500
 
 local function slow_fire_threshold_ms()
@@ -135,10 +136,14 @@ local function filter_mouse_events(key_seq)
   return kept, had_mouse
 end
 
+-- All the synchronous main-thread work that reads live buffer state (buffer/
+-- window validity, capture, slicing, sequence build, boundary). Must run at
+-- fire time, before any analyze is kicked off. Returns a ctx bundle consumed by
+-- both the sync and async analyze paths, or nil + an error string.
 ---@param active VF.Session.Active
----@return VF.Session.Result|nil result
+---@return table|nil ctx
 ---@return string|nil err
-function M.compute_result_for_active(active)
+local function prepare(active)
   local compute_t0 = vim.uv.hrtime()
   if not v.nvim_buf_is_valid(active.buf) then
     return nil, string.format(
@@ -189,40 +194,43 @@ function M.compute_result_for_active(active)
   local keyseq_raw = key_tracking.build_sequence(kept_events)
   local keyseq_str = apply_motion_conversions(keyseq_raw)
 
-  local rel_start_row = start_state.row - start_search
-  local rel_start_col = start_state.col
-  local rel_end_row = end_state.row - start_search
-  local rel_end_col = end_state.col
-
-  local boundary_first_col = 0
   local boundary_last_col = #initial_slice[#initial_slice] - 1
   if boundary_last_col < 0 then boundary_last_col = 0 end
-  local has_lines_above = start_search > 0
-  local has_lines_below = end_search < math.max(#initial_lines, #goal_lines) - 1
 
-  local optimizer_overrides = ffi_optimizer.encode_optimizer_overrides({ shared = config.optimizer })
+  return {
+    active = active,
+    compute_t0 = compute_t0,
+    start_state = start_state,
+    initial_slice = initial_slice,
+    goal_slice = goal_slice,
+    boundary_first_col = 0,
+    boundary_last_col = boundary_last_col,
+    has_lines_above = start_search > 0,
+    has_lines_below = end_search < math.max(#initial_lines, #goal_lines) - 1,
+    rel_start_row = start_state.row - start_search,
+    rel_start_col = start_state.col,
+    rel_end_row = end_state.row - start_search,
+    rel_end_col = end_state.col,
+    keyseq_str = keyseq_str,
+    keyseq_raw = keyseq_raw,
+    kept_events = kept_events,
+    had_mouse = had_mouse,
+    optimizer_overrides = ffi_optimizer.encode_optimizer_overrides({ shared = config.optimizer }),
+  }
+end
 
-  local analyze_t0 = vim.uv.hrtime()
-  local ok, results, user_cost, dbg = pcall(
-    ffi_optimizer.analyze,
-    initial_slice, goal_slice,
-    boundary_first_col, boundary_last_col,
-    has_lines_above, has_lines_below,
-    rel_start_row,
-    rel_start_col,
-    rel_end_row,
-    rel_end_col,
-    keyseq_str,
-    start_state.window_height,
-    start_state.scroll_amount,
-    config.RESULTS_CALCULATED,
-    optimizer_overrides
-  )
-  local analyze_ms = (vim.uv.hrtime() - analyze_t0) / 1e6
-
-  if not ok then
-    return nil, "FFI error: " .. tostring(results)
-  end
+-- Turn the analyze output into a stored result. Includes the synchronous
+-- compute_diffs call (the light one; the heavy analyze is what the async path
+-- offloads). `analyze_ms` is the analyze duration; on the async path this is
+-- worker wall-time, not a main-thread stall.
+---@param ctx table
+---@param results VF.Optimizer.Result[]
+---@param user_cost number
+---@param dbg string
+---@param analyze_ms number
+---@return VF.Session.Result
+local function finalize(ctx, results, user_cost, dbg, analyze_ms)
+  local active = ctx.active
 
   if dbg and dbg ~= "" then
     pcall(function()
@@ -246,23 +254,23 @@ function M.compute_result_for_active(active)
   -- the breakdown the optimizer planned against. Same validated slices, so it
   -- can't fail here.
   local comp = (config.optimizer or {}).composition or {}
-  local diff_open_penalty = comp.diffOpenPenalty or comp.treeDiffOpenPenalty
+  local diff_open_penalty = comp.diffOpenPenalty
   local diffs = ffi_optimizer.compute_diffs(
-    initial_slice, goal_slice, comp.diffAlgorithm, diff_open_penalty)
+    ctx.initial_slice, ctx.goal_slice, comp.diffAlgorithm, diff_open_penalty)
   if #diffs == 0 then
     diffs = disk.empty_array()
   end
 
-  local compute_ms = (vim.uv.hrtime() - compute_t0) / 1e6
+  local compute_ms = (vim.uv.hrtime() - ctx.compute_t0) / 1e6
   local result = {
-    lines = initial_slice,
-    goal_lines = goal_slice,
-    start_row = rel_start_row,
-    start_col = rel_start_col,
-    end_row = rel_end_row,
-    end_col = rel_end_col,
-    has_lines_above = has_lines_above,
-    has_lines_below = has_lines_below,
+    lines = ctx.initial_slice,
+    goal_lines = ctx.goal_slice,
+    start_row = ctx.rel_start_row,
+    start_col = ctx.rel_start_col,
+    end_row = ctx.rel_end_row,
+    end_col = ctx.rel_end_col,
+    has_lines_above = ctx.has_lines_above,
+    has_lines_below = ctx.has_lines_below,
     -- Reserved boundary context. At the whole-buffer level the slice IS the
     -- edit region (boundary_first_col=0, boundary_last_col=last), so horizontal
     -- prefix/suffix are always empty; nonempty values only arise per planned
@@ -270,15 +278,15 @@ function M.compute_result_for_active(active)
     prefix = "",
     suffix = "",
     diffs = diffs,
-    window_height = start_state.window_height,
-    scroll_amount = start_state.scroll_amount,
-    user_seq = keyseq_str,
+    window_height = ctx.start_state.window_height,
+    scroll_amount = ctx.start_state.scroll_amount,
+    user_seq = ctx.keyseq_str,
     user_cost = user_cost,
-    had_mouse = had_mouse,
+    had_mouse = ctx.had_mouse,
     optimal_results = optimal_results,
-    capture_debug = build_capture_debug(active.key_seq, keyseq_raw, keyseq_str),
+    capture_debug = build_capture_debug(active.key_seq, ctx.keyseq_raw, ctx.keyseq_str),
     start_time = active.time_started,
-    key_count = #kept_events,
+    key_count = #ctx.kept_events,
     timestamp = vim.uv.hrtime(),
     analyze_ms = analyze_ms,
     compute_ms = compute_ms,
@@ -286,7 +294,86 @@ function M.compute_result_for_active(active)
   if compute_ms >= slow_fire_threshold_ms() then
     log_slow_fire(active, result)
   end
-  return result, nil
+  return result
+end
+
+---@param active VF.Session.Active
+---@return VF.Session.Result|nil result
+---@return string|nil err
+function M.compute_result_for_active(active)
+  local ctx, err = prepare(active)
+  if not ctx then return nil, err end
+
+  local analyze_t0 = vim.uv.hrtime()
+  local ok, results, user_cost, dbg = pcall(
+    ffi_optimizer.analyze,
+    ctx.initial_slice, ctx.goal_slice,
+    ctx.boundary_first_col, ctx.boundary_last_col,
+    ctx.has_lines_above, ctx.has_lines_below,
+    ctx.rel_start_row, ctx.rel_start_col, ctx.rel_end_row, ctx.rel_end_col,
+    ctx.keyseq_str,
+    ctx.start_state.window_height, ctx.start_state.scroll_amount,
+    config.RESULTS_CALCULATED,
+    ctx.optimizer_overrides
+  )
+  local analyze_ms = (vim.uv.hrtime() - analyze_t0) / 1e6
+  if not ok then
+    return nil, "FFI error: " .. tostring(results)
+  end
+
+  return finalize(ctx, results, user_cost, dbg, analyze_ms), nil
+end
+
+-- Async variant for auto_suggest: the analyze search runs on a C++ worker thread
+-- so the main thread never blocks on it. `prepare` still runs synchronously at
+-- call time (it reads the live buffer); only the optimizer search is offloaded.
+-- `on_done(result, err)` is invoked on the main thread once the worker finishes.
+-- Returns the poll handle, or nil if prepare/start failed (on_done was already
+-- called with the error in that case).
+---@param active VF.Session.Active
+---@param deadline_ms integer
+---@param on_done fun(result: VF.Session.Result|nil, err: string|nil)
+---@return VF.Async.PollHandle|nil
+function M.compute_result_for_active_async(active, deadline_ms, on_done)
+  local ctx, err = prepare(active)
+  if not ctx then
+    on_done(nil, err)
+    return nil
+  end
+
+  local analyze_t0 = vim.uv.hrtime()
+  local ok, job_id = pcall(
+    ffi_optimizer.analyze_start_async,
+    ctx.initial_slice, ctx.goal_slice,
+    ctx.boundary_first_col, ctx.boundary_last_col,
+    ctx.has_lines_above, ctx.has_lines_below,
+    ctx.rel_start_row, ctx.rel_start_col, ctx.rel_end_row, ctx.rel_end_col,
+    ctx.keyseq_str,
+    ctx.start_state.window_height, ctx.start_state.scroll_amount,
+    config.RESULTS_CALCULATED,
+    ctx.optimizer_overrides,
+    deadline_ms
+  )
+  if not ok then
+    on_done(nil, "FFI error: " .. tostring(job_id))
+    return nil
+  end
+
+  return poller.start(
+    function()
+      local poll_ok, payload = pcall(ffi_optimizer.analyze_poll, job_id)
+      if not poll_ok then return { err = payload } end
+      return payload
+    end,
+    function() ffi_optimizer.analyze_cancel(job_id) end,
+    function(payload)
+      if payload.err then
+        on_done(nil, "FFI error: " .. tostring(payload.err))
+        return
+      end
+      local analyze_ms = (vim.uv.hrtime() - analyze_t0) / 1e6
+      on_done(finalize(ctx, payload.results, payload.user_cost, payload.dbg, analyze_ms), nil)
+    end)
 end
 
 ---@param session VF.Session.Active

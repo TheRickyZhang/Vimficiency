@@ -169,12 +169,6 @@ TEST(OptimizerParamOverrides, CompositionSpecificKeyAppliesOnlyToComposition) {
   EXPECT_EQ(nav.maxResults, NavOptimizerParams{}.maxResults);
 }
 
-TEST(OptimizerParamOverrides, LegacyTreeDiffOpenPenaltyAliasApplies) {
-  CompositionOptimizerParams comp;
-  parseGood("composition:treeDiffOpenPenalty=2.5").applyTo(comp);
-  EXPECT_DOUBLE_EQ(comp.diffOpenPenalty, 2.5);
-}
-
 TEST(OptimizerParamOverrides, CountPrefixSettersHonorBaseValidation) {
   // OptimizerParamsBase::validate() asserts the prefix-count fields are in
   // bounds. The override applier calls validate() at the end of applyTo()

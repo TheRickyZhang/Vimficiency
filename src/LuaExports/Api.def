@@ -74,6 +74,29 @@ VFByteSlice vf_analyze(
   int results_calculated,
   const char* optimizer_overrides,
   size_t optimizer_overrides_len);
+VFByteSlice vf_analyze_start_async(
+  const char* encoded_initial_lines,
+  size_t encoded_initial_lines_len,
+  const char* encoded_goal_lines,
+  size_t encoded_goal_lines_len,
+  int boundary_first_col,
+  int boundary_last_col,
+  bool has_lines_above,
+  bool has_lines_below,
+  int start_row,
+  int start_col,
+  int end_row,
+  int end_col,
+  const char* keyseq,
+  size_t keyseq_len,
+  int window_height,
+  int scroll_amount,
+  int results_calculated,
+  const char* optimizer_overrides,
+  size_t optimizer_overrides_len,
+  int deadline_ms);
+VFByteSlice vf_analyze_poll(int job_id);
+int vf_analyze_cancel(int job_id);
 VFByteSlice vf_compute_diffs(
   const char* encoded_initial_lines,
   size_t encoded_initial_lines_len,

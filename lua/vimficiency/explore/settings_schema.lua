@@ -36,14 +36,10 @@ function M.build(a, refresh_ui)
   local motion_get, motion_set = dedup_toggle("nav", "maxResultsPerEndPos")
   local edit_get, edit_set = dedup_toggle("transform", "maxResultsPerStartPos")
 
-  local function opt_get(scope, key, legacy_key)
+  local function opt_get(scope, key)
     return function()
       local v = store[scope][key]
       if v ~= nil then return v end
-      if legacy_key ~= nil then
-        v = store[scope][legacy_key]
-        if v ~= nil then return v end
-      end
       return default_for(scope, key)
     end
   end
@@ -149,7 +145,7 @@ function M.build(a, refresh_ui)
     { kind = "setting",
       label = "Diff open penalty",
       value_kind = "float", min = 0.0, max = 40.0, step = 0.5,
-      get = opt_get("composition", "diffOpenPenalty", "treeDiffOpenPenalty"),
+      get = opt_get("composition", "diffOpenPenalty"),
       set = opt_set("composition", "diffOpenPenalty") },
     { kind = "setting",
       label = "Nav padding above",

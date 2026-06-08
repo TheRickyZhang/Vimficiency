@@ -16,6 +16,7 @@ local M = {}
 
 M.empty_array = disk.empty_array
 M.compute_result_for_active = compute.compute_result_for_active
+M.compute_result_for_active_async = compute.compute_result_for_active_async
 M.manual_should_evict = compute.manual_should_evict
 
 ---@param record VF.Session.Record

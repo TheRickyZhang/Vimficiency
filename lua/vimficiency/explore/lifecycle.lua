@@ -1,7 +1,7 @@
 local ffi_explore  = require("vimficiency.ffi.explore")
 local activation   = require("vimficiency.explore.activation")
 local panel_render = require("vimficiency.explore.render.panel")
-local poller       = require("vimficiency.explore.poller")
+local poller       = require("vimficiency.async.poller")
 
 local M = {}
 local v = vim.api

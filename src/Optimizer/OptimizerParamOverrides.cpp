@@ -94,16 +94,6 @@ const std::set<std::string_view, std::less<>>& compositionKeys() {
   return keys;
 }
 
-std::string_view canonicalKey(std::string_view scope, std::string_view key) {
-  if (scope == "composition" && key == "treeDiffOpenPenalty") {
-    return "diffOpenPenalty";
-  }
-  if (scope == "composition" && key == "treeMoveDeleteScale") {
-    return "moveDeleteScale";
-  }
-  return key;
-}
-
 bool keyAllowedInScope(std::string_view scope, std::string_view key) {
   if (scope == "shared") return baseKeys().contains(key);
   if (scope == "nav") return navKeys().contains(key);
@@ -221,7 +211,6 @@ public:
         continue;
       }
       const auto& [key, value] = *kvSplit;
-      const std::string_view normalizedKey = canonicalKey(scope, key);
 
       OptimizerParamOverrides::ScopeMap* target = nullptr;
       if (scope == "shared") target = &out.shared_;
@@ -236,12 +225,12 @@ public:
         continue;
       }
 
-      if (!knownKeys().contains(normalizedKey)) {
+      if (!knownKeys().contains(key)) {
         errors.push_back(
             "line " + std::to_string(lineNumber) +
             ": unknown optimizer key '" + scopedKey(scope, key) + "'");
         continue;
-      } else if (!keyAllowedInScope(scope, normalizedKey)) {
+      } else if (!keyAllowedInScope(scope, key)) {
         errors.push_back(
             "line " + std::to_string(lineNumber) +
             ": optimizer key '" + scopedKey(scope, key) +
@@ -249,7 +238,7 @@ public:
         continue;
       }
 
-      if (!valueValidForKey(normalizedKey, value)) {
+      if (!valueValidForKey(key, value)) {
         errors.push_back(
             "line " + std::to_string(lineNumber) +
             ": invalid value for optimizer key '" + scopedKey(scope, key) +
@@ -257,7 +246,7 @@ public:
         continue;
       }
 
-      target->insert_or_assign(std::string(normalizedKey), std::string(value));
+      target->insert_or_assign(std::string(key), std::string(value));
     }
     if (!errors.empty()) return std::unexpected(std::move(errors));
     return out;

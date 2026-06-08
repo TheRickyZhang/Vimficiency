@@ -424,9 +424,10 @@ TEST_F(ExploreViewTest, ApplyEditRejectsFullCompositionTextObjectBody) {
 }
 
 TEST_F(ExploreViewTest, ApplyEditAcceptsJoinPlanProgress) {
-  // The transform splits into a `\n`->` ` join (edit 0) and an insert "!"
-  // (edit 1). A single J fully performs the join, completing edit 0 and
-  // advancing — so it is accepted and the span is not left partial.
+  // The planner produces one merged region `\nb`->` b!` (the join and the "!"
+  // insert together). A single J performs the join, reaching "a b", but the "!"
+  // is still pending — so J is accepted as partial progress and the span is left
+  // partial (the trailing insert completes it).
   Lines initial{Line("a"), Line("b")};
   Lines goal{Line("a b!")};
   auto view = makeView(initial, {0, 0}, goal, {0, 3});
@@ -434,7 +435,7 @@ TEST_F(ExploreViewTest, ApplyEditAcceptsJoinPlanProgress) {
   auto outcome = view.applyEdit("J");
   ASSERT_TRUE(outcome.has_value()) << outcome.error().reason;
   EXPECT_EQ(view.state().lines, Lines{Line("a b")});
-  EXPECT_FALSE(view.state().hasPartialEditSpan);
+  EXPECT_TRUE(view.state().hasPartialEditSpan);
 }
 
 TEST_F(ExploreViewTest, ApplyEditRejectsUnplannedJoin) {
