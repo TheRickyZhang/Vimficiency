@@ -3,14 +3,13 @@
 ## Overview
 
 The CompositionOptimizer breaks buffer changes into individual planned edit
-regions. The default generator is `TreeDiff` (`composition:diffAlgorithm=1`);
-`composition:diffAlgorithm=0` switches back to the historical character-level
-Myers diff; `composition:diffAlgorithm=2` selects the experimental `CharDiff`
-planner (character-granular partitioning with the tree demoted to a cost
-oracle — see below). All methods return `DiffState`s computed against the
-**original** buffer, but the diffs must be applied **sequentially** to
-intermediate buffer states. This requires adjusting diff positions as earlier
-diffs shift content.
+regions. The default generator is `VimDiff` (`composition:diffAlgorithm=0`): a
+character-granular planner that prices regions using Vim-shaped movement,
+deletion, insertion, and per-edit costs. `composition:diffAlgorithm=1` switches
+to the historical character-level `MyersDiff` fallback. All methods return
+`DiffState`s computed against the **original** buffer, but the diffs must be
+applied **sequentially** to intermediate buffer states. This requires adjusting
+diff positions as earlier diffs shift content.
 
 ## Diff Output Contract
 
@@ -23,34 +22,25 @@ each planned edit into the current intermediate buffer.
 
 ## Algorithms
 
-- `diffAlgorithm=0`: `Myers::calculate`, the historical character-level
-  shortest-edit script plus local split/merge heuristics.
-- `diffAlgorithm=1`: `TreeDiff::calculate`, a structural planner. It builds a
-  fixed-depth, lossless hierarchy over the flattened text and runs a forward DP
-  to choose flat replacement regions.
-- `diffAlgorithm=2`: `CharDiff::calculate`, the next-generation planner. Same
-  cost model as TreeDiff, but the partition search runs at character granularity
-  and the tree is only a cost oracle (no structural constraint on diff
-  boundaries). See [CharDiff](#chardiff-diffalgorithm2).
+- `diffAlgorithm=0`: `VimDiff::calculate`, the default Vim-costed planner. It
+  searches over character positions and uses `DiffTree` only as a cost oracle,
+  so tree units do not constrain diff boundaries.
+- `diffAlgorithm=1`: `MyersDiff::calculate`, the historical character-level
+  shortest-edit script plus local split/merge heuristics. It is useful as a fast
+  baseline and fallback, but it does not model Vim command cost.
 
-## TreeDiff
+## DiffTree Cost Oracle
 
-`TreeDiff` is not tree edit distance. It is a flat diff-region planner that uses
-a fixed hierarchy as candidate boundaries:
+`DiffTree` is a fixed hierarchy over flattened text. `VimDiff` uses it to price
+movement and deletion commands, not to choose legal diff boundaries:
 
 ```
 Root -> Paragraph -> Line -> BigWord -> Word -> Char
 ```
 
-It chooses ordered, non-overlapping original-buffer spans:
-
-```
-replace initialText[oldBegin:oldEnd]
-with    goalText[newBegin:newEnd]
-```
-
-The spans are converted to `DiffState` after planning. `Char` leaves keep the
-planner exact.
+`VimDiff` still emits ordered, non-overlapping original-buffer spans, then
+converts them to `DiffState`. Because the search itself is character-granular,
+`Char` leaves keep the cost oracle exact without forcing planner boundaries.
 
 ### Tree Shape
 
@@ -82,7 +72,7 @@ Every term is in approximate keystrokes, on the same scale as inserted-text
 effort, so the planner trades retyping against moving/deleting honestly:
 
 - **Per region:** `diffOpenPenalty` (default `1`, from
-  `composition:treeDiffOpenPenalty`) — fixed operator/mode-entry overhead.
+  `composition:diffOpenPenalty`) — fixed operator/mode-entry overhead.
 - **Insert:** `typed_effort(inserted_text)` via `KeyedSequence` + `RunningEffort`
   on the active `Config`.
 - **Deletion** (`deleteCost`): the delete command's keystrokes for the region's
@@ -169,7 +159,7 @@ deferred and would remove it.
 
 ### Current Examples
 
-With default `treeDiffOpenPenalty` and uniform debug config:
+With default `diffOpenPenalty` and uniform debug config:
 
 ```
 aa aa -> aaaa
@@ -202,47 +192,53 @@ in `tests/Approval/TreeApproval.cpp`.
 
 ### Design Intent
 
-The tree is a search scaffold, not an output format. It provides Vim-relevant
-boundaries while still returning flat original-buffer diffs. Coarse
-line/paragraph replacements should compete with smaller edits, and char-level
-refinement should win when cheaper.
+The tree is a cost scaffold, not an output format. It provides Vim-relevant
+boundaries for movement and delete pricing while `VimDiff` still returns flat
+original-buffer diffs. Coarse line/paragraph commands should compete with
+smaller edits, but tree-unit boundaries should not constrain where edits begin
+or end.
 
 ### Deferred Work
 
 Not implemented yet:
 
-- character-granular matching at region edges (see Seam fragmentation) — would
-  remove the dependence on `diffOpenPenalty` >= 2 for nested-token seams
-- open-boundary recursive plans, where a diff can enter or exit a recursive
-  child range still open
-- the Myers-only behaviors below
+- hard-split decomposition so `VimDiff` work scales with the changed region
+  rather than the whole buffer
+- moving the Myers-only processing-order flip into composition search as a real
+  ordering choice
 
-### Why Myers is still selectable (diffAlgorithm=0)
+### Why MyersDiff is non-default (diffAlgorithm=1)
 
-Movement and deletion are now priced (see Cost Model), so the old "two missing
-axes" gap is closed. What still keeps Myers reachable is structural:
+`MyersDiff` is still selectable because it is fast, familiar, and useful as a
+baseline. It is not the default because its objective is shortest character edit
+script, not cheapest Vim command plan:
 
-- **Forward-only.** The Myers processing-order flip in
-  `CompositionSearchContext.cpp` (gated on `diffAlgorithm == Myers`) reverses
-  diff order when the cursor starts nearer the last diff, to save navigation.
-  TreeDiff is forward-only.
-- **J-plan shapes.** Boundary-crossing `J` plans key off scoped diffs like
-  `\nbbb` -> `" bbb"`; TreeDiff's structural partitioning doesn't reliably emit
-  those shapes, so some join opportunities don't surface (see
-  `composition-optimizer.md` § J Plans).
+- **Kept text is treated as free.** Myers preserves common substrings even when
+  moving across them and opening another edit is more expensive than retyping
+  them inside one Vim edit region.
+- **Region count and command shape are absent.** It does not know about
+  per-edit overhead, `dw`/`dd`/text-object deletion, join plans, or typed effort.
+- **Split/merge rules are local heuristics.** Thresholds such as
+  `MIN_MATCH_LENGTH` approximate a cost model, but they cannot account for
+  cursor location, keyboard effort, or downstream transform search.
+- **Processing order is an incidental win.** The Myers-only order flip in
+  `CompositionSearchContext.cpp` can still save navigation when the cursor
+  starts closer to the last diff. That should eventually become a composition
+  search choice, not a reason to prefer Myers partitions.
 - **Partition is final.** The generator only picks regions; A* prices the rest
   downstream and never re-partitions, so a poor partition can't be repaired.
 
-Retiring Myers needs processing order made a search choice (or order-agnostic)
-and TreeDiff confirmed to subsume the J-plan shapes.
+Retiring `MyersDiff` needs processing order made a search choice (or
+order-agnostic) and enough `VimDiff` end-to-end evidence that the fallback no
+longer catches meaningful regressions.
 
-## CharDiff (diffAlgorithm=2)
+## VimDiff (diffAlgorithm=0)
 
-`CharDiff` keeps TreeDiff's cost model but fixes TreeDiff's structural flaw: the
-tree was constraining *where* diffs may fall. Real diffs are character-level — no
-tree partition, however chosen, can express every intuitive cross-level edit.
-CharDiff demotes the tree to a pure **cost oracle** and runs the partition search
-at character granularity. The tree still supplies `moveCost`/`delCost`; it no
+`VimDiff` is the default because it optimizes the thing composition actually
+uses: planned edit regions. Real diffs are character-level — no tree partition,
+however chosen, can express every intuitive cross-level edit. VimDiff therefore
+uses `DiffTree` as a pure **cost oracle** and runs the partition search at
+character granularity. The tree still supplies `moveCost`/`delCost`; it no
 longer dictates region boundaries.
 
 ### Objective
@@ -260,10 +256,11 @@ minimizing
 PENALTY*t + sum delCost(Di) + sum insCost(Ii) + sum moveCost(interior Ki)
 ```
 
-`insCost` is the real effort model; `delCost`/`moveCost` are coarsest-cover tree
-approximations. Leading `K0` and trailing `Kt` are free (you start at the first
-edit, end at the last) — and free *globally*, by construction, not per-recurse as
-in TreeDiff.
+`insCost` is the real effort model; `delCost` is a boundary-DP tiling of the flat
+range into delete commands (below) and `moveCost` is a coarsest-cover tree
+approximation — both keystroke oracles read off the tree. Leading `K0` and
+trailing `Kt` are free (you start at the first edit, end at the last) — and free
+*globally*, by construction, not per-recursive tree region.
 
 ### Inner/outer DP
 
@@ -285,8 +282,8 @@ answer  = min_{A[i:n]==B[j:m]} F[i][j]                             # trailing fr
 character-level there is **no refinement pass** (it is already finest-grained)
 and **no merge pass** (`G` requires `t>=1`, so adjacent fragments can't form — a
 straddling edit is strictly dominated by the merged one). One DP, and its
-objective *is* the emitted partition's cost — none of TreeDiff's three
-objective-vs-output discrepancies (refine, merge, per-recurse-free) survive.
+objective *is* the emitted partition's cost — no post-hoc merge/refine pass is
+needed to reconcile the output to the objective.
 
 ### Top-K plans
 
@@ -300,7 +297,7 @@ plans need no dedup. Cost is `O(maxPlans)` over the single-plan search with a
 sort/truncate per cell; reconstruction walks explicit backpointers rather than
 re-deriving by cost equality. `calculate` returns `vector<Plan>` (production
 takes `front()`); `calculateBreakdown` returns one breakdown per plan, the
-diagnostic surface behind `tests/Approval/CharDiffApprovalTest.cpp`'s
+diagnostic surface behind `tests/Approval/VimDiffApprovalTest.cpp`'s
 `TopKPlans`.
 
 ### Complexity: O(N^3) exact, and no exact O(N^2)
@@ -319,20 +316,45 @@ parts (the *collapse*). Additivity would restore `O(N^2)` via running-min sweeps
 but additive movement charges per-char traversal and can never collapse a
 spanned unit — it overcharges exactly the long matched gaps we want to skip
 cheaply, so it is a worse model, not a faster equivalent. Verdict: `O(N^3)` exact
-is the ceiling for this cost model. (Empirically: `tests/Debug/CharDiffPrototype.cpp`,
+is the ceiling for this cost model. (Empirically: `tests/Debug/VimDiffPrototype.cpp`,
 `QuadrangleInequality` — ~19k violations for move/delete, 0 for insert.)
 
 `N` is the size of a *change region*. Hard-split (below) keeps it proportional to
 the diff, not the buffer.
 
-### Count-aware delete oracle
+### Delete-cost oracle (boundary DP)
 
-`delCost(a,i)` prices the cheapest delete of the flat range: a maximal
-text-contiguous run of whole same-level units is one *counted* command
-(`Ndd`, `Ndap` ~ `deleteCost(level)`, count-independent), partial edges recurse
-to finer levels. This differs from a naive per-unit sum, which would overcharge
-multi-unit deletes (4 lines as `4*dd` instead of one `4dd`). `moveCost` stays the
-coarsest-cover collapse (a whole paragraph = one `}`).
+`delCost(a,i)` prices deleting the flat range `[a,i)` as the cheapest *set* of Vim
+delete commands that tile it — a shortest path over a small motion menu, not a
+whole-unit cover. From any position `p` the edges are:
+
+- char `x`: `p -> p+1`, cost 1 (so `k` chars cost `k`)
+- `dw`/`de`: `p -> next Word start / core-end`, cost 2 — valid mid-word
+- `dW`/`dE`: `p -> next BigWord start / core-end`, cost 3
+- `{n}dd`/`{n}dap`: a line/paragraph start `-> any later same-level start`, flat
+  cost 2/3 (count-independent)
+
+`de`/`dE` target the word *core* end (last non-blank + 1), not the tree span's end
+(which includes trailing whitespace and coincides with the next `dw` target), so a
+deletion that stops at the word gets its own cheaper edge.
+
+Mid-word `dw`/`de` as first-class edges is the fix for the old whole-unit cover,
+which fell through to a flat char cost when no whole unit was contained — pricing
+a 5-char cross-word span (`bc xy` = 1) *below* an 11-char whole paragraph
+(`dap` = 3), backwards. The tiling keeps whole-unit deletes cheap (a line = one
+`dd`, contiguous lines = one `{n}dd`, so it never overcharges `4dd` as `4*dd`)
+while pricing partial/cross-word spans honestly (`bc xy` tiles as `dw` + `2x`).
+`moveCost` stays the coarsest-cover collapse (a whole paragraph = one `}`).
+
+The buffer is fixed during search, so the full `delCost[a][i]` table is
+precomputed once — one forward DAG-shortest-path per start over an
+`O(1)`-out-degree graph, `O(N^2)` total — and read `O(1)` by the G/D/F search.
+
+**Count overhead (deferred):** a `{n}` command carries mental cost beyond its
+keystrokes. When added it attaches *per command* (edge-local, `f(count)`) so the
+shortest path stays additive; a per-tiling-total surcharge would not be
+edge-decomposable. First pass omits it — pricing a char run at 1/char already
+biases tiling toward word motions over a long `{k}x`.
 
 ### Hard-split decomposition (scaling — deferred)
 
@@ -353,17 +375,20 @@ already bounds region size — but it is the planned scaling layer.
 
 ### Validation
 
-`tests/Debug/CharDiffPrototype.cpp` checks the G/D/F DP against a brute-force
+`tests/Debug/VimDiffPrototype.cpp` checks the G/D/F DP against a brute-force
 partition enumerator under the same oracle: 9 handcrafted + 4000 random small
 cases, zero mismatches. The DP is oracle-agnostic, so the delete-oracle
 calibration above can change without re-validating the search.
+`tests/Unit/DiffPlanner/VimDiffTest.cpp` covers the production planner: the diff
+round-trips to the goal, and every K-best plan round-trips, is ascending by cost,
+and is distinct.
 
 ### Status
 
-Initial implementation: the exact G/D/F DP + count-aware delete, wired as
-`diffAlgorithm=2`, default still TreeDiff. Hard-split is the scaling follow-up
-(correctness-neutral). The QI verdict means we do **not** chase an O(N^2)-exact
-variant for this cost model.
+Implemented: the exact G/D/F DP, the boundary-DP delete oracle, and K-best plans
+(`CostOptions::maxPlans`), wired as the default `diffAlgorithm=0`. Hard-split is
+the scaling follow-up (correctness-neutral). The QI verdict means we do **not**
+chase an O(N^2)-exact variant for this cost model.
 
 ## The Sequential Application Problem
 
@@ -421,5 +446,5 @@ After adjustment, `diffStates[i].beginPos`/`endPos` are in intermediate-buffer c
 
 - Adjustment logic: `CompositionSearchContext::calculateLinesAfterDiffs()` in `CompositionSearchContext.cpp`
 - Helpers: `posToFlat()`, `flatToPos()` (file-static in same file)
-- Myers diff separation heuristics: see `dev/diff-separation-rules.md`
-- Tree diff planner: `src/Optimizer/DiffPlanner/TreeDiff.cpp`
+- VimDiff planner: `src/Optimizer/DiffPlanner/VimDiff.cpp`
+- MyersDiff fallback and separation heuristics: `src/Optimizer/DiffPlanner/MyersDiff.cpp`; see `dev/diff-separation-rules.md`

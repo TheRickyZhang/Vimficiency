@@ -24,7 +24,7 @@ dev/vim/
 /tests/Benchmarks/temp.txt
 /deps.dot
 /doc/tags
-/bench-dashboard/tsconfig.tsbuildinfo
+/web/dashboard/tsconfig.tsbuildinfo
 
 # Test seed files (generated when using random seeds)
 tests/.last_seeds.txt
@@ -40,7 +40,7 @@ build*/
 /composition_explore.json
 
 # Bench dashboard
-bench-dashboard/node_modules/
-bench-dashboard/dist/
-bench-dashboard/public/*/data.json
-bench-dashboard/public/*/explore.json
+web/dashboard/node_modules/
+web/dashboard/dist/
+web/dashboard/public/*/data.json
+web/dashboard/public/*/explore.json

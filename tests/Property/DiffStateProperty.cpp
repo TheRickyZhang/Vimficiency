@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include "Optimizer/DiffPlanner/DiffState.h"
+#include "Optimizer/DiffPlanner/MyersDiff.h"
 #include "Property/PropertyDomains.h"
 #include "Types/Lines.h"
 
@@ -74,8 +75,8 @@ void RoundTripAndStructureAcrossBufferStyles(
     const PropertyDomains::DiffCaseSpec& spec) {
   DiffCase test = toDiffCase(spec);
 
-  auto diffs = Myers::calculate(test.initial, test.goal);
-  EXPECT_EQ(Myers::applyAllDiffState(diffs, test.initial), test.goal)
+  auto diffs = MyersDiff::calculate(test.initial, test.goal);
+  EXPECT_EQ(MyersDiff::applyAllDiffState(diffs, test.initial), test.goal)
       << "Round-trip failed: '" << test.initial.flatten()
       << "' -> '" << test.goal.flatten() << "'";
   validateInvariants(diffs, test.initial, test.goal);
@@ -94,7 +95,7 @@ Lines applySequentially(vector<DiffState> diffs, const Lines& initialLines) {
   for (const auto& originalDiff : diffs) {
     DiffState currentDiff = mapper.mapDiffToCurrent(
         originalDiff, initialLines, current);
-    current = Myers::applyDiffState(currentDiff, current);
+    current = MyersDiff::applyDiffState(currentDiff, current);
     mapper.recordApplied(originalDiff, initialLines);
   }
 
@@ -106,8 +107,8 @@ void SequentialApplicationMatchesBatchApplication(
   DiffCase test = toDiffCase(spec);
   if (test.initial == test.goal) return;
 
-  auto diffs = Myers::calculate(test.initial, test.goal);
-  Lines expected = Myers::applyAllDiffState(diffs, test.initial);
+  auto diffs = MyersDiff::calculate(test.initial, test.goal);
+  Lines expected = MyersDiff::applyAllDiffState(diffs, test.initial);
   ASSERT_EQ(expected, test.goal) << "applyAllDiffState sanity check failed";
 
   // Composition applies planned diffs one at a time against changing

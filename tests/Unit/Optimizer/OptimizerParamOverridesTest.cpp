@@ -152,13 +152,13 @@ TEST(OptimizerParamOverrides, InvalidLinesRejectPayload) {
 TEST(OptimizerParamOverrides, CompositionSpecificKeyAppliesOnlyToComposition) {
   const auto overrides = parseGood(
       "composition:overshootPenalty=10.0\n"
-      "composition:treeDiffOpenPenalty=12.5\n"
+      "composition:diffOpenPenalty=12.5\n"
       "composition:diffAlgorithm=1");
 
   CompositionOptimizerParams comp;
   overrides.applyTo(comp);
   EXPECT_DOUBLE_EQ(comp.overshootPenalty, 10.0);
-  EXPECT_DOUBLE_EQ(comp.treeDiffOpenPenalty, 12.5);
+  EXPECT_DOUBLE_EQ(comp.diffOpenPenalty, 12.5);
   EXPECT_EQ(comp.diffAlgorithm, 1);
 
   // Nav and Transform never read the composition scope.
@@ -167,6 +167,12 @@ TEST(OptimizerParamOverrides, CompositionSpecificKeyAppliesOnlyToComposition) {
   // Nothing to assert on Nav directly; this is a "doesn't crash, doesn't
   // mis-set" sanity check.
   EXPECT_EQ(nav.maxResults, NavOptimizerParams{}.maxResults);
+}
+
+TEST(OptimizerParamOverrides, LegacyTreeDiffOpenPenaltyAliasApplies) {
+  CompositionOptimizerParams comp;
+  parseGood("composition:treeDiffOpenPenalty=2.5").applyTo(comp);
+  EXPECT_DOUBLE_EQ(comp.diffOpenPenalty, 2.5);
 }
 
 TEST(OptimizerParamOverrides, CountPrefixSettersHonorBaseValidation) {

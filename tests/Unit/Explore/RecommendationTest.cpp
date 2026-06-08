@@ -169,7 +169,7 @@ TEST_F(ExploreViewTest, TransformDeletionHonorsTransformCountPrefixOverrides) {
       << tokens(withoutCounts);
 }
 
-TEST_F(ExploreViewTest, TransformPhaseSurfacesReplaceCharForSingleCharDiff) {
+TEST_F(ExploreViewTest, TransformPhaseSurfacesReplaceCharForSingleCharacterDiff) {
   // TransformPostExplorer owns the finalize-time replacement emission; the
   // depth-1 frontier must surface it too.
   Lines initial{Line("abc")};

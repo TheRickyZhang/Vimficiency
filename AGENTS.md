@@ -123,7 +123,7 @@ Exposes C ABI for LuaJIT through `src/lua_exports.cpp` and the domain export fil
 For Lua context, see `lua/vimficiency/AGENTS.md`.
 
 ## Deep Dive References
-- @dev/ci-and-benchmarks.md - CI workflow (test/benchmark/deploy), benchmark dashboard (`bench-dashboard/`), gh-pages layout
+- @dev/ci-and-benchmarks.md - CI workflow (test/benchmark/deploy), benchmark dashboard (`web/dashboard/`), gh-pages layout
 - @dev/core/boundary-logic.md - Word motion and boundary crossing logic, TransformBoundary API
 - @dev/architecture/module-dependencies.md - Allowed C++ module dependency graph and placement rules
 - @dev/core/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)

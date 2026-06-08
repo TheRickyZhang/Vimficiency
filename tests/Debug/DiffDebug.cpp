@@ -15,8 +15,8 @@
 #include <string>
 
 #include "Optimizer/DiffPlanner/DiffState.h"
-#include "Optimizer/DiffPlanner/CharDiff.h"
-#include "Optimizer/DiffPlanner/TreeDiff.h"
+#include "Optimizer/DiffPlanner/VimDiff.h"
+#include "Optimizer/DiffPlanner/MyersDiff.h"
 #include "Keyboard/Config.h"
 #include "Types/Lines.h"
 #include "Utils/PrettyText.h"
@@ -60,7 +60,7 @@ static void printDiffs(
          << " below=" << d.boundary.hasLinesBelow() << endl;
   }
 
-  Lines reconstructed = Myers::applyAllDiffState(diffs, initial);
+  Lines reconstructed = MyersDiff::applyAllDiffState(diffs, initial);
   if (reconstructed.flatten() != goal.flatten()) {
     cout << endl << "WARNING: round-trip mismatch!" << endl;
     cout << "  expected: " << VF::prettify(goal.flatten()) << endl;
@@ -73,12 +73,10 @@ static void printDiffs(const Lines& initial, const Lines& goal) {
   cout << "goal:    " << goal << "  [" << VF::prettify(goal.flatten()) << "]" << endl;
   cout << endl;
 
-  printDiffs("Myers", Myers::calculate(initial, goal), initial, goal);
+  printDiffs("Myers", MyersDiff::calculate(initial, goal), initial, goal);
   cout << endl;
-  printDiffs("Tree", TreeDiff::calculate(initial, goal, Config::uniform()), initial, goal);
-  cout << endl;
-  auto charPlans = CharDiff::calculate(initial, goal, Config::uniform());
-  printDiffs("Char", charPlans.empty() ? std::vector<DiffState>{} : charPlans.front().diffs,
+  auto vimPlans = VimDiff::calculate(initial, goal, Config::uniform());
+  printDiffs("Vim", vimPlans.empty() ? std::vector<DiffState>{} : vimPlans.front().diffs,
              initial, goal);
 }
 

@@ -12,6 +12,7 @@
 #include "Effort/RunningEffort.h"
 #include "Keyboard/ToKeys/MovementToKeys.h"
 #include "Optimizer/CompositionOptimizer/PlannedEditArtifacts.h"
+#include "Optimizer/DiffPlanner/MyersDiff.h"
 #include "Optimizer/OptimizerParamOverrides.h"
 #include "Optimizer/TransformOptimizer/ChangeGoalHandler.h"
 #include "Optimizer/TransformOptimizer/TransformExplorer.h"
@@ -61,7 +62,7 @@ string sourceCommandSeq(const SequenceBinding& cmd) {
 double residualDistanceAfter(const Lines& before,
                              const Lines& afterStep,
                              const DiffState& diff) {
-  Lines target = Myers::applyDiffState(diff, before);
+  Lines target = MyersDiff::applyDiffState(diff, before);
   auto residual = DiffText::calculateContiguousResidualDiff(afterStep, target);
   if (!residual) return 0.0;
   return textDistanceEstimate(residual->deletedLines()) +
@@ -142,7 +143,7 @@ void emitJoinFirstAction(
   // every case where the bare command exactly reaches the post-edit
   // fencepost. This helper owns only "progress without reaching the
   // fencepost". The two lanes are disjoint by the fencepost equality below.
-  if (afterJoin.getLines() == Myers::applyDiffState(query.diff, query.lines)) {
+  if (afterJoin.getLines() == MyersDiff::applyDiffState(query.diff, query.lines)) {
     return;
   }
 

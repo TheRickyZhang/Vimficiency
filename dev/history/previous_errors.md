@@ -73,7 +73,7 @@ After db: "abc" / "   ghi"  cursor at [1,3] (the 'g', first non-blank)
 
 ## adjustForSequential was a no-op
 
-`Myers::adjustForSequential()` was supposed to convert diff positions from original-buffer coordinates to intermediate-buffer coordinates (after prior diffs applied). Instead it was a no-op -- it returned the input `diffs` unchanged (the function computed offsets but never applied them, and ended with `return diffs;` on the const input).
+`MyersDiff::adjustForSequential()` was supposed to convert diff positions from original-buffer coordinates to intermediate-buffer coordinates (after prior diffs applied). Instead it was a no-op -- it returned the input `diffs` unchanged (the function computed offsets but never applied them, and ended with `return diffs;` on the const input).
 
 This worked by accident when diffs didn't insert/delete lines before subsequent diffs, since column-only changes within a single line don't shift positions of diffs on later lines. It would break when earlier diffs add or remove lines (or characters on the same line) before later diffs.
 

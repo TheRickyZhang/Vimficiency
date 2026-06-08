@@ -1,4 +1,4 @@
-// Content lives in ../doc-src/ so the same markdown serves three surfaces:
+// Content lives in ../../doc-src/ so the same markdown serves three surfaces:
 // the Starlight site, the panvimdoc-generated `:help` file, and direct
 // GitHub rendering. The glob loader reads them in place — no copy or
 // symlink, no sync drift.
@@ -15,7 +15,7 @@ import { docsSchema } from '@astrojs/starlight/schema';
 export const collections = {
   docs: defineCollection({
     loader: glob({
-      base: '../doc-src',
+      base: '../../doc-src',
       pattern: '**/*.md',
       generateId: ({ entry }) =>
         entry === 'README.md' ? 'index' : entry.replace(/\.md$/, ''),

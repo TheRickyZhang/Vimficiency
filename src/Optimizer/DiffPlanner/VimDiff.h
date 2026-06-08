@@ -6,11 +6,11 @@
 #include "Keyboard/Config.h"
 #include "Types/Lines.h"
 
-// Character-granular diff partition planner (composition:diffAlgorithm=2). Same
-// cost model as TreeDiff, but the tree is only a cost oracle: the partition
-// search runs over flat character positions, so diff boundaries are not
-// constrained to tree units. See dev/optimizer/diff-generation.md § CharDiff.
-namespace CharDiff {
+// Character-granular diff partition planner (composition:diffAlgorithm=0), the
+// default. The DiffTree is only a cost oracle: the partition search runs over flat
+// character positions, so diff boundaries are not constrained to tree units. See
+// dev/optimizer/diff-generation.md § VimDiff.
+namespace VimDiff {
 
 struct CostOptions {
   double diffOpenPenalty = 1.0;   // per-region operator/mode overhead
@@ -42,7 +42,7 @@ std::vector<Plan> calculate(
 // Per-region cost the planner weighed. `move` is the coarsest-cover traversal
 // from the previous region's old end to this region's old begin (0 for the
 // first). Penalty is `diffOpenPenalty` per region (implied; folded into total).
-// Because CharDiff has no merge/refine pass, `total` equals the DP optimum
+// Because VimDiff has no merge/refine pass, `total` equals the DP optimum
 // exactly. Diagnostic surface — `calculate` does not use it.
 struct RegionBreakdown {
   DiffState diff;
@@ -65,4 +65,4 @@ std::vector<CostBreakdown> calculateBreakdown(
     const Config& config,
     CostOptions options = {});
 
-}  // namespace CharDiff
+}  // namespace VimDiff

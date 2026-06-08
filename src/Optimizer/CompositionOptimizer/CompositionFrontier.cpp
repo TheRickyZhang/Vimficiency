@@ -9,6 +9,7 @@
 #include "Optimizer/CompositionOptimizer/CompositionOptimizerParams.h"
 #include "Optimizer/CompositionOptimizer/CompositionStrategies.h"
 #include "Optimizer/DiffPlanner/DiffState.h"
+#include "Optimizer/DiffPlanner/MyersDiff.h"
 #include "Optimizer/CompositionOptimizer/PlannedEditArtifacts.h"
 #include "Optimizer/FrontierCommon.h"
 #include "Optimizer/OptimizerParamOverrides.h"
@@ -82,7 +83,7 @@ double diffDistance(const DiffState& diff) {
 double residualDistanceAfter(const Lines& before,
                              const Lines& afterStep,
                              const DiffState& diff) {
-  Lines target = Myers::applyDiffState(diff, before);
+  Lines target = MyersDiff::applyDiffState(diff, before);
   auto residual = DiffText::calculateContiguousResidualDiff(afterStep, target);
   if (!residual) return 0.0;
   return textDistanceEstimate(residual->deletedLines()) +
@@ -103,7 +104,7 @@ void emitJoinAction(const CompositionFrontierQuery& query,
   CursorPos afterPos = query.cursor;
   VimCore::joinLines(afterLines, afterPos, /*addSpace=*/true);
   if (afterLines == query.lines) return;
-  if (afterLines == Myers::applyDiffState(query.diff, query.lines)) return;
+  if (afterLines == MyersDiff::applyDiffState(query.diff, query.lines)) return;
 
   double remaining = residualDistanceAfter(query.lines, afterLines, query.diff);
   if (remaining >= diffDistance(query.diff)) return;

@@ -7,6 +7,7 @@
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"
 #include "Optimizer/CompositionOptimizer/CompositionStrategies.h"
 #include "Optimizer/CompositionOptimizer/PlannedEditArtifacts.h"
+#include "Optimizer/DiffPlanner/MyersDiff.h"
 #include "Optimizer/FrontierCommon.h"
 #include "VimCore/VimEditUtils.h"
 
@@ -81,7 +82,7 @@ double diffDistance(const DiffState& diff) {
 double residualDistanceAfter(const Lines& before,
                              const Lines& afterStep,
                              const DiffState& diff) {
-  Lines target = Myers::applyDiffState(diff, before);
+  Lines target = MyersDiff::applyDiffState(diff, before);
   auto residual = DiffText::calculateContiguousResidualDiff(afterStep, target);
   if (!residual) return 0.0;
   return textDistanceEstimate(residual->deletedLines()) +

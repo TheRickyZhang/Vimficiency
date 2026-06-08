@@ -8,8 +8,9 @@
 #include <limits>
 
 #include "PlannedEditArtifacts.h"
-#include "Optimizer/DiffPlanner/CharDiff.h"
-#include "Optimizer/DiffPlanner/TreeDiff.h"
+#include "Optimizer/DiffPlanner/VimDiff.h"
+#include "Optimizer/DiffPlanner/DiffAlgorithm.h"
+#include "Optimizer/DiffPlanner/MyersDiff.h"
 #include "Utils/Debug.h"
 #include "Utils/PrettyText.h"
 
@@ -60,42 +61,32 @@ CompositionSearchContext::CompositionSearchContext(
   // Generate planned edit regions between start and end buffers.
   vector<DiffState> rawDiffs;
   switch (params.diffAlgorithm) {
-    case DiffAlgorithm::Myers:
-      rawDiffs = Myers::calculate(
-          Lines(initialLines.begin(), initialLines.end()),
-          Lines(goalLines.begin(), goalLines.end()));
-      break;
-    case DiffAlgorithm::Tree:
-      rawDiffs = TreeDiff::calculate(
+    case DiffAlgorithm::VimDiff: {
+      vector<VimDiff::Plan> plans = VimDiff::calculate(
           Lines(initialLines.begin(), initialLines.end()),
           Lines(goalLines.begin(), goalLines.end()),
           config,
-          TreeDiff::CostOptions{
-              .diffOpenPenalty = params.treeDiffOpenPenalty,
-              .moveDeleteScale = params.treeMoveDeleteScale,
-          });
-      break;
-    case DiffAlgorithm::Char: {
-      vector<CharDiff::Plan> plans = CharDiff::calculate(
-          Lines(initialLines.begin(), initialLines.end()),
-          Lines(goalLines.begin(), goalLines.end()),
-          config,
-          CharDiff::CostOptions{
-              .diffOpenPenalty = params.treeDiffOpenPenalty,
-              .moveDeleteScale = params.treeMoveDeleteScale,
+          VimDiff::CostOptions{
+              .diffOpenPenalty = params.diffOpenPenalty,
+              .moveDeleteScale = params.moveDeleteScale,
           });
       if (!plans.empty()) rawDiffs = std::move(plans.front().diffs);
       break;
     }
+    case DiffAlgorithm::MyersDiff:
+      rawDiffs = MyersDiff::calculate(
+          Lines(initialLines.begin(), initialLines.end()),
+          Lines(goalLines.begin(), goalLines.end()));
+      break;
     default:
       CHECK(false, "unknown composition diff algorithm");
   }
   phaseMark("diff generation");
   debug("diff algorithm:", DiffAlgorithm::name(params.diffAlgorithm));
 
-  // Preserve the historical Myers processing-order heuristic. The tree diff
-  // planner is intentionally forward-only for its first draft.
-  if (params.diffAlgorithm == DiffAlgorithm::Myers && !rawDiffs.empty()) {
+  // Preserve the historical Myers processing-order heuristic. VimDiff is
+  // intentionally forward-only.
+  if (params.diffAlgorithm == DiffAlgorithm::MyersDiff && !rawDiffs.empty()) {
     double distToFirst = costToGoal(initialPos, rawDiffs.front().beginPos);
     double distToLast = costToGoal(initialPos, rawDiffs.back().endPos);
     bool processForward = (distToFirst <= distToLast + 1.0);  // Slight bias toward forward
@@ -342,7 +333,7 @@ vector<Lines> CompositionSearchContext::calculateLinesAfterDiffs(
     edits[i].diffState = mapper.mapDiffToCurrent(
         originalDiff, initialLines, result[i]);
 
-    result[i + 1] = Myers::applyDiffState(edits[i].diffState, result[i]);
+    result[i + 1] = MyersDiff::applyDiffState(edits[i].diffState, result[i]);
     mapper.recordApplied(originalDiff, initialLines);
   }
 

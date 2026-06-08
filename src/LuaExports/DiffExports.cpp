@@ -1,7 +1,8 @@
 #include "LuaExports/Common.h"
-#include "Optimizer/DiffPlanner/CharDiff.h"
+#include "Optimizer/DiffPlanner/VimDiff.h"
+#include "Optimizer/DiffPlanner/DiffAlgorithm.h"
 #include "Optimizer/DiffPlanner/DiffState.h"
-#include "Optimizer/DiffPlanner/TreeDiff.h"
+#include "Optimizer/DiffPlanner/MyersDiff.h"
 #include <sstream>
 
 using namespace std;
@@ -32,7 +33,7 @@ VF::LuaExports::Result<string> computeDiffsImpl(
     const char *encoded_goal_lines,
     size_t encoded_goal_lines_len,
     int diff_algorithm,
-    double tree_open_penalty) {
+    double diff_open_penalty) {
   auto initialText = helpers::requiredBytes(
       encoded_initial_lines, encoded_initial_lines_len, "encoded_initial_lines");
   if (!initialText) return unexpected(initialText.error());
@@ -50,16 +51,15 @@ VF::LuaExports::Result<string> computeDiffsImpl(
   // Match the algorithm the CompositionOptimizer used so the view's highlight
   // is the same breakdown (see CompositionSearchContext.cpp).
   vector<DiffState> diffs;
-  if (diff_algorithm == DiffAlgorithm::Tree) {
-    diffs = TreeDiff::calculate(initialLines, goalLines, g_config_internal,
-                                TreeDiff::CostOptions{.diffOpenPenalty = tree_open_penalty});
-  } else if (diff_algorithm == DiffAlgorithm::Char) {
-    vector<CharDiff::Plan> plans = CharDiff::calculate(
+  if (diff_algorithm == DiffAlgorithm::VimDiff) {
+    vector<VimDiff::Plan> plans = VimDiff::calculate(
         initialLines, goalLines, g_config_internal,
-        CharDiff::CostOptions{.diffOpenPenalty = tree_open_penalty});
+        VimDiff::CostOptions{.diffOpenPenalty = diff_open_penalty});
     if (!plans.empty()) diffs = std::move(plans.front().diffs);
+  } else if (diff_algorithm == DiffAlgorithm::MyersDiff) {
+    diffs = MyersDiff::calculate(initialLines, goalLines);
   } else {
-    diffs = Myers::calculate(initialLines, goalLines);
+    diffs = {};
   }
 
   ostringstream oss;
@@ -84,7 +84,7 @@ VFByteSlice vf_compute_diffs(
     const char *encoded_goal_lines,
     size_t encoded_goal_lines_len,
     int diff_algorithm,
-    double tree_open_penalty) {
+    double diff_open_penalty) {
   static string result_storage;
   return helpers::storeBytes(
       result_storage,
@@ -94,7 +94,7 @@ VFByteSlice vf_compute_diffs(
           encoded_goal_lines,
           encoded_goal_lines_len,
           diff_algorithm,
-          tree_open_penalty));
+          diff_open_penalty));
 }
 
 }

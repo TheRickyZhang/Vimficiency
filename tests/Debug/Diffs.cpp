@@ -7,7 +7,7 @@ TEST_F(DebugTest, DISABLED_InvestigatePureInsertionDiffs) {
     cerr << "  Initial: " << initial << endl;
     cerr << "  Goal:    " << goal << endl;
 
-    auto diffs = Myers::calculate(initial, goal);
+    auto diffs = MyersDiff::calculate(initial, goal);
     cerr << "  Diffs: " << diffs.size() << endl;
     for (size_t i = 0; i < diffs.size(); i++) {
       const auto& d = diffs[i];

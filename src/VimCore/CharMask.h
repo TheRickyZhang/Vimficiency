@@ -97,7 +97,7 @@ constexpr bool continuesSpan(CharMask spanChar, CharMask curr, bool big) {
 }
 
 // Broad = more general interpretation that includes blank chars after a word as part of the same word
-// (Currently only used by TreeDiff.cpp)
+// Currently used by VimDiff's delete-cost oracle.
 constexpr bool beginsWordBroad(CharMask prev, CharMask curr) {
   return !curr.blank() && !sameWordSpan(prev, curr);
 }

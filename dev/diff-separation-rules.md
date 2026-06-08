@@ -1,6 +1,6 @@
 # Diff Separation Rules
 
-The Myers diff algorithm in `DiffState.cpp` uses heuristic rules to decide when to merge adjacent changes vs keep them as separate diffs. This document explains the rules and their rationale.
+The Myers diff algorithm in `MyersDiff.cpp` uses heuristic rules to decide when to merge adjacent changes vs keep them as separate diffs. This document explains the rules and their rationale.
 
 ## Overview
 
@@ -98,7 +98,7 @@ The "more diffs" result is actually more accurate - each line change is independ
 
 ## Post-Processing: Adjacent Insertion Merging
 
-At the end of `Myers::calculate`, a merge pass combines certain adjacent pure insertions.
+At the end of `MyersDiff::calculate`, a merge pass combines certain adjacent pure insertions.
 
 ### Why post-processing instead of modifying the algorithm?
 
@@ -141,8 +141,8 @@ optimizer uses `A` + content + `<CR>` + `<Esc>` (e.g., `Ab<CR><Esc>`).
 
 ## Code Location
 
-`src/Optimizer/DiffPlanner/DiffState.cpp`:
-- Pure newlines rule: lines 309-312
-- Rule 0 (cross-line weak content): lines 273-302
-- Rules 1-4 (short match handling): lines 314-371
+`src/Optimizer/DiffPlanner/MyersDiff.cpp`:
+- Pure newlines rule
+- Rule 0 (cross-line weak content)
+- Rules 1-4 (short match handling)
 - Adjacent insertion merge: end of `calculate()`
