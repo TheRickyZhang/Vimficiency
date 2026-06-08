@@ -1,8 +1,9 @@
 local handlers   = require("vimficiency.explore.handlers")
 local activation = require("vimficiency.explore.activation")
+local ffi_explore = require("vimficiency.ffi.explore")
 local layout_mod = require("vimficiency.explore.layout")
 local lifecycle  = require("vimficiency.explore.lifecycle")
-local poller     = require("vimficiency.explore.poller")
+local poller     = require("vimficiency.async.poller")
 local result_mod = require("vimficiency.explore.result")
 local settings   = require("vimficiency.explore.settings")
 local state_mod  = require("vimficiency.explore.state")
@@ -55,16 +56,19 @@ function M.start(label, result, header_handlers)
   view.winclosed_autocmd = install_pending_teardown(view, layout)
 
   local t0 = vim.uv.hrtime()
-  view.poll_handle = poller.start(job_id, function(view_id)
-    timing.note("composition search", (vim.uv.hrtime() - t0) / 1e6)
-    view.view_id = view_id
-    if view.winclosed_autocmd then
-      pcall(v.nvim_del_autocmd, view.winclosed_autocmd)
-      view.winclosed_autocmd = nil
-    end
-    activation.attach(view, layout, handlers.capture_key, handlers.install)
-    state_mod.refresh_ui(view)
-  end)
+  view.poll_handle = poller.start(
+    function() return ffi_explore.explore_poll(job_id) end,
+    function() ffi_explore.explore_cancel(job_id) end,
+    function(view_id)
+      timing.note("composition search", (vim.uv.hrtime() - t0) / 1e6)
+      view.view_id = view_id
+      if view.winclosed_autocmd then
+        pcall(v.nvim_del_autocmd, view.winclosed_autocmd)
+        view.winclosed_autocmd = nil
+      end
+      activation.attach(view, layout, handlers.capture_key, handlers.install)
+      state_mod.refresh_ui(view)
+    end)
 
   return view
 end

@@ -75,21 +75,31 @@ template <class OnStrategy>
 void enumerateInsertions(const DiffState& diff, const Lines& lines, OnStrategy&& cb) {
   if (!diff.isPureInsertion()) return;
   const CursorPos insertPos = diff.beginPos;
-  const bool isNewLineInsertion = diff.isNewLineInsertion();
+  const std::string& ins = diff.insertedText;
 
-  // o-style new-line insertion: command opens a new line below.
-  if (isNewLineInsertion && insertPos.col == 0 && insertPos.line > 0) {
-    const int targetLine = insertPos.line - 1;
-    const int lineEnd = lines[targetLine].effectiveSize();
+  // `o` opens a new line below and types the body. A new-line insertion reaches it
+  // in two equivalent anchorings: a *trailing* `\n` at col 0 of a later line
+  // (insert "X\n" before it), or a *leading* `\n` at the end of a line (insert
+  // "\nX" after it) — the latter is also the only form for an end-of-buffer
+  // append. Either way `o` runs from the line above the new line and the body is
+  // the insert minus that one boundary newline.
+  const bool trailingNl = diff.isNewLineInsertion() && insertPos.col == 0 && insertPos.line > 0;
+  const bool leadingNl = !ins.empty() && ins.front() == '\n' &&
+                         insertPos.col == lines[insertPos.line].effectiveSize();
+  if (trailingNl || leadingNl) {
+    const int oFromLine = trailingNl ? insertPos.line - 1 : insertPos.line;
+    const int oFromLineEnd = lines[oFromLine].effectiveSize();
+    std::string_view body = trailingNl ? diff.insertedTextBody()
+                                       : std::string_view(ins).substr(1);
     std::string_view sourceIndent = VimOptions::autoindent()
-        ? leadingWhitespace(lines[targetLine])
+        ? leadingWhitespace(lines[oFromLine])
         : std::string_view{};
-    Lines insertLines = Lines::unflatten(std::string(diff.insertedTextBody()));
+    Lines insertLines = Lines::unflatten(std::string(body));
     KeyedSequence typed = buildTypedCommands(insertLines, sourceIndent);
     cb(Insertion{
-        targetLine, 0, lineEnd, "o", "o" + typed.seq.str(),
-        typedCommandsExitCursor(insertPos, insertLines)});
-    return;
+        oFromLine, 0, oFromLineEnd, "o", "o" + typed.seq.str(),
+        typedCommandsExitCursor(CursorPos(oFromLine + 1, 0), insertLines)});
+    if (trailingNl) return;  // at col 0 the line is wholly new content; `o` is the only form
   }
 
   // I/A/i/a family.

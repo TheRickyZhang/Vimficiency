@@ -4,6 +4,8 @@ local M = {}
 
 local lib = core.lib
 
+local DEBUG_MARKER = "----------------DEBUG----------------"
+
 ---@param result_str string
 ---@return VF.Optimizer.Result[] results, number user_cost
 local function parse_analyze_results(result_str)
@@ -11,7 +13,7 @@ local function parse_analyze_results(result_str)
   local user_cost = 0
   local line_num = 0
   for line in result_str:gmatch("[^\n]+") do
-    if line:find("----------------DEBUG----------------", 1, true) then
+    if line:find(DEBUG_MARKER, 1, true) then
       break
     end
     line_num = line_num + 1
@@ -34,6 +36,19 @@ local function parse_analyze_results(result_str)
 end
 
 M._parse_analyze_results = parse_analyze_results
+
+-- The async worker runs the search (and thus debug accumulation) on its own
+-- thread, so its debug output is embedded in the result string rather than
+-- reachable via the main-thread `vf_get_debug()`. Pull it back out at poll time.
+---@param result_str string
+---@return string
+local function extract_debug(result_str)
+  local idx = result_str:find(DEBUG_MARKER, 1, true)
+  if not idx then return "" end
+  local nl = result_str:find("\n", idx, true)
+  if not nl then return "" end
+  return result_str:sub(nl + 1)
+end
 
 ---@param overrides? VF.OptimizerOverrides
 ---@return string
@@ -134,6 +149,71 @@ function M.analyze(
   return results, user_cost, dbg
 end
 
+---@class VF.Optimizer.AnalyzeResult
+---@field results VF.Optimizer.Result[]
+---@field user_cost number
+---@field dbg string
+
+--- Kicks off `analyze` on a C++ worker thread and returns a job id immediately.
+--- Same arguments as `M.analyze` plus `deadline_ms` (0 = run to natural caps).
+--- Poll with `analyze_poll` until it stops returning nil.
+---@param deadline_ms integer|nil
+---@return integer job_id
+function M.analyze_start_async(
+  initial_lines, goal_lines,
+  boundary_first_col, boundary_last_col,
+  has_lines_above, has_lines_below,
+  start_row, start_col, end_row, end_col,
+  key_seq,
+  window_height, scroll_amount,
+  RESULTS_CALCULATED,
+  optimizer_overrides,
+  deadline_ms
+)
+  local initial_payload = core.encode_line_array(initial_lines, "initial_lines")
+  local goal_payload = core.encode_line_array(goal_lines, "goal_lines")
+  local user_seq = key_seq or ""
+  local override_payload = optimizer_overrides or ""
+
+  local payload = core.slice_to_string(lib.vf_analyze_start_async(
+    initial_payload, #initial_payload,
+    goal_payload, #goal_payload,
+    boundary_first_col, boundary_last_col,
+    has_lines_above, has_lines_below,
+    start_row, start_col, end_row, end_col,
+    user_seq, #user_seq,
+    window_height, scroll_amount,
+    RESULTS_CALCULATED,
+    override_payload, #override_payload,
+    deadline_ms or 0
+  ))
+  if payload:sub(1, 6) == "ERROR:" then
+    error(payload)
+  end
+  return tonumber(payload)
+    or error("analyze_start_async returned non-numeric job_id: " .. payload)
+end
+
+--- Returns the parsed analyze result once the worker finishes, or nil while it
+--- is still computing.
+---@param job_id integer
+---@return VF.Optimizer.AnalyzeResult|nil
+function M.analyze_poll(job_id)
+  local result_str = core.slice_to_string(lib.vf_analyze_poll(job_id))
+  if result_str == "pending" then return nil end
+  if result_str:sub(1, 6) == "ERROR:" then
+    error(result_str)
+  end
+  local results, user_cost = parse_analyze_results(result_str)
+  return { results = results, user_cost = user_cost, dbg = extract_debug(result_str) }
+end
+
+---@param job_id integer
+---@return boolean
+function M.analyze_cancel(job_id)
+  return lib.vf_analyze_cancel(job_id) == 1
+end
+
 local SEP = core.EVENT_FIELD_SEP
 
 ---@param result_str string
@@ -172,7 +252,6 @@ function M.compute_diffs(initial_lines, goal_lines, diff_algorithm, diff_open_pe
     diff_algorithm = diff_algorithm or comp.diffAlgorithm or 0
     diff_open_penalty = diff_open_penalty
       or comp.diffOpenPenalty
-      or comp.treeDiffOpenPenalty
       or 8.0
   end
   local initial_payload = core.encode_line_array(initial_lines, "initial_lines")

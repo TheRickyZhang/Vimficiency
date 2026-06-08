@@ -160,6 +160,57 @@ test("ffi.analyze: preserves substitute payload and cost for exact 2->3 scenario
     "truncated $Ef2s result must not appear after ffi parsing")
 end)
 
+test("ffi.analyze_start_async: worker result matches sync analyze", function()
+  local initial_lines = { "for(int i = 2; i < n; i++) {" }
+  local goal_lines    = { "for(int i = 3; i < n; i++) {" }
+  local last_col = #initial_lines[1] - 1
+
+  local sync_results, sync_user_cost = ffi_lib.analyze(
+    initial_lines, goal_lines,
+    0, last_col,
+    false, false,
+    0, 11,
+    0, 11,
+    "f2r3",
+    40, 20,
+    20
+  )
+
+  -- 0 = no deadline, so the worker runs to the same natural caps as sync.
+  local job_id = ffi_lib.analyze_start_async(
+    initial_lines, goal_lines,
+    0, last_col,
+    false, false,
+    0, 11,
+    0, 11,
+    "f2r3",
+    40, 20,
+    20,
+    nil, 0
+  )
+
+  local payload
+  vim.wait(5000, function()
+    payload = ffi_lib.analyze_poll(job_id)
+    return payload ~= nil
+  end, 10)
+  assert_true(payload ~= nil, "async analyze must finish within the timeout")
+
+  assert_eq(payload.user_cost, sync_user_cost, "user_cost must match the sync path")
+  assert_eq(#payload.results, #sync_results, "result count must match the sync path")
+
+  local function to_map(results)
+    local m = {}
+    for _, r in ipairs(results) do m[r.seq] = r.cost end
+    return m
+  end
+  local sync_map = to_map(sync_results)
+  for _, r in ipairs(payload.results) do
+    assert_true(sync_map[r.seq] ~= nil, "async produced seq absent from sync: " .. r.seq)
+    assert_eq(r.cost, sync_map[r.seq], "cost mismatch for seq " .. r.seq)
+  end
+end)
+
 test("ffi.analyze: accepts one empty physical line", function()
   local results, user_cost = ffi_lib.analyze(
     { "" }, { "" },

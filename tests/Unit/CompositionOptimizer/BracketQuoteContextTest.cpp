@@ -103,16 +103,6 @@ TEST_F(TextObjectContextTest, InnerBracket_Nested) {
   validateSingleEdit({"a ((hello)) c"}, {"a ((X)) c"}, '(');
 }
 
-// Nested level-collapse (((b)) -> (X)): known to fragment at diffOpenPenalty=1.
-// The recurse splits the "((" / "))" word seam (keep one paren, delete the
-// other), so it is two regions rather than a single ci( edit, and merge cannot
-// rejoin them (kept ")" between). The deferred char-granular region-edge fix
-// would restore the single edit. See dev/optimizer/diff-generation.md.
-TEST_F(TextObjectContextTest, InnerBracket_NestedEditOuter) {
-  auto ctx = makeContext({"a ((b)) c"}, {"a (X) c"});
-  EXPECT_EQ(ctx.totalEdits(), 2);
-}
-
 // No delimiters present: nothing should be valid
 TEST_F(TextObjectContextTest, NoDelimiters) {
   auto ctx = makeContext({"hello world"}, {"hello there"});

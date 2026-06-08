@@ -150,7 +150,10 @@ test("Suggest: fire_idle flips a Recall record to (auto, auto)", function()
     { session_store, "summarize", function()
         return { id = "x", type = "suggest", start_kind = "auto", end_kind = "auto" }
       end },
-    { session, "compute_result_for_active", function() return h.fake_result() end },
+    { session, "compute_result_for_active_async", function(_active, _deadline_ms, on_done)
+        on_done(h.fake_result())
+        return nil
+      end },
   }, function()
     auto_suggest._for_test.reset()
     auto_suggest._for_test.fire_idle()

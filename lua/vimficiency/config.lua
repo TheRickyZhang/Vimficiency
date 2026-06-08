@@ -35,6 +35,11 @@ local fields = {
     -- toasted. Distinct from cooldown_ms, which throttles how often the
     -- optimizer runs.
     notif_cooldown_ms = 2000,
+    -- Wall-clock budget for the off-thread suggest analyze. The worker returns
+    -- best-so-far past this; 0 = run to the natural caps. Responsiveness comes
+    -- from the search being off-thread, not this bound — it just caps how long
+    -- a single suggestion takes to surface (and the worker's CPU per fire).
+    compute_deadline_ms = 2000,
     -- Fallback cost gate armed by `:Vimfy suggest on` when no idle/keys/cost
     -- trigger is configured. Tuning it does not auto-enable at startup; only
     -- an explicit trigger does.

@@ -1,17 +1,14 @@
 #include "LuaExports/Common.h"
 #include "LuaExports/ViewRegistry.h"
+#include "LuaExports/AsyncJob.h"
+#include "LuaExports/AsyncJobRegistry.h"
 #include "Explore/Explore.h"
 #include "Optimizer/OptimizerParamOverrides.h"
-#include "Optimizer/SearchControl.h"
 
-#include <atomic>
-#include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <thread>
-#include <unordered_map>
 #include <utility>
 
 using namespace std;
@@ -24,6 +21,8 @@ using Explore::View;
 using Explore::Outcome;
 using Explore::PlanReconfigureResult;
 using VF::LuaExports::ViewRegistry;
+using VF::LuaExports::AsyncJob;
+using VF::LuaExports::JobRegistry;
 
 ViewRegistry g_registry;
 
@@ -220,71 +219,27 @@ VF::LuaExports::Result<StartInputs> decodeStartInputs(
 
 // Background composition search. Owns its inputs and config so the worker is
 // independent of the FFI buffers and the main thread. The View is constructed
-// from the precomputed plan only once `vf_explore_poll` observes `done`.
-struct ExploreJob {
+// from the precomputed plan only once `vf_explore_poll` observes `ready()`.
+struct ExploreJob : AsyncJob {
   StartInputs inputs;
   Config config;
-  SearchControl control;
   std::optional<CompositionTraceResult> trace;
-  std::atomic<bool> done{false};
-  std::jthread worker;
 
   ExploreJob(StartInputs in, Config cfg, int deadlineMs)
-      : inputs(std::move(in)), config(std::move(cfg)) {
-    if (deadlineMs > 0) {
-      control.hasDeadline = true;
-      control.deadline = std::chrono::steady_clock::now() +
-                         std::chrono::milliseconds(deadlineMs);
-    }
-  }
+      : AsyncJob(deadlineMs), inputs(std::move(in)), config(std::move(cfg)) {}
 
-  // Spawn only after the job sits at a stable heap address (the worker captures
-  // `this`). Invariant: VimOptions::shiftwidth (the one runtime-mutable VimCore
-  // global the search reads) must not be reconfigured while a worker is live;
-  // it is set once at session setup and stable for the session.
   void start() {
-    worker = std::jthread([this] {
+    spawn([this] {
       trace = View::computeTrace(
           inputs.initialLines, inputs.initialPos,
           inputs.goalLines, inputs.goalPos,
           inputs.compositionParams, inputs.userSeq,
-          inputs.boundary, inputs.navContext, config, &control);
-      done.store(true, std::memory_order_release);
+          inputs.boundary, inputs.navContext, config, control());
     });
   }
-
-  bool ready() const { return done.load(std::memory_order_acquire); }
-  void cancel() { control.cancelled.store(true, std::memory_order_relaxed); }
 };
 
-// Owns pending async jobs. Like ViewRegistry, only ever touched on the main
-// (Lua) thread; workers touch only their own ExploreJob.
-class JobRegistry {
- public:
-  int create(std::unique_ptr<ExploreJob> job) {
-    const int id = ++next_id_;
-    jobs_.emplace(id, std::move(job));
-    return id;
-  }
-  ExploreJob& get(int id) {
-    auto it = jobs_.find(id);
-    CHECK(it != jobs_.end(), "job_id from Lua not present in registry");
-    return *it->second;
-  }
-  std::unique_ptr<ExploreJob> take(int id) {
-    auto it = jobs_.find(id);
-    if (it == jobs_.end()) return nullptr;
-    auto job = std::move(it->second);
-    jobs_.erase(it);
-    return job;
-  }
-
- private:
-  std::unordered_map<int, std::unique_ptr<ExploreJob>> jobs_;
-  int next_id_ = 0;
-};
-
-JobRegistry g_jobs;
+JobRegistry<ExploreJob> g_jobs;
 
 VF::LuaExports::Result<string> startAsyncImpl(
     const char* encoded_initial_lines,

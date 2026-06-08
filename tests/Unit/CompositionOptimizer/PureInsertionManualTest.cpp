@@ -15,6 +15,8 @@ TEST_F(CompositionOptimizer_ManualTest, PureInsertion_NewLineBetween) {
       initial, initialPos, goal, goalPos, params);
   const auto& results = compResult.getResults();
 
+  for(Result r : results) cout << r;
+
   expectHasValidResults(results, initial, initialPos, goal, "new line insertion");
 
   // Check that 'o' is used (optimal for this case)

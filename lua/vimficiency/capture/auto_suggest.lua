@@ -5,6 +5,7 @@ local M = {}
 
 local config        = require("vimficiency.config")
 local end_trigger   = require("vimficiency.capture.end_trigger")
+local poller        = require("vimficiency.async.poller")
 local result_view   = require("vimficiency.session.result_view")
 local session       = require("vimficiency.session")
 local session_store = require("vimficiency.session.store")
@@ -19,6 +20,8 @@ local disarms = {}
 local last_fingerprint = nil
 ---@type integer  hrtime of the most recent shown toast (notif_cooldown_ms gate).
 local last_notify_hrtime = 0
+---@type VF.Async.PollHandle|nil  In-flight analyze worker; single-flight guard.
+local in_flight = nil
 
 ---@param result VF.Session.Result
 ---@return string
@@ -80,39 +83,50 @@ end
 ---@param reason VF.Session.FinishReason                         Which trigger fired; stored on the result for the header annotation.
 ---@return boolean counted
 local function fire_with_window(window, gate, reason)
+  -- Single-flight: a previous suggest analysis is still running on the worker.
+  -- Skip this fire (cooldown-like); the in-flight job finishes and renders.
+  if in_flight then return false end
+
   local active = session_store.get_active(window)
   if not active then return false end  -- queue too young or no clean boundary
 
   -- Pin the resolved id; recall aliases are time-varying.
   local id = active.id
-  local result = session.compute_result_for_active(active)
-  if not result then
-    return true
-  end
+  local cfg = config.auto_suggest
+  local deadline_ms = (cfg and cfg.compute_deadline_ms) or 0
 
-  -- Cost gate: consume the record but suppress the notification.
-  if gate and not gate(result) then
-    session_store.finish_session(id, result, window, "auto", reason)
-    return true
-  end
+  -- Offload the analyze to a worker thread; finish + render in the callback.
+  in_flight = session.compute_result_for_active_async(active, deadline_ms, function(result)
+    in_flight = nil
+    if not result then return end
 
-  local fp = fingerprint_result(result)
-  if fp == last_fingerprint then
-    session_store.finish_session(id, result, window, "auto", reason)
-    return true
-  end
+    -- Cost gate: consume the record but suppress the notification.
+    if gate and not gate(result) then
+      session_store.finish_session(id, result, window, "auto", reason)
+      return
+    end
 
-  -- Promote Recall -> Suggest with the finish-time end_kind override.
-  if not session_store.finish_session(id, result, window, "auto", reason) then
-    return true
-  end
+    local fp = fingerprint_result(result)
+    if fp == last_fingerprint then
+      session_store.finish_session(id, result, window, "auto", reason)
+      return
+    end
 
-  last_fingerprint = fp
-  -- Pin this regression as `$` (distinct from `@`'s any-finish history).
-  session_store.set_last_suggest_id(id)
+    -- Promote Recall -> Suggest with the finish-time end_kind override.
+    if not session_store.finish_session(id, result, window, "auto", reason) then
+      return
+    end
 
-  local summary = session_store.summarize(id)
-  if summary then render_suggestion(summary) end
+    last_fingerprint = fp
+    -- Pin this regression as `$` (distinct from `@`'s any-finish history).
+    session_store.set_last_suggest_id(id)
+
+    local summary = session_store.summarize(id)
+    if summary then render_suggestion(summary) end
+  end)
+
+  -- Work was started (or prepare failed synchronously); refresh the cooldown so
+  -- we don't re-fire while the worker runs.
   return true
 end
 
@@ -204,6 +218,10 @@ function M.disable()
   if #disarms == 0 then return end
   for _, d in ipairs(disarms) do d() end
   disarms = {}
+  if in_flight then
+    poller.cancel(in_flight)
+    in_flight = nil
+  end
   last_fingerprint = nil
   last_notify_hrtime = 0
 end
@@ -228,7 +246,14 @@ M._for_test = {
   fire_cost = fire_cost,
   render_suggestion = render_suggestion,
   get_last_fingerprint = function() return last_fingerprint end,
+  -- The fire_* helpers now kick the analyze onto a worker; tests must wait for
+  -- this to clear (e.g. vim.wait) before asserting on the rendered suggestion.
+  is_in_flight = function() return in_flight ~= nil end,
   reset = function()
+    if in_flight then
+      poller.cancel(in_flight)
+      in_flight = nil
+    end
     last_fingerprint = nil
     last_notify_hrtime = 0
   end,
