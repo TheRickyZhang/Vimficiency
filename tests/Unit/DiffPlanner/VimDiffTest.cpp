@@ -5,8 +5,9 @@
 #include <vector>
 
 #include "Keyboard/Config.h"
-#include "Optimizer/DiffPlanner/CharDiff.h"
+#include "Optimizer/DiffPlanner/VimDiff.h"
 #include "Optimizer/DiffPlanner/DiffState.h"
+#include "Optimizer/DiffPlanner/MyersDiff.h"
 #include "Types/Lines.h"
 
 using namespace std;
@@ -17,11 +18,11 @@ Lines toLines(const string& flat) { return Lines::unflatten(flat); }
 
 // Best partition's diffs (empty when initial == goal).
 vector<DiffState> bestDiffs(const Lines& initial, const Lines& goal, const Config& config) {
-  vector<CharDiff::Plan> plans = CharDiff::calculate(initial, goal, config);
+  vector<VimDiff::Plan> plans = VimDiff::calculate(initial, goal, config);
   return plans.empty() ? vector<DiffState>{} : plans.front().diffs;
 }
 
-// Applying CharDiff's diffs in sequence must reproduce the goal. This validates
+// Applying VimDiff's diffs in sequence must reproduce the goal. This validates
 // the DP reconstruction + DiffState production end-to-end, independent of the
 // cost oracle.
 void expectRoundTrip(const string& initial, const string& goal) {
@@ -29,12 +30,12 @@ void expectRoundTrip(const string& initial, const string& goal) {
   Lines initLines = toLines(initial);
   Lines goalLines = toLines(goal);
   vector<DiffState> diffs = bestDiffs(initLines, goalLines, config);
-  Lines applied = Myers::applyAllDiffState(diffs, initLines);
+  Lines applied = MyersDiff::applyAllDiffState(diffs, initLines);
   EXPECT_EQ(applied.flatten(), goalLines.flatten())
       << "round-trip failed for \"" << initial << "\" -> \"" << goal << "\"";
 }
 
-TEST(CharDiffTest, RoundTripsHandcrafted) {
+TEST(VimDiffTest, RoundTripsHandcrafted) {
   expectRoundTrip("abc", "abc");
   expectRoundTrip("abc", "abXc");
   expectRoundTrip("hello world", "hello");
@@ -48,14 +49,14 @@ TEST(CharDiffTest, RoundTripsHandcrafted) {
   expectRoundTrip("hello", "");
 }
 
-TEST(CharDiffTest, IdenticalBuffersProduceNoDiffs) {
+TEST(VimDiffTest, IdenticalBuffersProduceNoDiffs) {
   Config config = Config::uniform();
   Lines lines = toLines("hello world\nsecond line");
-  EXPECT_TRUE(CharDiff::calculate(lines, lines, config).empty());
+  EXPECT_TRUE(VimDiff::calculate(lines, lines, config).empty());
   EXPECT_TRUE(bestDiffs(lines, lines, config).empty());
 }
 
-TEST(CharDiffTest, TrailingDeletionIsSingleRegion) {
+TEST(VimDiffTest, TrailingDeletionIsSingleRegion) {
   Config config = Config::uniform();
   vector<DiffState> diffs =
       bestDiffs(toLines("hello world"), toLines("hello"), config);
@@ -64,7 +65,7 @@ TEST(CharDiffTest, TrailingDeletionIsSingleRegion) {
   EXPECT_EQ(diffs[0].deletedText, " world");
 }
 
-TEST(CharDiffTest, InteriorInsertionIsSingleRegion) {
+TEST(VimDiffTest, InteriorInsertionIsSingleRegion) {
   Config config = Config::uniform();
   vector<DiffState> diffs =
       bestDiffs(toLines("abc"), toLines("abXc"), config);
@@ -73,7 +74,7 @@ TEST(CharDiffTest, InteriorInsertionIsSingleRegion) {
   EXPECT_EQ(diffs[0].insertedText, "X");
 }
 
-TEST(CharDiffTest, RoundTripsRandomSmall) {
+TEST(VimDiffTest, RoundTripsRandomSmall) {
   mt19937 rng(98765);
   const string alphabet = "ab c\n";
   int tested = 0, failures = 0;
@@ -90,7 +91,7 @@ TEST(CharDiffTest, RoundTripsRandomSmall) {
     string o = gen(), g = gen();
     Lines ol = toLines(o), gl = toLines(g);
     vector<DiffState> diffs = bestDiffs(ol, gl, config);
-    if (Myers::applyAllDiffState(diffs, ol).flatten() != gl.flatten()) {
+    if (MyersDiff::applyAllDiffState(diffs, ol).flatten() != gl.flatten()) {
       failures++;
       if (failures <= 5)
         ADD_FAILURE() << "round-trip failed: \"" << o << "\" -> \"" << g << "\"";
@@ -104,7 +105,7 @@ TEST(CharDiffTest, RoundTripsRandomSmall) {
 // goal), the list must be ascending by cost, and the plans must be distinct —
 // the invariants that make top-K meaningful, exercised on the rank>0 backpointer
 // walks that the single-plan path never touches.
-TEST(CharDiffTest, AllPlansRoundTripAscendAndDiffer) {
+TEST(VimDiffTest, AllPlansRoundTripAscendAndDiffer) {
   Config config = Config::uniform();
   const vector<pair<string, string>> cases = {
       {"aaa bbb ccc", "xxx bbb yyy"}, {"abc xyz", "aXc xYz"},
@@ -112,11 +113,11 @@ TEST(CharDiffTest, AllPlansRoundTripAscendAndDiffer) {
       {"hello world", "hello"},       {"foo", "bar"},
       {"aaa\nbbb", "aaa bbb"},        {"x + x", "y + y"},
   };
-  CharDiff::CostOptions options;
+  VimDiff::CostOptions options;
   options.maxPlans = 6;
   for (const auto& [init, goal] : cases) {
     Lines ol = toLines(init), gl = toLines(goal);
-    vector<CharDiff::Plan> plans = CharDiff::calculate(ol, gl, config, options);
+    vector<VimDiff::Plan> plans = VimDiff::calculate(ol, gl, config, options);
     ASSERT_FALSE(plans.empty()) << init << " -> " << goal;
 
     double prev = -1.0;
@@ -126,7 +127,7 @@ TEST(CharDiffTest, AllPlansRoundTripAscendAndDiffer) {
           << "costs not ascending at plan " << p << " for \"" << init << "\"";
       prev = plans[p].cost;
 
-      Lines applied = Myers::applyAllDiffState(plans[p].diffs, ol);
+      Lines applied = MyersDiff::applyAllDiffState(plans[p].diffs, ol);
       EXPECT_EQ(applied.flatten(), gl.flatten())
           << "plan " << p << " round-trip failed for \"" << init << "\" -> \"" << goal << "\"";
 

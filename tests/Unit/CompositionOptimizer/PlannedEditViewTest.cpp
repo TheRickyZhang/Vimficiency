@@ -7,6 +7,7 @@
 #include "Keyboard/Config.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/DiffPlanner/DiffState.h"
+#include "Optimizer/DiffPlanner/MyersDiff.h"
 #include "Types/CursorPos.h"
 #include "Types/Lines.h"
 
@@ -48,7 +49,7 @@ TEST(CompositionResultPlannedEditView, AlignsDiffFencepostsAndEditResultPerEdit)
 
     // The bundled post-fencepost must be exactly the diff applied to the
     // bundled pre-fencepost; this is the fencepost contract Explore relies on.
-    EXPECT_EQ(Myers::applyDiffState(plannedEdit.diff, plannedEdit.preFencepost),
+    EXPECT_EQ(MyersDiff::applyDiffState(plannedEdit.diff, plannedEdit.preFencepost),
               plannedEdit.postFencepost);
 
     const auto starts = plannedEdit.transformResult.resultsAt(
@@ -78,18 +79,18 @@ TEST(CompositionResultPlannedEditView, ReversedDiffOrderKeepsFencepostsAligned) 
   CursorPos goalPos = goal.lastPos();
   NavBoundary boundary(initial, CursorPos(0, 0), initial.endPos());
 
-  // Reverse-order diff processing is a Myers-only heuristic; the TreeDiff
-  // planner is forward-only (see CompositionSearchContext.cpp).
+  // Reverse-order diff processing is a MyersDiff-only heuristic; VimDiff is
+  // forward-only (see CompositionSearchContext.cpp).
   CompositionResult result = opt.optimize(
       initial, initialPos, goal, goalPos,
-      CompositionOptimizerParams{}.withMaxResults(1).withDiffAlgorithm(0), "", boundary);
+      CompositionOptimizerParams{}.withMaxResults(1).withDiffAlgorithm(1), "", boundary);
 
   ASSERT_EQ(result.totalEdits(), 2);
   EXPECT_EQ(result.getPlan().diffAt(0).beginPos.line, 2);
   EXPECT_EQ(result.getPlan().fenceposts.back(), goal);
   for (int editIndex = 0; editIndex < result.totalEdits(); editIndex++) {
     const auto plannedEdit = result.plannedEditAt(editIndex);
-    EXPECT_EQ(Myers::applyDiffState(plannedEdit.diff, plannedEdit.preFencepost),
+    EXPECT_EQ(MyersDiff::applyDiffState(plannedEdit.diff, plannedEdit.preFencepost),
               plannedEdit.postFencepost);
   }
 }

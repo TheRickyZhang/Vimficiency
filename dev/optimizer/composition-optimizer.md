@@ -3,16 +3,16 @@
 - Heuristic: Estimated suffix cost of transforms not completed + distance to next transform (+ effort)
 
 ## Diff Generation
-- Our first step is to generate planned edit regions. The **default is the
-  `TreeDiff` planner** (`composition:diffAlgorithm=1`). It uses a
-  paragraph/line/BigWord/Word/Char tree to choose flat diff regions, priced in
-  approximate keystrokes: per-region penalty (~1) + inserted-text effort +
-  keystroke movement between edits + count-independent deletion. Adjacent
-  contiguous regions are merged to undo token-seam fragmentation. Some Myers-only
-  behaviors (reverse processing order, certain boundary-crossing J plans) are
-  still not surfaced. Details are in `dev/optimizer/diff-generation.md`.
-- `composition:diffAlgorithm=0` switches back to the historical character-level
-  Myers diff analysis (similar algorithm to git). It separates individual diffs
+- Our first step is to generate planned edit regions. The **default is
+  `VimDiff`** (`composition:diffAlgorithm=0`), a Vim-costed partition planner.
+  It searches at character granularity, while using the paragraph/line/BigWord/
+  Word/Char tree as a movement/delete cost oracle. It prices approximate
+  keystrokes: per-region penalty (~1) + inserted-text effort + movement between
+  edits + command-shaped deletion. Details in
+  `dev/optimizer/diff-generation.md` § VimDiff.
+- `composition:diffAlgorithm=1` switches back to the historical character-level
+  `MyersDiff` analysis (similar algorithm to git). It is kept as a fast fallback
+  and baseline, not as the preferred planner. It separates individual diffs
   by local heuristics:
   - Match count >= MIN_MATCH_LENGTH -> separate, but otherwise merge
   - Don't count matches across new lines as much (likely share much tab whitespace)

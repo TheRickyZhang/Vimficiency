@@ -121,7 +121,7 @@ TransformResult result = transformOptimizer.optimizeTransform(
     diff.boundary);
 ```
 
-TransformOptimizer receives exact character-wise regions from the Myers diff, with no additional padding.
+TransformOptimizer receives exact character-wise regions from the selected composition diff planner, with no additional padding.
 
 
 Note: Only the line is offset; column stays the same.

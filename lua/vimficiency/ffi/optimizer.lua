@@ -159,24 +159,27 @@ M._parse_diff_regions = parse_diff_regions
 --- Character-level diff regions between two buffers, as the optimizer computes
 --- them. Each region carries the initial-side (deleted) and goal-side
 --- (inserted) half-open spans for column highlighting. `diff_algorithm` /
---- `tree_open_penalty` default to the configured composition values so the
+--- `diff_open_penalty` defaults to the configured composition values so the
 --- view's breakdown matches what the optimizer used.
 ---@param initial_lines string[]
 ---@param goal_lines string[]
 ---@param diff_algorithm integer|nil
----@param tree_open_penalty number|nil
+---@param diff_open_penalty number|nil
 ---@return VF.Diff.Region[]
-function M.compute_diffs(initial_lines, goal_lines, diff_algorithm, tree_open_penalty)
-  if diff_algorithm == nil or tree_open_penalty == nil then
+function M.compute_diffs(initial_lines, goal_lines, diff_algorithm, diff_open_penalty)
+  if diff_algorithm == nil or diff_open_penalty == nil then
     local comp = M.get_optimizer_defaults().composition
     diff_algorithm = diff_algorithm or comp.diffAlgorithm or 0
-    tree_open_penalty = tree_open_penalty or comp.treeDiffOpenPenalty or 8.0
+    diff_open_penalty = diff_open_penalty
+      or comp.diffOpenPenalty
+      or comp.treeDiffOpenPenalty
+      or 8.0
   end
   local initial_payload = core.encode_line_array(initial_lines, "initial_lines")
   local goal_payload = core.encode_line_array(goal_lines, "goal_lines")
   local result_str = core.slice_to_string(lib.vf_compute_diffs(
     initial_payload, #initial_payload, goal_payload, #goal_payload,
-    diff_algorithm, tree_open_penalty))
+    diff_algorithm, diff_open_penalty))
   if result_str:sub(1, 6) == "ERROR:" then
     error(result_str)
   end

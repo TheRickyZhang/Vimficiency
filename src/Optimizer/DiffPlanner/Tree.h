@@ -8,7 +8,7 @@
 
 #include "Types/Lines.h"
 
-namespace TreeDiff {
+namespace DiffTree {
 
 enum class Level {
   Root,
@@ -102,4 +102,4 @@ struct Tree {
 
 std::ostream& operator<<(std::ostream& out, const Tree& tree);
 
-}  // namespace TreeDiff
+}  // namespace DiffTree

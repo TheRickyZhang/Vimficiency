@@ -11,7 +11,7 @@
 
 using namespace std;
 
-namespace TreeDiff {
+namespace DiffTree {
 
 const char* levelName(Level level) {
   switch (level) {
@@ -174,4 +174,4 @@ Tree::Tree(const Lines& lines) : text(lines.flatten()) {
   }
 }
 
-}  // namespace TreeDiff
+}  // namespace DiffTree

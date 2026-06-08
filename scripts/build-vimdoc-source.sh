@@ -12,7 +12,7 @@ cd "$repo_root"
 
 strip_chapter() {
   # Drop YAML frontmatter (delimited by --- ... --- at file start). The
-  # frontmatter exists for the Astro Starlight site (`docs-site/`) and
+  # frontmatter exists for the Astro Starlight site (`web/docs/`) and
   # is noise to panvimdoc — leaking `title:`, etc. into the body would
   # render as plain text in `:help`. The awk block below strips lines
   # from the first `^---$` to the matching second `^---$` only when

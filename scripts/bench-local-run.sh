@@ -268,18 +268,18 @@ fi
 # --- Dashboard build ---
 BASE_PATH="/$REPO_NAME/"
 echo "[dashboard] building with base=$BASE_PATH"
-( cd bench-dashboard && bun install --frozen-lockfile && bun run build -- --base="$BASE_PATH" )
-test -f bench-dashboard/dist/index.html
-find bench-dashboard/dist/assets -type f -print -quit | grep -q . || {
+( cd web/dashboard && bun install --frozen-lockfile && bun run build -- --base="$BASE_PATH" )
+test -f web/dashboard/dist/index.html
+find web/dashboard/dist/assets -type f -print -quit | grep -q . || {
   echo "Dashboard build produced no assets"
   exit 1
 }
 
 if $IS_MAIN; then
   echo "[docs] building docs site"
-  ( cd docs-site && bun install --frozen-lockfile && bun run build )
-  test -f docs-site/dist/index.html
-  test -f docs-site/dist/01-installation/index.html
+  ( cd web/docs && bun install --frozen-lockfile && bun run build )
+  test -f web/docs/dist/index.html
+  test -f web/docs/dist/01-installation/index.html
 fi
 
 # --- Stage artifacts before switching to gh-pages ---
@@ -288,12 +288,12 @@ fi
 STAGE_DIR="$(mktemp -d -t vimficiency-bench-stage.XXXXXX)"
 # cleanup_and_report (registered earlier) removes $STAGE_DIR on EXIT.
 
-cp -r bench-dashboard/dist "$STAGE_DIR/dashboard-dist"
+cp -r web/dashboard/dist "$STAGE_DIR/dashboard-dist"
 cp scripts/bench-data.ts "$STAGE_DIR/bench-data.ts"
 cp scripts/explore-data.ts "$STAGE_DIR/explore-data.ts"
 cp edit_result.json motion_result.json composition_result.json "$STAGE_DIR/"
 if $IS_MAIN; then
-  cp -r docs-site/dist "$STAGE_DIR/docs-dist"
+  cp -r web/docs/dist "$STAGE_DIR/docs-dist"
   cp edit_explore.json motion_explore.json composition_explore.json "$STAGE_DIR/"
   cp test_timing_bench.json tests_coverage.json "$STAGE_DIR/"
 fi

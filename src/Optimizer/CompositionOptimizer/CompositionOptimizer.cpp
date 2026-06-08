@@ -18,6 +18,7 @@
 #include "CompositionStrategies.h"
 #include "EditSequenceSpan.h"
 #include "Optimizer/BuildTypedCommands.h"
+#include "Optimizer/DiffPlanner/MyersDiff.h"
 #include "Optimizer/SearchControl.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/NavOptimizer/NavRangeConversion.h"
@@ -644,7 +645,7 @@ static CompositionResult buildCompositionResult(
   transformResults.reserve(ctx.edits.size());
   fenceposts.push_back(initialLines);
   for (auto& e : ctx.edits) {
-    fenceposts.push_back(Myers::applyDiffState(e.diffState, fenceposts.back()));
+    fenceposts.push_back(MyersDiff::applyDiffState(e.diffState, fenceposts.back()));
     diffs.push_back(std::move(e.diffState));
     transformResults.push_back(std::move(e.transformResult));
   }

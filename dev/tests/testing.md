@@ -203,7 +203,7 @@ scripts/vimfy_tests approval
 
 # Accept approval snapshot changes, then rerun the same approval tests
 scripts/vimfy_tests approval --approve
-scripts/vimfy_tests approval "TreeDiffApproval.*" --approve
+scripts/vimfy_tests approval "VimDiffApproval.*" --approve
 
 # Oracle/conformance tests, where suite names have been migrated
 scripts/vimfy_tests unit "*OracleConformanceTest.*"
@@ -275,7 +275,7 @@ void RoundTripAndStructureAcrossBufferStyles(
     const PropertyDomains::DiffCaseSpec& spec) {
   Lines initial(spec.initial);
   Lines goal = spec.identity ? initial : Lines(spec.goal);
-  EXPECT_EQ(Myers::applyAllDiffState(Myers::calculate(initial, goal), initial),
+  EXPECT_EQ(MyersDiff::applyAllDiffState(MyersDiff::calculate(initial, goal), initial),
             goal);
 }
 

@@ -36,10 +36,14 @@ function M.build(a, refresh_ui)
   local motion_get, motion_set = dedup_toggle("nav", "maxResultsPerEndPos")
   local edit_get, edit_set = dedup_toggle("transform", "maxResultsPerStartPos")
 
-  local function opt_get(scope, key)
+  local function opt_get(scope, key, legacy_key)
     return function()
       local v = store[scope][key]
       if v ~= nil then return v end
+      if legacy_key ~= nil then
+        v = store[scope][legacy_key]
+        if v ~= nil then return v end
+      end
       return default_for(scope, key)
     end
   end
@@ -143,10 +147,10 @@ function M.build(a, refresh_ui)
       get = opt_get("composition", "overshootPenalty"),
       set = opt_set("composition", "overshootPenalty") },
     { kind = "setting",
-      label = "Tree diff open penalty",
+      label = "Diff open penalty",
       value_kind = "float", min = 0.0, max = 40.0, step = 0.5,
-      get = opt_get("composition", "treeDiffOpenPenalty"),
-      set = opt_set("composition", "treeDiffOpenPenalty") },
+      get = opt_get("composition", "diffOpenPenalty", "treeDiffOpenPenalty"),
+      set = opt_set("composition", "diffOpenPenalty") },
     { kind = "setting",
       label = "Nav padding above",
       value_kind = "int", min = 0, max = 10,
@@ -159,7 +163,7 @@ function M.build(a, refresh_ui)
       set = opt_set("composition", "navPaddingBelow") },
     { kind = "setting",
       label = "Diff algorithm",
-      value_kind = "int", min = 0, max = 2,  -- 0 myers, 1 tree, 2 char
+      value_kind = "int", min = 0, max = 1,  -- 0 VimDiff, 1 MyersDiff
       get = opt_get("composition", "diffAlgorithm"),
       set = opt_set("composition", "diffAlgorithm") },
 

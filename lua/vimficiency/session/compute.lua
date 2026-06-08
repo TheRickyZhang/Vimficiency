@@ -246,8 +246,9 @@ function M.compute_result_for_active(active)
   -- the breakdown the optimizer planned against. Same validated slices, so it
   -- can't fail here.
   local comp = (config.optimizer or {}).composition or {}
+  local diff_open_penalty = comp.diffOpenPenalty or comp.treeDiffOpenPenalty
   local diffs = ffi_optimizer.compute_diffs(
-    initial_slice, goal_slice, comp.diffAlgorithm, comp.treeDiffOpenPenalty)
+    initial_slice, goal_slice, comp.diffAlgorithm, diff_open_penalty)
   if #diffs == 0 then
     diffs = disk.empty_array()
   end

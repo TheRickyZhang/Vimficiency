@@ -7,7 +7,7 @@ on:
   pull_request:
     paths:
       - 'doc-src/**'
-      - 'docs-site/**'
+      - 'web/docs/**'
       - 'scripts/build-vimdoc-source.sh'
       - 'scripts/postprocess-vimdoc.sh'
       - '.github/workflows/vimdoc.yml'
@@ -38,17 +38,17 @@ jobs:
       - name: Post-process vimdoc
         run: bash scripts/postprocess-vimdoc.sh
 
-  docs-site:
+  docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - name: Build docs site
-        working-directory: docs-site
+        working-directory: web/docs
         run: |
           bun install --frozen-lockfile
           bun run build
       - name: Verify docs site build output
         run: |
-          test -f docs-site/dist/index.html
-          test -f docs-site/dist/01-installation/index.html
+          test -f web/docs/dist/index.html
+          test -f web/docs/dist/01-installation/index.html

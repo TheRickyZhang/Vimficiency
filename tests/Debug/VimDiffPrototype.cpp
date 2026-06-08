@@ -1,4 +1,4 @@
-// tests/Debug/CharDiffPrototype.cpp
+// tests/Debug/VimDiffPrototype.cpp
 //
 // First-pass prototype for the character-level diff partition DP we sketched:
 // demote the tree to a *cost oracle* and run the partition search at character
@@ -13,7 +13,7 @@
 // This file validates the inner/outer G/D/F DP against a brute-force enumerator
 // (same oracle) and prints the chosen partitions so we can eyeball quality.
 //
-// Run: ./build/tests/vimfy_debug --gtest_filter="CharDiffProto.*"
+// Run: ./build/tests/vimfy_debug --gtest_filter="VimDiffProto.*"
 
 #include <gtest/gtest.h>
 
@@ -36,11 +36,11 @@
 #include "Types/Lines.h"
 
 using namespace std;
-using TreeDiff::childLevel;
-using TreeDiff::deleteCost;
-using TreeDiff::Level;
-using TreeDiff::levelCost;
-using TreeDiff::Tree;
+using DiffTree::childLevel;
+using DiffTree::deleteCost;
+using DiffTree::Level;
+using DiffTree::levelCost;
+using DiffTree::Tree;
 
 namespace {
 
@@ -115,7 +115,7 @@ bool approx(double a, double b) { return fabs(a - b) < 1e-6; }
 //   G[a][b] : positioned to START an edit at (a,b)
 //   D[i][b] : edit started, deleted A[a:i) (new ptr still b)   [a<i required]
 //   F[i][j] : just COMPLETED an edit ending at (i,j)
-struct CharDiff {
+struct VimDiff {
   string A, B;
   const Tree& oldTree;
   const Config& config;
@@ -124,7 +124,7 @@ struct CharDiff {
   vector<vector<double>> gMemo, dMemo, fMemo;
   vector<vector<bool>> gDone, dDone, fDone;
 
-  CharDiff(const Tree& oldT, const Tree& newT, const Config& cfg, bool approxMove = false)
+  VimDiff(const Tree& oldT, const Tree& newT, const Config& cfg, bool approxMove = false)
       : A(oldT.text), B(newT.text), oldTree(oldT), config(cfg), useApprox(approxMove),
         n((int)A.size()), m((int)B.size()),
         gMemo(n + 1, vector<double>(m + 1, INF)),
@@ -316,7 +316,7 @@ string show(string_view s) {
 void runCase(const Lines& oldL, const Lines& newL, bool print) {
   Tree oldT(oldL), newT(newL);
   Config config = Config::uniform();
-  CharDiff dp(oldT, newT, config);
+  VimDiff dp(oldT, newT, config);
   Brute bf(oldT, newT, config);
   double dpCost = dp.solve();
   double bfCost = bf.solve();
@@ -379,7 +379,7 @@ int qiViolations(int L, W w, const char* label) {
   return viol;
 }
 
-TEST(CharDiffProto, QuadrangleInequality) {
+TEST(VimDiffProto, QuadrangleInequality) {
   Config config = Config::uniform();
   vector<Lines> bufs = {
       {"hello world foo bar"},
@@ -402,7 +402,7 @@ TEST(CharDiffProto, QuadrangleInequality) {
   cerr << "\nTOTAL QI violations across all buffers: " << total << "\n";
 }
 
-TEST(CharDiffProto, RandomStressVsBrute) {
+TEST(VimDiffProto, RandomStressVsBrute) {
   Config config = Config::uniform();
   mt19937 rng(12345);
   const string alphabet = "ab c\n";  // tiny alphabet so matches occur
@@ -431,7 +431,7 @@ TEST(CharDiffProto, RandomStressVsBrute) {
     Tree ot(o), nt(n);
     if ((int)ot.text.size() > 8 || (int)nt.text.size() > 8) continue;
     tested++;
-    double dp = CharDiff(ot, nt, config).solve();
+    double dp = VimDiff(ot, nt, config).solve();
     double bf = Brute(ot, nt, config).solve();
     if (!approx(dp, bf)) {
       mismatches++;
@@ -449,7 +449,7 @@ TEST(CharDiffProto, RandomStressVsBrute) {
 // separable per-level surrogate, score BOTH partitions under the exact model,
 // and report regret = exactCost(approxPick) - exactCost(exactPick). Regret is
 // the true-cost penalty of the partition the O(n^2) surrogate would pick.
-TEST(CharDiffProto, OptionAApproxQuality) {
+TEST(VimDiffProto, OptionAApproxQuality) {
   Config config = Config::uniform();
   mt19937 rng(2024);
   const string alphabet = "ab c\n";
@@ -467,8 +467,8 @@ TEST(CharDiffProto, OptionAApproxQuality) {
     l.push_back(cur);
     return l;
   };
-  auto sameParts = [](const vector<CharDiff::EditRec>& x,
-                      const vector<CharDiff::EditRec>& y) {
+  auto sameParts = [](const vector<VimDiff::EditRec>& x,
+                      const vector<VimDiff::EditRec>& y) {
     if (x.size() != y.size()) return false;
     for (size_t k = 0; k < x.size(); k++)
       if (x[k].a != y[k].a || x[k].i != y[k].i || x[k].b != y[k].b || x[k].j != y[k].j)
@@ -484,8 +484,8 @@ TEST(CharDiffProto, OptionAApproxQuality) {
     if (ot.text == nt.text) continue;
     tested++;
 
-    CharDiff exact(ot, nt, config, /*approxMove=*/false);
-    CharDiff approxd(ot, nt, config, /*approxMove=*/true);
+    VimDiff exact(ot, nt, config, /*approxMove=*/false);
+    VimDiff approxd(ot, nt, config, /*approxMove=*/true);
     auto exactPick = exact.reconstruct();
     auto approxPick = approxd.reconstruct();
 
@@ -511,7 +511,7 @@ TEST(CharDiffProto, OptionAApproxQuality) {
 // Option A on LARGER, structured buffers (real words/lines/paragraphs), where
 // the edge-as-chars surrogate is most likely to misprice. No brute force — just
 // exact-DP vs approx-DP, both scored under the exact model.
-TEST(CharDiffProto, OptionAApproxQualityStructured) {
+TEST(VimDiffProto, OptionAApproxQualityStructured) {
   Config config = Config::uniform();
   mt19937 rng(7);
   auto word = [&]() {
@@ -553,7 +553,7 @@ TEST(CharDiffProto, OptionAApproxQualityStructured) {
     Tree ot(o), nt(n);
     if (ot.text == nt.text || (int)ot.text.size() > 120 || (int)nt.text.size() > 120) continue;
     tested++;
-    CharDiff exact(ot, nt, config, false), approxd(ot, nt, config, true);
+    VimDiff exact(ot, nt, config, false), approxd(ot, nt, config, true);
     auto ep = exact.reconstruct(), ap = approxd.reconstruct();
     double eopt = exact.scoreExact(ep), acost = exact.scoreExact(ap);
     double regret = acost - eopt;
@@ -577,7 +577,7 @@ TEST(CharDiffProto, OptionAApproxQualityStructured) {
        << "regret as % of optimum:" << (100.0 * totalRegret / totalExactOpt) << "%\n";
 }
 
-TEST(CharDiffProto, MatchesBruteAndPrints) {
+TEST(VimDiffProto, MatchesBruteAndPrints) {
   struct C { Lines o, n; };
   vector<C> cases = {
       {{"abc"}, {"abc"}},

@@ -1,6 +1,7 @@
-#include "CharDiff.h"
+#include "VimDiff.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -11,15 +12,16 @@
 #include "Effort/RunningEffort.h"
 #include "Keyboard/KeyedSequence.h"
 #include "Tree.h"
+#include "VimCore/CharMask.h"
 
 using namespace std;
-using TreeDiff::childLevel;
-using TreeDiff::deleteCost;
-using TreeDiff::Level;
-using TreeDiff::levelCost;
-using TreeDiff::Tree;
+using DiffTree::childLevel;
+using DiffTree::deleteCost;
+using DiffTree::Level;
+using DiffTree::levelCost;
+using DiffTree::Tree;
 
-namespace CharDiff {
+namespace VimDiff {
 namespace {
 
 constexpr double INF = numeric_limits<double>::max() / 4.0;
@@ -51,33 +53,34 @@ double moveCover(const Tree& tree, int from, int to, Level level, double scale) 
   return sum;
 }
 
-// Delete-cost oracle: price deleting a flat span [from,to) as the cheapest set
-// of Vim delete commands that *tile* it — a min over a small motion menu, not a
-// rigid top-down whole-unit walk. From any position p the candidate edges are:
-//   - char run `x`     : p -> p+1, deleteCost(Char)=1 per char (so k chars cost k)
-//   - `dw`/`de`        : p -> next Word start/end,    deleteCost(Word)=2  (valid mid-word)
-//   - `dW`/`dE`        : p -> next BigWord start/end,  deleteCost(BigWord)=3
-//   - `{n}dd`/`{n}dap` : line/paragraph start -> any later start, flat
-//                        deleteCost(Line)=2 / deleteCost(Paragraph)=3 (count-independent)
-// The min tiling keeps whole-unit deletes cheap (a line = one `dd`) while pricing
-// partial/cross-word spans honestly: deleting "bc xy" tiles as `dw` + `2x` ~ 4,
-// not the old whole-units-only fall-through to a flat char run = 1. Mid-word
-// `dw`/`de` are first-class edges, which is what fixes that under-pricing.
+// Delete-cost oracle: price deleting a flat span [from,to) as the cheapest tiling
+// of delete commands, via a per-end-position DP run once per start `a`. For end q,
+// the chunk ending there is the cheapest `{k}` delete across levels:
+//   - char `{k}x`           : [q-k, q),                          base deleteCost(Char)=1
+//   - word `{k}de`/`dw`     : k alnum/_ runs ending at q,        base deleteCost(Word)=2
+//   - bigword `{k}dE`/`dW`  : k non-blank runs ending at q,      base deleteCost(BigWord)=3
+//   - line/para `{k}dd`/`dap`: k whole lines/paragraphs ending at q, base 2 / 3
+// plus the count penalty `penalty(k) = digits(k) + sqrt(k) - 1` (0 at k=1, so a plain
+// uncounted command is just `base`; concave, so each extra unit costs less).
 //
-// PENALTY ADJUSTMENT (deferred): a `{count}` command carries mental overhead
-// beyond its keystrokes (working out "how many?"). When added it attaches PER
-// COMMAND — i.e. on the edge cost as f(count) — so the shortest path stays
-// additive; a per-span-total-commands surcharge would not be edge-decomposable
-// and would need an extra DP dimension. First pass omits it: pricing a char run
-// at 1/char already biases the tiling toward word motions over a long `{k}x`.
+// Word/big runs are read from character class and are SPAN-LOCAL: a run start is
+// clamped to `a`, so a contiguous run counts as one word even inside a larger global
+// word (deleting "bbbbbbb" out of "abbbbbbba" = one `de` = 2, not 7 chars). A chunk
+// may swallow whitespace on one side — `dw` trailing, or `de` from a leading space —
+// never both; interior separators inside a counted multi-run chunk are necessarily
+// included. Newlines are neither word/big/ws, so word/big runs never cross lines.
+// The clamp also lets a partial-word delete (a run prefix) cost `base`; that
+// over-credits vs a real `de`, but keeps the partitioner from over-pricing mid-word
+// cuts (single chars still cost 1, the char edge winning).
 //
-// CharDiff's buffer is fixed during search, so the full delCost[from][to] table
-// is precomputed once (O(N^2): one forward DAG-shortest-path per start over an
-// O(1)-out-degree motion graph) and read O(1) by the G/D/F search.
+// Words/bigwords/chars cap the count scan at CAP (there are many); lines/paragraphs
+// scan all earlier starts (there are few). The buffer is fixed during search, so the
+// full table is precomputed once — O(CAP*N^2), plus O(#lines^2) per start — read O(1).
 class DeleteCost {
 public:
   DeleteCost(const Tree& tree, double scale) : n_(static_cast<int>(tree.text.size())) {
     buildBoundaries(tree);
+    buildPenalty(scale);
     table_.assign(n_ + 1, vector<double>(n_ + 1, INF));
     for (int a = 0; a <= n_; a++) sweepFrom(a, scale);
   }
@@ -85,66 +88,120 @@ public:
   double cost(int from, int to) const { return from >= to ? 0.0 : table_[from][to]; }
 
 private:
+  static constexpr int CAP = 9;  // max count scanned for char/word/bigword
+
   int n_;
-  vector<int> nextWordStart_, nextWordEnd_, nextBigStart_, nextBigEnd_;
-  vector<char> isLineStart_, isParaStart_;
+  vector<char> isWord_, isBig_, isWs_;
+  vector<int> wsRunStart_;               // ws position -> start of its whitespace run
+  vector<int> wordStarts_, wordEnds_;    // ordered alnum/_ runs
+  vector<int> bigStarts_, bigEnds_;      // ordered non-blank runs
+  vector<int> wordIdx_, bigIdx_;         // word/big char -> index into the run lists
   vector<int> lineStarts_, paraStarts_;  // sorted, terminated by n_
+  vector<int> lineIdx_, paraIdx_;        // line/para start position -> list index, else -1
+  vector<double> penalty_;               // (digits(k)+sqrt(k)-1)*scale, 0 at k<=1
   vector<vector<double>> table_;
 
-  // Smallest position q > p flagged in `mark` (n_+1 if none).
-  vector<int> nextAfter(const vector<char>& mark) const {
-    vector<int> nxt(n_ + 1, n_ + 1);
-    for (int p = n_ - 1; p >= 0; p--) nxt[p] = mark[p + 1] ? p + 1 : nxt[p + 1];
-    return nxt;
-  }
-
   void buildBoundaries(const Tree& tree) {
-    vector<char> wStart(n_ + 1, 0), wEnd(n_ + 1, 0), bStart(n_ + 1, 0), bEnd(n_ + 1, 0);
-    // Tree word spans run [start, nextStart), so text.end includes trailing
-    // whitespace and coincides with the next word's start (the `dw` target). The
-    // `de`/`dE` target is the word's core end — last non-blank + 1, before that
-    // whitespace. Mark that instead so `de` exists as a distinct, cheaper edge for
-    // deletions that stop at the word (e.g. "quick" without its trailing space).
-    auto coreEnd = [&](const Node& nd) {
-      int e = nd.text.end;
-      while (e > nd.text.begin && (tree.text[e - 1] == ' ' || tree.text[e - 1] == '\t')) e--;
-      return e;
-    };
-    for (const Node& nd : tree[Level::Word]) { wStart[nd.text.begin] = 1; wEnd[coreEnd(nd)] = 1; }
-    for (const Node& nd : tree[Level::BigWord]) { bStart[nd.text.begin] = 1; bEnd[coreEnd(nd)] = 1; }
-    nextWordStart_ = nextAfter(wStart);
-    nextWordEnd_ = nextAfter(wEnd);
-    nextBigStart_ = nextAfter(bStart);
-    nextBigEnd_ = nextAfter(bEnd);
-
-    isLineStart_.assign(n_ + 1, 0);
-    isParaStart_.assign(n_ + 1, 0);
-    for (const Node& nd : tree[Level::Line]) { lineStarts_.push_back(nd.text.begin); isLineStart_[nd.text.begin] = 1; }
-    for (const Node& nd : tree[Level::Paragraph]) { paraStarts_.push_back(nd.text.begin); isParaStart_[nd.text.begin] = 1; }
+    const string& text = tree.text;
+    isWord_.assign(n_, 0);
+    isBig_.assign(n_, 0);
+    isWs_.assign(n_, 0);
+    wsRunStart_.assign(n_, 0);
+    wordIdx_.assign(n_, -1);
+    bigIdx_.assign(n_, -1);
+    for (int p = 0; p < n_; p++) {
+      isWord_[p] = VimCore::CharMask::isSmallWord(text[p]);
+      isBig_[p] = VimCore::CharMask::isBigWord(text[p]);
+      isWs_[p] = VimCore::CharMask::isWhitespace(text[p]);
+    }
+    for (int p = 0; p < n_; p++) {
+      wsRunStart_[p] = (isWs_[p] && p > 0 && isWs_[p - 1]) ? wsRunStart_[p - 1] : p;
+      if (isWord_[p]) {
+        if (p == 0 || !isWord_[p - 1]) wordStarts_.push_back(p);
+        wordIdx_[p] = (int)wordStarts_.size() - 1;
+        if (p + 1 == n_ || !isWord_[p + 1]) wordEnds_.push_back(p + 1);
+      }
+      if (isBig_[p]) {
+        if (p == 0 || !isBig_[p - 1]) bigStarts_.push_back(p);
+        bigIdx_[p] = (int)bigStarts_.size() - 1;
+        if (p + 1 == n_ || !isBig_[p + 1]) bigEnds_.push_back(p + 1);
+      }
+    }
+    lineIdx_.assign(n_ + 1, -1);
+    paraIdx_.assign(n_ + 1, -1);
+    for (const Node& nd : tree[Level::Line]) lineStarts_.push_back(nd.text.begin);
+    for (const Node& nd : tree[Level::Paragraph]) paraStarts_.push_back(nd.text.begin);
     lineStarts_.push_back(n_);
     paraStarts_.push_back(n_);
     sort(lineStarts_.begin(), lineStarts_.end());
     sort(paraStarts_.begin(), paraStarts_.end());
+    for (int i = 0; i < (int)lineStarts_.size(); i++) lineIdx_[lineStarts_[i]] = i;
+    for (int i = 0; i < (int)paraStarts_.size(); i++) paraIdx_[paraStarts_[i]] = i;
+  }
+
+  void buildPenalty(double scale) {
+    penalty_.assign(n_ + 2, 0.0);
+    for (int k = 2; k <= n_ + 1; k++) {
+      const int digits = (int)to_string(k).size();
+      penalty_[k] = (digits + sqrt((double)k) - 1.0) * scale;
+    }
+  }
+
+  // Counted word/bigword deletes ending at q: find the run whose chunk ends at q
+  // (q-1 inside/at-end of a run = de/partial, or q-1 trailing whitespace = dw), then
+  // scan k=1..CAP runs back, clamping the start to a, with an optional leading space.
+  void relaxRuns(double& best, const vector<double>& cost, int a, int q, double base,
+                 const vector<char>& isClass, const vector<int>& idx,
+                 const vector<int>& starts, const vector<int>& ends) const {
+    const int i = q - 1;
+    int j;
+    if (isClass[i]) {
+      j = idx[i];
+    } else if (isWs_[i] && wsRunStart_[i] > 0 && isClass[wsRunStart_[i] - 1]) {
+      j = idx[wsRunStart_[i] - 1];
+    } else {
+      return;
+    }
+    for (int k = 1; k <= CAP && j - k + 1 >= 0; k++) {
+      const int run = j - k + 1;
+      if (ends[run] <= a) break;  // run fully before the deletion start
+      best = min(best, cost[max(a, starts[run])] + base + penalty_[k]);
+      const int rs = starts[run];
+      if (rs > a && isWs_[rs - 1])  // leading `de` from the space before the run
+        best = min(best, cost[max(a, wsRunStart_[rs - 1])] + base + penalty_[k]);
+    }
+  }
+
+  // Counted whole-line/paragraph deletes ending at q (q must be a start or n_): scan
+  // all earlier starts >= a, k = number of units between.
+  void relaxUnits(double& best, const vector<double>& cost, int a, int q, double base,
+                  const vector<int>& idxAt, const vector<int>& starts) const {
+    if (idxAt[q] < 0) return;
+    const int jq = idxAt[q];
+    for (int i = jq - 1; i >= 0; i--) {
+      const int ls = starts[i];
+      if (ls < a) break;
+      best = min(best, cost[ls] + base + penalty_[jq - i]);
+    }
   }
 
   void sweepFrom(int a, double scale) {
     vector<double>& cost = table_[a];
     cost[a] = 0.0;
-    for (int p = a; p < n_; p++) {
-      if (cost[p] >= INF) continue;
-      const double c = cost[p];
-      auto relax = [&](int q, double w) {
-        if (q > p && q <= n_ && c + w < cost[q]) cost[q] = c + w;
-      };
-      relax(p + 1, deleteCost(Level::Char) * scale);
-      relax(nextWordStart_[p], deleteCost(Level::Word) * scale);
-      relax(nextWordEnd_[p], deleteCost(Level::Word) * scale);
-      relax(nextBigStart_[p], deleteCost(Level::BigWord) * scale);
-      relax(nextBigEnd_[p], deleteCost(Level::BigWord) * scale);
-      if (isLineStart_[p])
-        for (int s : lineStarts_) relax(s, deleteCost(Level::Line) * scale);
-      if (isParaStart_[p])
-        for (int s : paraStarts_) relax(s, deleteCost(Level::Paragraph) * scale);
+    const double charBase = deleteCost(Level::Char) * scale;
+    const double wordBase = deleteCost(Level::Word) * scale;
+    const double bigBase = deleteCost(Level::BigWord) * scale;
+    const double lineBase = deleteCost(Level::Line) * scale;
+    const double paraBase = deleteCost(Level::Paragraph) * scale;
+    for (int q = a + 1; q <= n_; q++) {
+      double best = INF;
+      for (int k = 1; k <= CAP && q - k >= a; k++)
+        best = min(best, cost[q - k] + charBase + penalty_[k]);
+      relaxRuns(best, cost, a, q, wordBase, isWord_, wordIdx_, wordStarts_, wordEnds_);
+      relaxRuns(best, cost, a, q, bigBase, isBig_, bigIdx_, bigStarts_, bigEnds_);
+      relaxUnits(best, cost, a, q, lineBase, lineIdx_, lineStarts_);
+      relaxUnits(best, cost, a, q, paraBase, paraIdx_, paraStarts_);
+      cost[q] = best;
     }
   }
 };
@@ -432,4 +489,4 @@ vector<CostBreakdown> calculateBreakdown(
   return breakdowns;
 }
 
-}  // namespace CharDiff
+}  // namespace VimDiff

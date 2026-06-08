@@ -106,7 +106,7 @@ the one remaining way an off-main entry can land, so do it deliberately.)
 Main-only extras are conditional on `BRANCH=main` (a cheap optimization,
 not a correctness boundary): exploration data via `vimfy_explore`
 with `VIMF_TRACK_STATES=ON`, C++ test-suite timing via
-`--gtest_output=json`, and the docs-site build. Branch pushes skip these to
+`--gtest_output=json`, and the web/docs build. Branch pushes skip these to
 stay fast.
 
 Steps:
@@ -118,7 +118,7 @@ Steps:
    - `CompositionOpt.*` → `composition_result.json`
 3. Baseline comparison: look up the parent SHA's stored entry in `gh-pages/{edit,motion,composition}/data.json` via `scripts/bench-baseline-from-stored.ts`, feed it to `bench-compare.ts`. Skipped when the parent has no stored entry (first run on this machine, parent was rebased away, etc.) — informational, never gates the run.
 4. **Main only:** build and run `vimfy_explore` for exploration data; time the unit + approval binaries (`convert-gtest-timing.ts`) and snapshot property + safety coverage (`convert-gtest-coverage.ts`)
-5. Build `bench-dashboard/` with `--base=/Vimficiency/`. **Main only:** also build `docs-site/`
+5. Build `web/dashboard/` with `--base=/Vimficiency/`. **Main only:** also build `web/docs/`
 6. In the `gh-pages` worktree: ingest results, prune to 100 entries, ingest exploration (main only), copy dashboard/docs assets
 7. Commit + push to `origin gh-pages`. On push conflict (race with another local run) fetch + rebase once and retry
 
@@ -271,7 +271,7 @@ each FUZZ_TEST's `FUZZTEST_FUZZ_FOR` budget, which now shortens runs for real.
 
 The `bench-data.ts` script automatically migrates from the old `data.js` format (`window.BENCHMARK_DATA = {...}`) to plain `data.json` on first run. Similarly for `explore.js` → `explore.json`.
 
-## Benchmark Dashboard (`bench-dashboard/`)
+## Benchmark Dashboard (`web/dashboard/`)
 
 A single-page React + TypeScript + Vite app using TanStack Router for client-side navigation.
 
@@ -284,7 +284,7 @@ A single-page React + TypeScript + Vite app using TanStack Router for client-sid
 
 ### Structure
 ```
-bench-dashboard/
+web/dashboard/
 ├── package.json
 ├── bun.lock
 ├── vite.config.ts          # base: '/Vimficiency/', single entry
@@ -322,12 +322,12 @@ bench-dashboard/
 ### Local development
 ```bash
 # Install dependencies
-cd bench-dashboard && bun install
+cd web/dashboard && bun install
 
 # Dev server with hot reload
 bun run dev
 
-# Production build (outputs to bench-dashboard/dist/)
+# Production build (outputs to web/dashboard/dist/)
 bun run build
 
 # Preview production build
@@ -336,7 +336,7 @@ bun run preview
 
 ### Verifying the dashboard build locally
 ```bash
-cd bench-dashboard && bun install --frozen-lockfile && bun run build
+cd web/dashboard && bun install --frozen-lockfile && bun run build
 ```
 This mirrors the dashboard build step used by the local deploy runner.
 
@@ -373,4 +373,4 @@ gh-pages/
 
 ## Gitignore
 
-`bench-dashboard/node_modules/` and `bench-dashboard/dist/` are gitignored. Source files, `bun.lock`, and `public/` are tracked.
+`web/dashboard/node_modules/` and `web/dashboard/dist/` are gitignored. Source files, `bun.lock`, and `public/` are tracked.

@@ -19,7 +19,8 @@
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
 #include "Optimizer/CompositionOptimizer/CompositionSearchContext.h"
 #include "Optimizer/DiffPlanner/DiffState.h"
-#include "Optimizer/DiffPlanner/TreeDiff.h"
+#include "Optimizer/DiffPlanner/MyersDiff.h"
+#include "Optimizer/DiffPlanner/VimDiff.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Boundary/TransformBoundary.h"
 #include "Boundary/NavBoundary.h"
@@ -245,9 +246,9 @@ TEST_F(DebugTest, DISABLED_SearchStatsCodegen) {
 }
 
 TEST_F(DebugTest, DISABLED_ProfileSlowPromptMapSlice) {
-  // Replay of the real ~11s auto_suggest fire (prompt_map config edit).
-  // Finding: TreeDiff::calculate dominates (~95%); cost scales with whole-buffer
-  // size, not edit size. Myers does the same 3 diffs in ~0.14ms.
+  // Replay of the real ~11s auto_suggest fire (prompt_map config edit). Kept as a
+  // planner profiler: times the default VimDiff vs Myers vs the full composition
+  // search to watch diff-generation cost against whole-buffer size.
   Lines initial = {
       R"#(    prompt_map("<leader>vb", "start", "Start mark"))#",
       R"#(    prompt_map("<leader>vf", "finish", "Finish mark"))#",
@@ -285,18 +286,19 @@ TEST_F(DebugTest, DISABLED_ProfileSlowPromptMapSlice) {
     return chrono::duration<double, milli>(b - a).count();
   };
 
-  // 1. TreeDiff alone (default algo). This is the work compute_diffs re-runs.
+  // 1. VimDiff alone (default algo). This is the work compute_diffs re-runs.
   double treeMs = 0, myersMs = 0;
-  vector<DiffState> tree;
+  size_t vimDiffs = 0;
   for (int i = 0; i < 5; i++) {
     auto t0 = chrono::steady_clock::now();
-    tree = TreeDiff::calculate(initial, goal, config, TreeDiff::CostOptions{});
+    auto plans = VimDiff::calculate(initial, goal, config, VimDiff::CostOptions{});
+    vimDiffs = plans.empty() ? 0 : plans.front().diffs.size();
     treeMs += ms(t0, chrono::steady_clock::now());
   }
   treeMs /= 5;
   for (int i = 0; i < 5; i++) {
     auto t0 = chrono::steady_clock::now();
-    auto m = Myers::calculate(initial, goal);
+    auto m = MyersDiff::calculate(initial, goal);
     myersMs += ms(t0, chrono::steady_clock::now());
   }
   myersMs /= 5;
@@ -309,23 +311,24 @@ TEST_F(DebugTest, DISABLED_ProfileSlowPromptMapSlice) {
   double compMs = ms(t0, chrono::steady_clock::now());
 
   cerr << "\n=== ProfileSlowPromptMapSlice (DEBUG build) ===" << endl;
-  cerr << "TreeDiff::calculate  avg = " << treeMs  << " ms  (diffs=" << tree.size() << ")" << endl;
-  cerr << "Myers::calculate     avg = " << myersMs << " ms" << endl;
+  cerr << "VimDiff::calculate   avg = " << treeMs  << " ms  (diffs=" << vimDiffs << ")" << endl;
+  cerr << "MyersDiff::calculate     avg = " << myersMs << " ms" << endl;
   cerr << "CompositionOptimizer::optimize = " << compMs << " ms  (results=" << result.getResults().size() << ")" << endl;
-  cerr << "  -> TreeDiff is " << (treeMs / compMs * 100.0) << "% of the composition run" << endl;
+  cerr << "  -> VimDiff is " << (treeMs / compMs * 100.0) << "% of the composition run" << endl;
   for (size_t i = 0; i < result.getResults().size() && i < 3; i++) {
     cerr << "  [" << i << "] cost=" << result.getResults()[i].getCost()
          << " '" << result.getResults()[i].getSequence() << "'" << endl;
   }
 
-  // What drives the TreeDiff blowup? Time it on subsets.
+  // Time the planner on subsets to see how cost scales with buffer size.
   auto timeTree = [&](const Lines& a, const Lines& b, const char* label) {
     auto t = chrono::steady_clock::now();
-    auto d = TreeDiff::calculate(a, b, config, TreeDiff::CostOptions{});
-    cerr << "  TreeDiff[" << label << "] = " << ms(t, chrono::steady_clock::now())
-         << " ms (diffs=" << d.size() << ", lines=" << a.size() << ")" << endl;
+    auto plans = VimDiff::calculate(a, b, config, VimDiff::CostOptions{});
+    size_t nd = plans.empty() ? 0 : plans.front().diffs.size();
+    cerr << "  VimDiff[" << label << "] = " << ms(t, chrono::steady_clock::now())
+         << " ms (diffs=" << nd << ", lines=" << a.size() << ")" << endl;
   };
-  cerr << "\n--- TreeDiff scaling ---" << endl;
+  cerr << "\n--- VimDiff scaling ---" << endl;
   // (a) Just the 3 changed lines (rows 5,6,7).
   timeTree(Lines{initial[5], initial[6], initial[7]},
            Lines{goal[5], goal[6], goal[7]}, "3 changed lines only");
@@ -648,7 +651,7 @@ TEST_F(DebugTest, DISABLED_InvestigateMissingTypedCharAfterSubstitute) {
   cerr << "Initial pos: " << initialPos << " goalPos: " << goalPos << endl;
   SequenceTracer::printSequenceBytes(userSeq);
 
-  vector<DiffState> diffs = Myers::calculate(initial, goal);
+  vector<DiffState> diffs = MyersDiff::calculate(initial, goal);
   cerr << "\n=== Diffs ===" << endl;
   for (size_t i = 0; i < diffs.size(); i++) {
     const auto& d = diffs[i];
@@ -819,7 +822,7 @@ TEST_F(DebugTest, DISABLED_DiffRegionInvestigation) {
   // CompositionOptimizer already handles via Myers.
 
   auto printDiffs = [](const Lines& initial, const Lines& goal, const string& label) {
-    auto diffs = Myers::calculate(initial, goal);
+    auto diffs = MyersDiff::calculate(initial, goal);
     cerr << "=== " << label << " ===" << endl;
     cerr << "  initial: " << initial << endl;
     cerr << "  goal:    " << goal << endl;
@@ -932,7 +935,7 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
   {
     Lines initial = {"ffb decd bdf"};
     Lines goal = {"cbb decd fed"};
-    auto diffs = Myers::calculate(initial, goal);
+    auto diffs = MyersDiff::calculate(initial, goal);
     cerr << "Diffs: " << diffs.size() << endl;
     for (size_t i = 0; i < diffs.size(); i++) {
       const auto& d = diffs[i];
@@ -981,7 +984,7 @@ TEST_F(DebugTest, DISABLED_Placeholder) {
            << "' cost=" << compResult.getResults()[i].getCost() << endl;
     }
 
-    auto diffs = Myers::calculate(initial, goal);
+    auto diffs = MyersDiff::calculate(initial, goal);
     cerr << "Diffs: " << diffs.size() << endl;
     for (size_t i = 0; i < diffs.size(); i++) {
       const auto& d = diffs[i];
@@ -1202,7 +1205,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateDotDbBug) {
   cerr << "\n=== Transform Optimizer for [0,5) ===" << endl;
   {
     Config config = Config::uniform();
-    auto diffs = Myers::calculate(initial, goal);
+    auto diffs = MyersDiff::calculate(initial, goal);
     for (size_t i = 0; i < diffs.size(); i++) {
       const auto& d = diffs[i];
       cerr << "  Diff[" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
@@ -1595,7 +1598,7 @@ TEST_F(NeovimOracleDebug, InvestigateTextObjectShortcuts) {
     Lines initial = {"foo \"hello\" bar"};
     Lines goal = {"foo \"goodbye\" bar"};
 
-    auto diffs = Myers::calculate(initial, goal);
+    auto diffs = MyersDiff::calculate(initial, goal);
     cerr << "Diffs: " << diffs.size() << endl;
     for (size_t i = 0; i < diffs.size(); i++) {
       cerr << "  Diff " << i << ": deleted='" << diffs[i].deletedText
@@ -1736,7 +1739,7 @@ TEST_F(NeovimOracleDebug, DISABLED_InvestigateCompositionOptimizer) {
   cerr << "Start position: " << initialPos << endl;
 
   // First, check what diffs are computed
-  auto diffs = Myers::calculate(initial, goal);
+  auto diffs = MyersDiff::calculate(initial, goal);
   cerr << endl << "Diffs computed: " << diffs.size() << endl;
   for (size_t i = 0; i < diffs.size(); i++) {
     cerr << "  Diff " << i << ": '" << diffs[i].deletedText << "' -> '" << diffs[i].insertedText << "'" << endl;
@@ -1928,7 +1931,7 @@ TEST_F(DebugTest, CompositionOptimizer_TraceFailure) {
   }
 
   cerr << "\n========== STEP 1: Myers Diff ==========" << endl;
-  auto diffs = Myers::calculate(initial, goal);
+  auto diffs = MyersDiff::calculate(initial, goal);
   cerr << "Number of diffs: " << diffs.size() << endl;
   for (size_t i = 0; i < diffs.size(); i++) {
     const auto& d = diffs[i];
@@ -2407,7 +2410,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinPlan) {
     cerr << "Goal:    " << goal;
 
     // Step 1: Myers diffs
-    auto diffs = Myers::calculate(initial, goal);
+    auto diffs = MyersDiff::calculate(initial, goal);
     cerr << "Diffs: " << diffs.size() << endl;
     for (size_t i = 0; i < diffs.size(); i++) {
       const auto& d = diffs[i];
@@ -2503,7 +2506,7 @@ TEST_F(DebugTest, DISABLED_InvestigateJoinLines) {
 
   // Step 1: Myers diffs
   cerr << "\n=== Myers Diffs ===" << endl;
-  auto diffs = Myers::calculate(initial, goal);
+  auto diffs = MyersDiff::calculate(initial, goal);
   for (size_t i = 0; i < diffs.size(); i++) {
     const auto& d = diffs[i];
     cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
@@ -2604,7 +2607,7 @@ TEST_F(DebugTest, DISABLED_InvestigateHumanApproval1) {
 
   // Step 1: Raw Myers diffs
   cerr << "\n=== Raw Myers Diffs ===" << endl;
-  auto diffs = Myers::calculate(initial, goal);
+  auto diffs = MyersDiff::calculate(initial, goal);
   for (size_t i = 0; i < diffs.size(); i++) {
     const auto& d = diffs[i];
     cerr << "  [" << i << "] begin=(" << d.beginPos.line << "," << d.beginPos.col
@@ -3209,7 +3212,7 @@ TEST_F(NeovimOracleDebug, DISABLED_TraceDeleteEntireLineIter20) {
   }
 
   // Also check diffs
-  auto diffs = Myers::calculate(initial, goal);
+  auto diffs = MyersDiff::calculate(initial, goal);
   cerr << "\nDiffs: " << diffs.size() << endl;
   for (size_t i = 0; i < diffs.size(); i++) {
     const auto& d = diffs[i];
