@@ -297,10 +297,9 @@ struct Reduction {
   int newUnits() const { return (int)newPos.size() - 1; }
 };
 
-// Character-level coordinates: every position is a unit boundary, no upfront
-// collapse. (Skipping long matched runs is the Solver's lazy forward-jump, applied
-// at search time — it never removes a cell an edit can close into, so top-K is
-// preserved.)
+// Character-level coordinates: every position is a unit boundary. This is the
+// exact baseline; efficiency work must preserve this state space lazily rather
+// than pruning matched-run interiors.
 Reduction buildReduction(const Tree& oldTree, const Tree& newTree,
                          const Lines&, const Lines&, const Config&, const CostOptions&) {
   const string& A = oldTree.text;
