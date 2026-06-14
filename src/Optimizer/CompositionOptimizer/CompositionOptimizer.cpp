@@ -672,7 +672,8 @@ CompositionResult CompositionOptimizer::optimize(
     const Lines& initialLines, const CursorPos initialPos, const Lines& goalLines,
     const CursorPos goalPos, CompositionOptimizerParams params,
     string_view userSequence, const NavBoundary& boundary,
-    const NavContext& navigationContext, const SearchControl* control) {
+    const NavContext& navigationContext, const SearchControl* control,
+    const std::vector<DiffState>* forcedDiffs) {
   CHECK(goalLines.contains(goalPos),
         "goalPos must be a valid normal-mode cursor position in goalLines");
   if(goalPos < initialPos) {
@@ -683,7 +684,7 @@ CompositionResult CompositionOptimizer::optimize(
   auto setupT0 = std::chrono::steady_clock::now();
   CompositionSearchContext ctx(initialLines, initialPos, goalLines, goalPos,
                                userSequence, navigationContext, boundary,
-                               params, config);
+                               params, config, forcedDiffs);
   ctx.control = control;
   if (timePhases) {
     std::cerr << "[phase] setup (ctx ctor) total: "

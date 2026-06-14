@@ -12,41 +12,69 @@ effaf eeac gdgae
 
 _Edit costs: delete / insert / move_
 
-### Plan 1: cost 15.7321
+### Plan 1: cost 10
 
 ```
-hfaf beeac e
+h
 ->
-ffaf eeac g
+f
 ```
-`3.73205 / 11 / 0`
-
-### Plan 2: cost 16.4142
+`1 / 1 / 0`
 
 ```
-hfaf beeac 
+b
 ->
-ffaf 
 ```
-`3.41421 / 5 / 0`
+`1 / 0 / 1`
 
 ```
+e
 ->
-eac g
+g
 ```
-`0 / 5 / 1`
+`1 / 1 / 1`
 
-### Plan 3: cost 16.4142
+### Plan 2: cost 12
 
 ```
-hfaf beeac
+h
 ->
-ffaf
+f
 ```
-`3.41421 / 4 / 0`
+`1 / 1 / 0`
 
 ```
+b
 ->
-eac g
 ```
-`0 / 5 / 2`
+`1 / 0 / 1`
+
+```
+ e
+->
+ g
+```
+`2 / 2 / 1`
+
+### Plan 3: cost 12
+
+```
+h
+->
+f
+```
+`1 / 1 / 0`
+
+```
+be
+->
+e
+```
+`2 / 1 / 1`
+
+```
+e
+->
+g
+```
+`1 / 1 / 1`

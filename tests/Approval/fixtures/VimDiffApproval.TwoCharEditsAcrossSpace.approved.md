@@ -12,7 +12,7 @@ aXc xYz
 
 _Edit costs: delete / insert / move_
 
-### Plan 1: cost 9
+### Plan 1: cost 8
 
 ```
 b
@@ -26,18 +26,9 @@ y
 ->
 Y
 ```
-`1 / 1 / 3`
+`1 / 1 / 2`
 
-### Plan 2: cost 9.23607
-
-```
-bc xy
-->
-Xc xY
-```
-`3.23607 / 5 / 0`
-
-### Plan 3: cost 10
+### Plan 2: cost 9
 
 ```
 b
@@ -47,8 +38,24 @@ X
 `1 / 1 / 0`
 
 ```
- xy
+xy
 ->
- xY
+xY
 ```
-`2 / 3 / 1`
+`2 / 2 / 1`
+
+### Plan 3: cost 9
+
+```
+bc
+->
+Xc
+```
+`2 / 2 / 0`
+
+```
+y
+->
+Y
+```
+`1 / 1 / 1`

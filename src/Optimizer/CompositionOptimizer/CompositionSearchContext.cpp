@@ -25,7 +25,8 @@ CompositionSearchContext::CompositionSearchContext(
     const NavContext& navContext,
     const NavBoundary& boundary,
     const CompositionOptimizerParams& params,
-    const Config& config)
+    const Config& config,
+    const std::vector<DiffState>* forcedDiffs)
     : config(config),
       params(params),
       navContext(navContext),
@@ -60,33 +61,37 @@ CompositionSearchContext::CompositionSearchContext(
 
   // Generate planned edit regions between start and end buffers.
   vector<DiffState> rawDiffs;
-  switch (params.diffAlgorithm) {
-    case DiffAlgorithm::VimDiff: {
-      vector<VimDiff::Plan> plans = VimDiff::calculate(
-          Lines(initialLines.begin(), initialLines.end()),
-          Lines(goalLines.begin(), goalLines.end()),
-          config,
-          VimDiff::CostOptions{
-              .diffOpenPenalty = params.diffOpenPenalty,
-              .moveDeleteScale = params.moveDeleteScale,
-          });
-      if (!plans.empty()) rawDiffs = std::move(plans.front().diffs);
-      break;
+  if (forcedDiffs) {
+    rawDiffs = *forcedDiffs;
+  } else {
+    switch (params.diffAlgorithm) {
+      case DiffAlgorithm::VimDiff: {
+        vector<VimDiff::Plan> plans = VimDiff::calculate(
+            Lines(initialLines.begin(), initialLines.end()),
+            Lines(goalLines.begin(), goalLines.end()),
+            config,
+            VimDiff::CostOptions{
+                .diffOpenPenalty = params.diffOpenPenalty,
+                .moveDeleteScale = params.moveDeleteScale,
+            });
+        if (!plans.empty()) rawDiffs = std::move(plans.front().diffs);
+        break;
+      }
+      case DiffAlgorithm::MyersDiff:
+        rawDiffs = MyersDiff::calculate(
+            Lines(initialLines.begin(), initialLines.end()),
+            Lines(goalLines.begin(), goalLines.end()));
+        break;
+      default:
+        CHECK(false, "unknown composition diff algorithm");
     }
-    case DiffAlgorithm::MyersDiff:
-      rawDiffs = MyersDiff::calculate(
-          Lines(initialLines.begin(), initialLines.end()),
-          Lines(goalLines.begin(), goalLines.end()));
-      break;
-    default:
-      CHECK(false, "unknown composition diff algorithm");
   }
   phaseMark("diff generation");
   debug("diff algorithm:", DiffAlgorithm::name(params.diffAlgorithm));
 
   // Preserve the historical Myers processing-order heuristic. VimDiff is
-  // intentionally forward-only.
-  if (params.diffAlgorithm == DiffAlgorithm::MyersDiff && !rawDiffs.empty()) {
+  // intentionally forward-only, and forced partitions are taken literally.
+  if (!forcedDiffs && params.diffAlgorithm == DiffAlgorithm::MyersDiff && !rawDiffs.empty()) {
     double distToFirst = costToGoal(initialPos, rawDiffs.front().beginPos);
     double distToLast = costToGoal(initialPos, rawDiffs.back().endPos);
     bool processForward = (distToFirst <= distToLast + 1.0);  // Slight bias toward forward

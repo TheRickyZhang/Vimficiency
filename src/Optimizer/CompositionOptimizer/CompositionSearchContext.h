@@ -158,7 +158,10 @@ struct CompositionSearchContext {
   // Construction
   // ==========================================================================
 
-  // Constructor - performs all pre-computation
+  // Constructor - performs all pre-computation. `forcedDiffs` is the
+  // calibration/diagnostic seam: when non-null, the search runs over that exact
+  // partition (ordered, non-overlapping, original-buffer spans — the planner's
+  // output contract) instead of running the diff planner here.
   CompositionSearchContext(
       const Lines& initialLines,
       const CursorPos& initialPos,
@@ -168,7 +171,8 @@ struct CompositionSearchContext {
       const NavContext& navContext,
       const NavBoundary& boundary,
       const CompositionOptimizerParams& params,
-      const Config& config);
+      const Config& config,
+      const std::vector<DiffState>* forcedDiffs = nullptr);
 
   // ==========================================================================
   // CursorPos conversion helpers
