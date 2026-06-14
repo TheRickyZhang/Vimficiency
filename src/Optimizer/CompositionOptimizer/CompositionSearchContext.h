@@ -10,6 +10,7 @@
 #include "JoinPlan.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/DiffPlanner/DiffState.h"
+#include "Optimizer/NavOptimizer/NavHeuristic.h"
 #include "Optimizer/TransformOptimizer/TransformOptimizer.h"
 #include "Optimizer/SearchStats.h"
 #include "Boundary/NavBoundary.h"
@@ -185,9 +186,12 @@ struct CompositionSearchContext {
   // Heuristic and distance computation
   // ==========================================================================
 
-  // Manhattan distance between two positions
+  // Concave per-axis distance, matching the NavOptimizer heuristic that
+  // actually executes these inter-edit legs (linear Manhattan overestimates
+  // nav effort because long-range motions cover many lines/cols per keystroke).
   double costToGoal(const CursorPos& curr, const CursorPos& goal) const {
-    return std::abs(goal.line - curr.line) + std::abs(goal.col - curr.col);
+    return NavHeuristic::fastSqrt(std::abs(goal.line - curr.line)) +
+           NavHeuristic::fastSqrt(std::abs(goal.col - curr.col));
   }
 
   // h(n) for A*: estimates remaining cost

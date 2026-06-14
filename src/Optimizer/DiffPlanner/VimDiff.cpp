@@ -11,7 +11,6 @@
 
 #include "Effort/RunningEffort.h"
 #include "Keyboard/KeyedSequence.h"
-#include "MyersDiff.h"
 #include "Tree.h"
 #include "Utils/Debug.h"
 #include "VimCore/CharMask.h"
@@ -34,8 +33,7 @@ struct EditSpan {
   TextRange newText;
 };
 
-// Counted-command penalty: digits typed + concave mental cost, 0 at k<=1.
-// Shared by the tiling oracles and the hard-split crossing estimates.
+// Counted-command penalty: digits typed + concave count cost, 0 at k<=1.
 double countPenalty(int k, double scale) {
   if (k <= 1) return 0.0;
   return ((int)to_string(k).size() + sqrt((double)k) - 1.0) * scale;
@@ -76,21 +74,64 @@ class TilingCost {
 public:
   enum class Kind { Delete, Move };
 
+  // Builds boundaries + penalty only. query() works immediately; cost() needs
+  // buildActiveTable() first.
   TilingCost(const Tree& tree, double scale, Kind kind)
-      : n_(static_cast<int>(tree.text.size())), kind_(kind) {
+      : n_(static_cast<int>(tree.text.size())), kind_(kind), scale_(scale) {
     buildBoundaries(tree);
     buildPenalty(scale);
-    table_.assign(n_ + 1, vector<double>(n_ + 1, INF));
-    for (int a = 0; a <= n_; a++) sweepFrom(a, scale);
   }
 
+  // Cost over ACTIVE unit indices (see buildActiveTable); 0 when from>=to.
   double cost(int from, int to) const { return from >= to ? 0.0 : table_[from][to]; }
+
+  // Build the reduced cost table over active unit boundaries. oldPos are raw
+  // boundaries (front 0, back n_); unit u spans [oldPos[u],oldPos[u+1]) and is a
+  // forced block transition of cost blockCost[u] when isBlock[u], else tiled with
+  // char/word/line/para chunks that never cross a block. Boundaries stay full-
+  // context (raw), so there is no slice wobble. O(U^2) over the diff-sized unit
+  // count.
+  void buildActiveTable(const vector<int>& oldPos, const vector<char>& isBlock,
+                        const vector<double>& blockCost) {
+    const int U = (int)oldPos.size() - 1;
+    table_.assign(U + 1, vector<double>(U + 1, INF));
+    if ((int)scratch_.size() < n_ + 1) scratch_.assign(n_ + 1, INF);
+    for (int as = 0; as <= U; as++) sweepActive(as, oldPos, isBlock, blockCost);
+  }
+
+  // Lazy single tiling query of block-free content [from,to), O(to-from), without
+  // the O(N^2) table. Used by the reduction builder for the collapse gate and
+  // per-block move/delete costs.
+  double query(int from, int to) const {
+    if (from >= to) return 0.0;
+    if ((int)scratch_.size() < n_ + 1) scratch_.assign(n_ + 1, INF);
+    vector<double>& cost = scratch_;
+    cost[from] = 0.0;
+    const double charBase = unitBase(Level::Char) * scale_;
+    const double wordBase = unitBase(Level::Word) * scale_;
+    const double bigBase = unitBase(Level::BigWord) * scale_;
+    const double lineBase = unitBase(Level::Line) * scale_;
+    const double paraBase = unitBase(Level::Paragraph) * scale_;
+    for (int q = from + 1; q <= to; q++) {
+      double best = INF;
+      for (int k = 1; k <= CAP && q - k >= from; k++)
+        best = min(best, cost[q - k] + charBase + penalty_[k]);
+      relaxRuns(best, cost, from, q, wordBase, isWord_, wordIdx_, wordStarts_, wordEnds_);
+      relaxRuns(best, cost, from, q, bigBase, isBig_, bigIdx_, bigStarts_, bigEnds_);
+      relaxUnits(best, cost, from, q, lineBase, lineIdx_, lineStarts_);
+      relaxUnits(best, cost, from, q, paraBase, paraIdx_, paraStarts_);
+      cost[q] = best;
+    }
+    return cost[to];
+  }
 
 private:
   static constexpr int CAP = 9;  // max count scanned for char/word/bigword
 
   int n_;
   Kind kind_;
+  double scale_;
+  mutable vector<double> scratch_;  // reused temp for query()
   vector<char> isWord_, isBig_, isWs_;
   vector<int> wsRunStart_;               // ws position -> start of its whitespace run
   vector<int> wordStarts_, wordEnds_;    // ordered alnum/_ runs
@@ -191,26 +232,93 @@ private:
     return kind_ == Kind::Delete ? deleteCost(level) : levelCost(level);
   }
 
-  void sweepFrom(int a, double scale) {
-    vector<double>& cost = table_[a];
-    cost[a] = 0.0;
-    const double charBase = unitBase(Level::Char) * scale;
-    const double wordBase = unitBase(Level::Word) * scale;
-    const double bigBase = unitBase(Level::BigWord) * scale;
-    const double lineBase = unitBase(Level::Line) * scale;
-    const double paraBase = unitBase(Level::Paragraph) * scale;
-    for (int q = a + 1; q <= n_; q++) {
-      double best = INF;
-      for (int k = 1; k <= CAP && q - k >= a; k++)
-        best = min(best, cost[q - k] + charBase + penalty_[k]);
-      relaxRuns(best, cost, a, q, wordBase, isWord_, wordIdx_, wordStarts_, wordEnds_);
-      relaxRuns(best, cost, a, q, bigBase, isBig_, bigIdx_, bigStarts_, bigEnds_);
-      relaxUnits(best, cost, a, q, lineBase, lineIdx_, lineStarts_);
-      relaxUnits(best, cost, a, q, paraBase, paraIdx_, paraStarts_);
-      cost[q] = best;
+  // One row of the active table: tile from active start `as`. Char-stretches use
+  // the raw chunk relaxers with the floor reset to the current stretch start (so
+  // chunks never cross a block); each block unit is a forced single transition.
+  // scratch_ is the raw-indexed working array; only stretch positions and block
+  // boundaries are written, and every read is a position written earlier this
+  // sweep, so no clearing between sweeps is needed.
+  void sweepActive(int as, const vector<int>& oldPos, const vector<char>& isBlock,
+                   const vector<double>& blockCost) {
+    vector<double>& cost = scratch_;
+    vector<double>& row = table_[as];
+    const int U = (int)oldPos.size() - 1;
+    cost[oldPos[as]] = 0.0;
+    row[as] = 0.0;
+    int stretchStart = oldPos[as];
+    const double charBase = unitBase(Level::Char) * scale_;
+    const double wordBase = unitBase(Level::Word) * scale_;
+    const double bigBase = unitBase(Level::BigWord) * scale_;
+    const double lineBase = unitBase(Level::Line) * scale_;
+    const double paraBase = unitBase(Level::Paragraph) * scale_;
+    for (int au = as + 1; au <= U; au++) {
+      const int rawQ = oldPos[au];
+      if (isBlock[au - 1]) {
+        cost[rawQ] = cost[oldPos[au - 1]] + blockCost[au - 1];
+        stretchStart = rawQ;
+      } else {
+        double best = INF;
+        for (int k = 1; k <= CAP && rawQ - k >= stretchStart; k++)
+          best = min(best, cost[rawQ - k] + charBase + penalty_[k]);
+        relaxRuns(best, cost, stretchStart, rawQ, wordBase, isWord_, wordIdx_, wordStarts_, wordEnds_);
+        relaxRuns(best, cost, stretchStart, rawQ, bigBase, isBig_, bigIdx_, bigStarts_, bigEnds_);
+        relaxUnits(best, cost, stretchStart, rawQ, lineBase, lineIdx_, lineStarts_);
+        relaxUnits(best, cost, stretchStart, rawQ, paraBase, paraIdx_, paraStarts_);
+        cost[rawQ] = best;
+      }
+      row[au] = cost[rawQ];
     }
   }
 };
+
+// FNV-1a over a byte range; O(1) segment-match checks in the reduced DP.
+uint64_t fnv1a(string_view s) {
+  uint64_t h = 1469598103934665603ull;
+  for (char c : s) {
+    h ^= (unsigned char)c;
+    h *= 1099511628211ull;
+  }
+  return h;
+}
+
+// Reduced coordinate system. Long matched runs collapse to single "block" units;
+// changed regions and short matches stay character-level. Each side becomes a
+// sequence of units (one block or one char), and both the DP and the tiling oracle
+// run over the unit boundaries (oldPos/newPos) so work scales with the diff, not
+// the buffer. A block carries its precomputed move/delete cost; new-side typing
+// stays raw (insert prefix sums cover collapsed runs directly).
+struct Reduction {
+  vector<int> oldPos, newPos;                // active raw boundaries; front()=0, back()=n/m
+  vector<char> oldIsBlock;                    // per old unit u: [oldPos[u],oldPos[u+1]) is a block
+  vector<double> oldBlockMove, oldBlockDel;   // per old unit; 0 for non-blocks
+  vector<uint64_t> oldSegHash, newSegHash;    // per unit content hash
+
+  int oldUnits() const { return (int)oldPos.size() - 1; }
+  int newUnits() const { return (int)newPos.size() - 1; }
+};
+
+// Character-level coordinates: every position is a unit boundary, no upfront
+// collapse. (Skipping long matched runs is the Solver's lazy forward-jump, applied
+// at search time — it never removes a cell an edit can close into, so top-K is
+// preserved.)
+Reduction buildReduction(const Tree& oldTree, const Tree& newTree,
+                         const Lines&, const Lines&, const Config&, const CostOptions&) {
+  const string& A = oldTree.text;
+  const string& B = newTree.text;
+  const int n = (int)A.size();
+  const int m = (int)B.size();
+  Reduction r;
+  r.oldPos.reserve(n + 1);
+  r.newPos.reserve(m + 1);
+  for (int i = 0; i <= n; i++) r.oldPos.push_back(i);
+  for (int j = 0; j <= m; j++) r.newPos.push_back(j);
+  r.oldIsBlock.assign(n, 0);
+  r.oldBlockMove.assign(n, 0.0);
+  r.oldBlockDel.assign(n, 0.0);
+  for (int i = 0; i < n; i++) r.oldSegHash.push_back(fnv1a(string_view(A).substr(i, 1)));
+  for (int j = 0; j < m; j++) r.newSegHash.push_back(fnv1a(string_view(B).substr(j, 1)));
+  return r;
+}
 
 struct PlanSpans {
   vector<EditSpan> spans;
@@ -240,46 +348,52 @@ struct Solver {
 
   const Tree& oldTree;
   const Tree& newTree;
+  const Reduction& red;
+  const vector<int>& oldPos;  // active old index -> raw position
+  const vector<int>& newPos;  // active new index -> raw position
   const Config& config;
   CostOptions options;
   string_view A;
   string_view B;
   int n;
   int m;
+  int U;  // old unit count; active old indices run 0..U
+  int V;  // new unit count; active new indices run 0..V
   int K;
+  int commonPrefix_ = 0, commonSuffix_ = 0;  // raw leading/trailing matched lengths
 
-  vector<vector<vector<Cand>>> gK, dK, fK;  // [x][y] -> up to K candidates, ascending
+  vector<vector<vector<Cand>>> gK, dK, fK;  // [activeOld][activeNew] -> up to K candidates
   vector<vector<char>> gDone, dDone;
   // RunningEffort is a monoid with one-key boundary context, so typing effort
-  // decomposes exactly: insCost(q,j) = PS_[j] - PS_[q] - cut_[q], where PS_ is
-  // the prefix effort of typing B[0:j) as one sequence and cut_[q] is the single
-  // bigram correction straddling position q. O(m) storage instead of the old
-  // O(m^2) insTable, and it makes F's insertion-split min collapsible.
+  // decomposes exactly: insCost(q,j) = PS_[j] - PS_[q] - cut_[q] over RAW new
+  // positions, PS_ the prefix effort of typing B[0:j) and cut_[q] the bigram
+  // correction straddling q. O(m) storage; a collapsed new run is covered because
+  // PS_ spans the whole raw buffer. The DP translates active new index -> raw.
   vector<double> PS_, cut_;
-  TilingCost del;   // precomputed counted-tiling delete oracle over the old buffer
+  TilingCost del;   // reduced counted-tiling delete oracle over active old units
   TilingCost move;  // same tiling with bare-motion bases (dw->w, dd->j, x->l)
 
-  // chargeLeading/chargeTrailing: when this solver covers an interior segment
-  // of a hard-split, its leading/trailing kept runs are part of a real
-  // inter-edit gap in the full buffer, so movement over them is charged
-  // (instead of the whole-problem leading/trailing free rule).
-  bool chargeLeading;
-  bool chargeTrailing;
-
-  Solver(const Tree& oldT, const Tree& newT, const Config& cfg, CostOptions opts, int maxPlans,
-         bool chargeLeadingIn = false, bool chargeTrailingIn = false)
-      : oldTree(oldT), newTree(newT), config(cfg), options(opts),
+  Solver(const Tree& oldT, const Tree& newT, const Reduction& reduction, const Config& cfg,
+         CostOptions opts, int maxPlans)
+      : oldTree(oldT), newTree(newT), red(reduction), oldPos(reduction.oldPos),
+        newPos(reduction.newPos), config(cfg), options(opts),
         A(oldT.text), B(newT.text), n((int)A.size()), m((int)B.size()),
-        K(max(1, maxPlans)),
-        chargeLeading(chargeLeadingIn), chargeTrailing(chargeTrailingIn),
-        gK(n + 1, vector<vector<Cand>>(m + 1)),
-        dK(n + 1, vector<vector<Cand>>(m + 1)),
-        fK(n + 1, vector<vector<Cand>>(m + 1)),
-        gDone(n + 1, vector<char>(m + 1, 0)),
-        dDone(n + 1, vector<char>(m + 1, 0)),
+        U(reduction.oldUnits()), V(reduction.newUnits()), K(max(1, maxPlans)),
+        gK(U + 1, vector<vector<Cand>>(V + 1)),
+        dK(U + 1, vector<vector<Cand>>(V + 1)),
+        fK(U + 1, vector<vector<Cand>>(V + 1)),
+        gDone(U + 1, vector<char>(V + 1, 0)),
+        dDone(U + 1, vector<char>(V + 1, 0)),
         del(oldT, opts.moveDeleteScale, TilingCost::Kind::Delete),
         move(oldT, opts.moveDeleteScale, TilingCost::Kind::Move) {
+    del.buildActiveTable(red.oldPos, red.oldIsBlock, red.oldBlockDel);
+    move.buildActiveTable(red.oldPos, red.oldIsBlock, red.oldBlockMove);
     buildInsPrefix();
+    while (commonPrefix_ < n && commonPrefix_ < m && A[commonPrefix_] == B[commonPrefix_])
+      commonPrefix_++;
+    while (commonSuffix_ < n && commonSuffix_ < m &&
+           A[n - 1 - commonSuffix_] == B[m - 1 - commonSuffix_])
+      commonSuffix_++;
   }
 
   void buildInsPrefix() {
@@ -304,18 +418,18 @@ struct Solver {
     }
   }
 
+  // Oracle queries take ACTIVE old indices (the reduced tables are active-indexed).
   double moveCost(int from, int to) const { return move.cost(from, to); }
-
   double delCost(int from, int to) const { return del.cost(from, to); }
 
-  bool prefixEq(int p) const { return A.substr(0, p) == B.substr(0, p); }
+  // Old unit i-1 matches new unit j-1: equal length and content (hashed).
+  bool unitMatch(int i, int j) const {
+    return oldPos[i] - oldPos[i - 1] == newPos[j] - newPos[j - 1] &&
+           red.oldSegHash[i - 1] == red.newSegHash[j - 1];
+  }
 
   // Bounded insert into a cost-ascending list capped at K. `upper_bound` keeps
-  // equal-cost entries in generation order, matching the previous
-  // materialize-then-stable_sort semantics, but at O(K) per candidate — the
-  // "O(maxPlans) over the single-plan search" the K-best design promises.
-  // Materializing all predecessors per cell and sorting cost O(N log N) per
-  // cell (O(N^3 log N) total) and dominated the planner's runtime even at K=1.
+  // equal-cost entries in generation order, at O(K) per candidate.
   void insertCand(vector<Cand>& cands, Cand c) const {
     if ((int)cands.size() == K && c.cost >= cands.back().cost) return;
     auto it = upper_bound(cands.begin(), cands.end(), c,
@@ -324,23 +438,23 @@ struct Solver {
     if ((int)cands.size() > K) cands.pop_back();
   }
 
-  // Positioned to START an edit at (p,q). Reads fK directly: solveAll() fills
-  // F row by row, and G(p,q) only needs F from strictly earlier rows.
-  const vector<Cand>& G(int p, int q) {
-    if (gDone[p][q]) return gK[p][q];
-    vector<Cand>& out = gK[p][q];
-    if (p == q && prefixEq(p))  // leading run: free, or charged on interior segments
-      out.push_back({chargeLeading ? moveCost(0, p) : 0.0, -1, -1});
-    for (int t = 1; p - t >= 0 && q - t >= 0 && A[p - t] == B[q - t]; t++) {
-      const vector<Cand>& pf = fK[p - t][q - t];  // matched gap + prior edit
-      double mv = moveCost(p - t, p);
+  // Positioned to START an edit at active (i,j). A collapsed run is one matched
+  // edge, so chaining over active edges treats it as a single free-movement step.
+  const vector<Cand>& G(int i, int j) {
+    if (gDone[i][j]) return gK[i][j];
+    vector<Cand>& out = gK[i][j];
+    if (oldPos[i] == newPos[j] && oldPos[i] <= commonPrefix_)
+      out.push_back({0.0, -1, -1});  // leading run: free
+    for (int t = 1; i - t >= 0 && j - t >= 0 && unitMatch(i - t + 1, j - t + 1); t++) {
+      const vector<Cand>& pf = fK[i - t][j - t];  // matched run + prior edit
+      double mv = moveCost(i - t, i);
       for (int r = 0; r < (int)pf.size(); r++) insertCand(out, {pf[r].cost + mv, t, r});
     }
-    gDone[p][q] = 1;
+    gDone[i][j] = 1;
     return out;
   }
 
-  // Edit started at some (a,q) with a deletion present (a<i), old ptr now i.
+  // Edit started at some active (a,q) with a deletion present (a<i), old ptr now i.
   const vector<Cand>& D(int i, int q) {
     if (dDone[i][q]) return dK[i][q];
     vector<Cand>& out = dK[i][q];
@@ -353,62 +467,58 @@ struct Solver {
     return out;
   }
 
-  // Fill F row by row. Because insCost(q,j) = PS_[j] - PS_[q] - cut_[q], a
-  // candidate's cost at any later j is its q-local part plus a j-constant, so
-  // each row keeps two running K-best lists of q-adjusted candidates (branch 0
-  // over D(i,q), q<=j; branch 1 over G(i,q), q<j) instead of re-scanning all q
-  // per cell — O(K) per cell, exact. Materialization inserts all of b0 before
-  // b1, matching the old generation order (all delete+insert candidates in
-  // ascending q, then all pure-insert) so exact ties break identically.
+  // Fill F row by row. insCost(q,j) = PS_[newPos[j]] - PS_[newPos[q]] - cut_[newPos[q]],
+  // so a candidate's cost at any later j is its q-local part plus a j-constant; each
+  // row keeps two running K-best lists (branch 0 over D(i,q), q<=j; branch 1 over
+  // G(i,q), q<j), O(K) per cell, exact. b0 inserts before b1 to match tie order.
   void solveAll() {
-    for (int i = 0; i <= n; i++) {
+    for (int i = 0; i <= U; i++) {
       vector<Cand> b0, b1;
-      for (int j = 0; j <= m; j++) {
+      for (int j = 0; j <= V; j++) {
         const vector<Cand>& d = D(i, j);
         for (int r = 0; r < (int)d.size(); r++)
-          insertCand(b0, {d[r].cost - PS_[j] - cut_[j], j, r, 0});
+          insertCand(b0, {d[r].cost - PS_[newPos[j]] - cut_[newPos[j]], j, r, 0});
         if (j >= 1) {
           const vector<Cand>& g = G(i, j - 1);
           for (int r = 0; r < (int)g.size(); r++)
-            insertCand(b1, {g[r].cost - PS_[j - 1] - cut_[j - 1], j - 1, r, 1});
+            insertCand(b1, {g[r].cost - PS_[newPos[j - 1]] - cut_[newPos[j - 1]], j - 1, r, 1});
         }
         vector<Cand>& out = fK[i][j];
-        const double shift = PS_[j] + options.diffOpenPenalty;
+        const double shift = PS_[newPos[j]] + options.diffOpenPenalty;
         for (const Cand& c : b0) insertCand(out, {c.cost + shift, c.sel, c.rank, 0});
         for (const Cand& c : b1) insertCand(out, {c.cost + shift, c.sel, c.rank, 1});
       }
     }
   }
 
-  // Emit spans for the G-candidate at (p,q) rank r (matched runs are free
+  // Emit spans for the G-candidate at active (i,j) rank r (matched runs are free
   // movement, so G only recurses; it emits no span of its own).
-  void walkG(int p, int q, int r, vector<EditSpan>& out) {
-    const Cand& c = gK[p][q][r];
+  void walkG(int i, int j, int r, vector<EditSpan>& out) {
+    const Cand& c = gK[i][j][r];
     if (c.sel < 0) return;  // leading-run base
-    walkF(p - c.sel, q - c.sel, c.rank, out);
+    walkF(i - c.sel, j - c.sel, c.rank, out);
   }
 
-  // Emit the last edit of the F-candidate at (i,j) rank r, then recurse.
+  // Emit the last edit of the F-candidate at active (i,j) rank r in RAW coordinates,
+  // then recurse.
   void walkF(int i, int j, int r, vector<EditSpan>& out) {
     const Cand& c = fK[i][j][r];
     int q = c.sel;
     if (c.branch == 0) {  // delete + insert
       const Cand& dc = dK[i][q][c.rank];
       int a = dc.sel;
-      out.push_back(EditSpan{TextRange{a, i}, TextRange{q, j}});
+      out.push_back(EditSpan{TextRange{oldPos[a], oldPos[i]}, TextRange{newPos[q], newPos[j]}});
       walkG(a, q, dc.rank, out);
     } else {  // pure insertion
-      out.push_back(EditSpan{TextRange{i, i}, TextRange{q, j}});
+      out.push_back(EditSpan{TextRange{oldPos[i], oldPos[i]}, TextRange{newPos[q], newPos[j]}});
       walkG(i, q, c.rank, out);
     }
   }
 
   // An identical-replace region (deleted text == inserted text) is strictly
-  // dominated by merging that content into a neighboring edit (one fewer
-  // penalty; del is subadditive), so it can never appear in the optimum — but
-  // the K-best enumeration still reaches such partitions as "distinct"
-  // alternatives. They are noise for any top-K consumer, and the transform
-  // layer rejects identity edits outright, so filter them here.
+  // dominated by merging that content into a neighboring edit, so it never appears
+  // in the optimum — but the K-best enumeration still reaches such partitions, and
+  // the transform layer rejects identity edits, so filter them here.
   bool isDegenerate(const vector<EditSpan>& spans) const {
     for (const EditSpan& s : spans) {
       if (A.substr(s.oldText.begin, s.oldText.end - s.oldText.begin) ==
@@ -419,10 +529,8 @@ struct Solver {
   }
 
   // Top-K plans overall: gather every completed-at-(i,j) candidate whose trailing
-  // run reaches the end, then walk them in cost order, keeping the K cheapest
-  // non-degenerate plans. (The optimum is always clean, so plan 1 is exact; later
-  // slots are best-effort once the per-cell K-best lists interleave with filtered
-  // degenerates.)
+  // run reaches the end (free), then walk them in cost order, keeping the K cheapest
+  // non-degenerate plans.
   vector<PlanSpans> reconstructPlans() {
     solveAll();
     struct Top {
@@ -430,13 +538,11 @@ struct Solver {
       int i, j, r;
     };
     vector<Top> tops;
-    for (int i = 0; i <= n; i++)
-      for (int j = 0; j <= m; j++)
-        if (A.substr(i) == B.substr(j)) {
+    for (int i = 0; i <= U; i++)
+      for (int j = 0; j <= V; j++)
+        if (n - oldPos[i] == m - newPos[j] && n - oldPos[i] <= commonSuffix_) {
           const vector<Cand>& cands = fK[i][j];
-          const double tail = chargeTrailing ? moveCost(i, n) : 0.0;
-          for (int r = 0; r < (int)cands.size(); r++)
-            tops.push_back({cands[r].cost + tail, i, j, r});
+          for (int r = 0; r < (int)cands.size(); r++) tops.push_back({cands[r].cost, i, j, r});
         }
     stable_sort(tops.begin(), tops.end(),
                 [](const Top& a, const Top& b) { return a.cost < b.cost; });
@@ -455,229 +561,18 @@ struct Solver {
   }
 };
 
-// Hard absurdity bound, not a perf envelope: the K-best tables are O(n*m) cells
-// and the tiling oracles O(n^2); past ~1e8 cells the upfront allocation alone is
-// gigabytes (and the O(N^3) DP would take far longer than any session tolerates).
-// Hard-split decomposition is the planned scaling fix; until then, fail loudly
-// rather than degrade.
+// Hard absurdity bound, not a perf envelope. Over the reduced unit counts U/V the
+// K-best tables are O(U*V) and the oracle O(U*U); long matched runs collapse to
+// single units, so this is reached only by a genuinely huge *changed* region.
+// Fail loudly rather than degrade.
 constexpr long long MAX_PLANNER_CELLS = 100'000'000;
 
-void checkPlannerSize(const Tree& initialTree, const Tree& goalTree) {
-  const long long n = (long long)initialTree.text.size() + 1;
-  const long long m = (long long)goalTree.text.size() + 1;
-  CHECK(max(n * m, n * n) <= MAX_PLANNER_CELLS,
-        "VimDiff input too large for the planner DP");
+void checkPlannerSize(int U, int V) {
+  const long long u = (long long)U + 1;
+  const long long v = (long long)V + 1;
+  CHECK(max(u * v, u * u) <= MAX_PLANNER_CELLS, "VimDiff diff too large for the planner DP");
 }
 
-// =============================================================================
-// Hard-split decomposition
-// =============================================================================
-// Make planner work proportional to changed neighborhoods, not the slice: cut
-// at long kept whole-line blocks that no optimal plan straddles, solve the
-// segments between them independently, and recombine. A cut is taken only when
-// keeping the block provably dominates retyping it:
-//
-//   P + moveUB(R) + SPLIT_SLACK < ins(R)        (ins(R) <= del(R) + ins(R))
-//
-// where moveUB is a valid movement tiling of the block ({k}l / {k}j / {k}}).
-// SPLIT_SLACK bounds what cutting can lose: chunk concavity coupling across
-// each seam (merging two adjacent counted chunks into one saves at most
-// base + penalty(CAP) per seam, two seams) plus the closed-form crossing-move
-// approximation. Leading/trailing kept blocks are cut unconditionally — they
-// are free in the objective and contribute only solver size.
-//
-// Blocks are whole lines, with the newline that line-aligns them strictly
-// inside the matched gap, so both buffers are line-aligned at every cut and
-// segment Lines slices have faithful line structure (a segment's first line
-// can still fake a paragraph start — bounded oracle wobble, within slack).
-// Interior segments charge movement over their leading/trailing kept runs
-// (Solver chargeLeading/chargeTrailing); the block itself contributes a
-// plan-independent crossing-move constant (ranking-neutral by construction).
-
-constexpr double SPLIT_SLACK = 12.0;
-constexpr int SPLIT_MIN_BLOCK = 16;  // fast precheck; the dominance test decides
-
-struct Segment {
-  int oldLineBegin, oldLineEnd;  // [begin, end) line ranges
-  int newLineBegin, newLineEnd;
-  int flatOldBegin, flatNewBegin;
-  bool chargeLeading, chargeTrailing;
-};
-
-struct Segmentation {
-  vector<Segment> segments;
-  vector<double> crossingMove;  // per boundary between consecutive segments
-};
-
-Segmentation wholeBufferSegmentation(const Lines& initialLines, const Lines& goalLines) {
-  Segmentation out;
-  out.segments.push_back(Segment{0, (int)initialLines.size(),
-                                 0, (int)goalLines.size(),
-                                 0, 0, false, false});
-  return out;
-}
-
-Segmentation computeSegments(const Lines& initialLines, const Lines& goalLines,
-                             const Tree& oldTree, const Tree& newTree,
-                             const Config& config, const CostOptions& options) {
-  const string& A = oldTree.text;
-  const int n = (int)A.size();
-  const int m = (int)newTree.text.size();
-  const double scale = options.moveDeleteScale;
-  // No gap can reach the block precheck in a buffer this small ({""} also has
-  // no line nodes at all); skip the Myers walk entirely.
-  if (n < SPLIT_MIN_BLOCK) return wholeBufferSegmentation(initialLines, goalLines);
-
-  // Old-side line starts (ascending; lines include their trailing newline).
-  vector<int> lineStarts;
-  for (const Node& nd : oldTree[Level::Line]) lineStarts.push_back(nd.text.begin);
-  sort(lineStarts.begin(), lineStarts.end());
-  auto lineIndexOf = [&](int flat) {
-    return (int)(lower_bound(lineStarts.begin(), lineStarts.end(), flat) - lineStarts.begin());
-  };
-  vector<int> newLineStarts;
-  for (const Node& nd : newTree[Level::Line]) newLineStarts.push_back(nd.text.begin);
-  sort(newLineStarts.begin(), newLineStarts.end());
-  auto newLineIndexOf = [&](int flat) {
-    return (int)(lower_bound(newLineStarts.begin(), newLineStarts.end(), flat) -
-                 newLineStarts.begin());
-  };
-  vector<int> paraStarts;
-  for (const Node& nd : oldTree[Level::Paragraph]) paraStarts.push_back(nd.text.begin);
-  sort(paraStarts.begin(), paraStarts.end());
-
-  // Matched gaps from the Myers alignment, in flat coordinates on both sides.
-  vector<DiffState> myers = MyersDiff::calculate(initialLines, goalLines);
-  vector<int> diffBegins;
-  struct Gap {
-    int oldBegin, newBegin, len;
-    bool leading, trailing;
-  };
-  vector<Gap> gaps;
-  int oldFlat = 0, newFlat = 0;
-  for (const DiffState& d : myers) {
-    // A pure insertion at the buffer end sits one past the last line.
-    const int diffOldBegin = d.beginPos.line < (int)lineStarts.size()
-                                 ? lineStarts[d.beginPos.line] + d.beginPos.col
-                                 : n;
-    diffBegins.push_back(diffOldBegin);
-    const int gapLen = diffOldBegin - oldFlat;
-    if (gapLen > 0) gaps.push_back({oldFlat, newFlat, gapLen, gaps.empty() && oldFlat == 0, false});
-    oldFlat = diffOldBegin + (int)d.deletedText.size();
-    newFlat = newFlat + gapLen + (int)d.insertedText.size();
-  }
-  CHECK(n - oldFlat == m - newFlat, "Myers walk out of sync with flat texts");
-  if (n - oldFlat > 0) gaps.push_back({oldFlat, newFlat, n - oldFlat, false, true});
-
-  // One maximal whole-line cut block per qualifying gap.
-  struct Block {
-    int oldBegin, oldEnd, newBegin;
-  };
-  vector<Block> blocks;
-  for (const Gap& g : gaps) {
-    if (g.len < SPLIT_MIN_BLOCK) continue;
-    // Block bounds: line starts whose aligning newline lies strictly inside
-    // the gap (so the new side is provably line-aligned too); position 0 of a
-    // leading gap is aligned by construction.
-    const int gapEnd = g.oldBegin + g.len;
-    int begin = -1;
-    if (g.oldBegin == 0 && g.newBegin == 0) {
-      begin = 0;
-    } else {
-      const int li = lineIndexOf(g.oldBegin + 1);
-      if (li < (int)lineStarts.size() && lineStarts[li] < gapEnd) begin = lineStarts[li];
-    }
-    if (begin < 0) continue;
-    const int le = lineIndexOf(gapEnd + 1) - 1;  // last line start <= gapEnd
-    int end = (le >= 0 && lineStarts[le] > begin) ? lineStarts[le] : -1;
-    if (g.trailing && gapEnd == n) end = max(end, n);  // may absorb a final partial line
-    if (end <= begin) continue;
-    const int len = end - begin;
-
-    if (!g.leading && !g.trailing) {
-      // Dominance test: keeping the block must beat any straddle by SLACK.
-      KeyedSequence typed;
-      typed.append(string_view(A).substr(begin, len));
-      const double ins = RunningEffort(typed.keys, config).getEffort(config);
-      const int numLines = lineIndexOf(end) - lineIndexOf(begin);
-      const double moveUB =
-          min(levelCost(Level::Char) * scale + countPenalty(len, scale),
-              levelCost(Level::Line) * scale + countPenalty(max(1, numLines), scale));
-      if (options.diffOpenPenalty + moveUB + SPLIT_SLACK >= ins) continue;
-    }
-    blocks.push_back({begin, end, g.newBegin + (begin - g.oldBegin)});
-  }
-  if (blocks.empty()) return wholeBufferSegmentation(initialLines, goalLines);
-
-  // Crossing-move constant over a block: cheapest closed-form counted motion.
-  // Plan-independent, so approximation here is ranking-neutral. The preceding
-  // segment's flattened slice drops its last line's newline, so the crossing
-  // covers the block plus that one newline (+1 char, +1 line step) — otherwise
-  // every cut would underprice the plan by ~1.
-  auto crossingCost = [&](const Block& b) {
-    const int len = b.oldEnd - b.oldBegin + 1;
-    const int numLines = lineIndexOf(b.oldEnd) - lineIndexOf(b.oldBegin) + 1;
-    const int numParas =
-        (int)(lower_bound(paraStarts.begin(), paraStarts.end(), b.oldEnd) -
-              lower_bound(paraStarts.begin(), paraStarts.end(), b.oldBegin));
-    double best = levelCost(Level::Char) * scale + countPenalty(len, scale);
-    best = min(best, levelCost(Level::Line) * scale + countPenalty(numLines, scale));
-    if (numParas > 0)
-      best = min(best, levelCost(Level::Paragraph) * scale + countPenalty(numParas + 1, scale));
-    return best;
-  };
-
-  // Blocks split the buffer into pieces: piece[i] precedes block[i]. Only the
-  // first and last piece can be diff-less (interior pieces sit between two
-  // blocks from different gaps, with >=1 diff between those gaps); diff-less
-  // end pieces are globally free zones and are dropped. The kept pieces form a
-  // contiguous range whose internal boundaries map 1:1 onto blocks.
-  struct Piece {
-    int oldBegin, oldEnd, newBegin, newEnd;
-  };
-  vector<Piece> pieces;
-  int segOld = 0, segNew = 0;
-  for (const Block& b : blocks) {
-    pieces.push_back({segOld, b.oldBegin, segNew, b.newBegin});
-    segOld = b.oldEnd;
-    segNew = b.newBegin + (b.oldEnd - b.oldBegin);
-  }
-  pieces.push_back({segOld, n, segNew, m});
-
-  // A diff begins inside its piece's half-open range, except a pure insertion
-  // at the buffer end, which sits exactly at the final piece's end.
-  auto diffsWithin = [&](const Piece& p) {
-    const int endIncl = p.oldEnd + (p.oldEnd == n ? 1 : 0);
-    return (int)(lower_bound(diffBegins.begin(), diffBegins.end(), endIncl) -
-                 lower_bound(diffBegins.begin(), diffBegins.end(), p.oldBegin));
-  };
-  int first = 0, last = (int)pieces.size() - 1;
-  while (first <= last && diffsWithin(pieces[first]) == 0) first++;
-  while (last >= first && diffsWithin(pieces[last]) == 0) last--;
-  CHECK(first <= last, "hard-split lost every diff-bearing piece");
-  int covered = 0;
-  for (int i = first; i <= last; i++) covered += diffsWithin(pieces[i]);
-  CHECK(covered == (int)diffBegins.size(), "hard-split dropped a diff");
-  if (first == last && pieces[first].oldEnd - pieces[first].oldBegin == n)
-    return wholeBufferSegmentation(initialLines, goalLines);
-
-  Segmentation out;
-  for (int i = first; i <= last; i++) {
-    const Piece& p = pieces[i];
-    // Piece ends at a block begin (a real line start) or the buffer end; the
-    // buffer end maps past any zero-length trailing line node so a trailing
-    // empty line stays inside the last segment.
-    const int oldLineEnd = p.oldEnd == n ? (int)initialLines.size() : lineIndexOf(p.oldEnd);
-    const int newLineEnd = p.newEnd == m ? (int)goalLines.size() : newLineIndexOf(p.newEnd);
-    out.segments.push_back(Segment{lineIndexOf(p.oldBegin), oldLineEnd,
-                                   newLineIndexOf(p.newBegin), newLineEnd,
-                                   p.oldBegin, p.newBegin,
-                                   /*chargeLeading=*/i > first,
-                                   /*chargeTrailing=*/i < last});
-    if (i < last) out.crossingMove.push_back(crossingCost(blocks[i]));
-  }
-  return out;
-}
 
 DiffState diffFromSpan(const Lines& initialLines,
                        const Tree& initialTree,
@@ -695,77 +590,35 @@ DiffState diffFromSpan(const Lines& initialLines,
                    TransformBoundary(initialLines, begin, end));
 }
 
-// One solved hard-split segment. The solver stays alive so calculateBreakdown
-// can read its oracles in segment-local coordinates.
-struct SegmentSolve {
-  Segment seg;
-  std::unique_ptr<Tree> oldTree, newTree;
+
+// Shared pipeline for both public entry points: build the trees, the reduction
+// (collapsed/char units), and the solved plans from one unified DP. The trees,
+// reduction, and solver are heap-held so the solver's references stay valid when
+// the pipeline is returned by value; calculateBreakdown reads the live solver.
+struct SolvedPipeline {
+  std::unique_ptr<Tree> initialTree, goalTree;
+  std::unique_ptr<Reduction> reduction;
   std::unique_ptr<Solver> solver;
-  vector<PlanSpans> plans;  // segment-local flat coordinates
+  vector<PlanSpans> planSpans;
+  bool equal = false;  // initial already equals goal
 };
 
-vector<SegmentSolve> solveSegments(const Lines& initialLines, const Lines& goalLines,
-                                   const Segmentation& segmentation,
-                                   const Config& config, const CostOptions& options) {
-  vector<SegmentSolve> out;
-  out.reserve(segmentation.segments.size());
-  for (const Segment& s : segmentation.segments) {
-    SegmentSolve ss;
-    ss.seg = s;
-    ss.oldTree = std::make_unique<Tree>(
-        Lines(initialLines.begin() + s.oldLineBegin, initialLines.begin() + s.oldLineEnd));
-    ss.newTree = std::make_unique<Tree>(
-        Lines(goalLines.begin() + s.newLineBegin, goalLines.begin() + s.newLineEnd));
-    checkPlannerSize(*ss.oldTree, *ss.newTree);
-    ss.solver = std::make_unique<Solver>(*ss.oldTree, *ss.newTree, config, options,
-                                         options.maxPlans, s.chargeLeading, s.chargeTrailing);
-    ss.plans = ss.solver->reconstructPlans();
-    CHECK(!ss.plans.empty(), "hard-split segment produced no plans");
-    out.push_back(std::move(ss));
+SolvedPipeline runPipeline(const Lines& initialLines, const Lines& goalLines,
+                           const Config& config, const CostOptions& options) {
+  SolvedPipeline out;
+  out.initialTree = std::make_unique<Tree>(initialLines);
+  out.goalTree = std::make_unique<Tree>(goalLines);
+  if (out.initialTree->text == out.goalTree->text) {
+    out.equal = true;
+    return out;
   }
+  out.reduction = std::make_unique<Reduction>(
+      buildReduction(*out.initialTree, *out.goalTree, initialLines, goalLines, config, options));
+  checkPlannerSize(out.reduction->oldUnits(), out.reduction->newUnits());
+  out.solver = std::make_unique<Solver>(*out.initialTree, *out.goalTree, *out.reduction, config,
+                                        options, options.maxPlans);
+  out.planSpans = out.solver->reconstructPlans();
   return out;
-}
-
-// Cross-sum top-K across segments (each combined plan picks one plan per
-// segment; picks are distinct span-sets, so no dedup). Spans are offset to
-// full-buffer flat coordinates; crossing-move constants are plan-independent
-// and added once at the end.
-vector<PlanSpans> combineSegments(const vector<SegmentSolve>& segs,
-                                  const vector<double>& crossingMove, int K) {
-  auto offsetInto = [](vector<EditSpan>& out, const vector<EditSpan>& spans, const Segment& seg) {
-    for (const EditSpan& sp : spans)
-      out.push_back(EditSpan{
-          TextRange{sp.oldText.begin + seg.flatOldBegin, sp.oldText.end + seg.flatOldBegin},
-          TextRange{sp.newText.begin + seg.flatNewBegin, sp.newText.end + seg.flatNewBegin}});
-  };
-
-  vector<PlanSpans> combined;
-  for (const PlanSpans& p : segs[0].plans) {
-    PlanSpans c;
-    c.cost = p.cost;
-    offsetInto(c.spans, p.spans, segs[0].seg);
-    combined.push_back(std::move(c));
-  }
-  for (size_t s = 1; s < segs.size(); s++) {
-    vector<PlanSpans> next;
-    next.reserve(combined.size() * segs[s].plans.size());
-    for (const PlanSpans& a : combined)
-      for (const PlanSpans& b : segs[s].plans) {
-        PlanSpans c;
-        c.cost = a.cost + b.cost;
-        c.spans = a.spans;
-        offsetInto(c.spans, b.spans, segs[s].seg);
-        next.push_back(std::move(c));
-      }
-    stable_sort(next.begin(), next.end(),
-                [](const PlanSpans& x, const PlanSpans& y) { return x.cost < y.cost; });
-    if ((int)next.size() > K) next.resize(K);
-    combined = std::move(next);
-  }
-  double crossTotal = 0.0;
-  for (double c : crossingMove) crossTotal += c;
-  for (PlanSpans& p : combined) p.cost += crossTotal;
-  return combined;
 }
 
 }  // namespace
@@ -775,27 +628,17 @@ vector<Plan> calculate(
     const Lines& goalLines,
     const Config& config,
     CostOptions options) {
-  Tree initialTree(initialLines);
-  Tree goalTree(goalLines);
-  if (initialTree.text == goalTree.text) return {};
-
-  const Segmentation segmentation =
-      options.hardSplit
-          ? computeSegments(initialLines, goalLines, initialTree, goalTree, config, options)
-          : wholeBufferSegmentation(initialLines, goalLines);
-  const vector<SegmentSolve> segs =
-      solveSegments(initialLines, goalLines, segmentation, config, options);
-  vector<PlanSpans> planSpans =
-      combineSegments(segs, segmentation.crossingMove, max(1, options.maxPlans));
+  const SolvedPipeline p = runPipeline(initialLines, goalLines, config, options);
+  if (p.equal) return {};
 
   vector<Plan> plans;
-  plans.reserve(planSpans.size());
-  for (const PlanSpans& ps : planSpans) {
+  plans.reserve(p.planSpans.size());
+  for (const PlanSpans& ps : p.planSpans) {
     Plan plan;
     plan.cost = ps.cost;
     plan.diffs.reserve(ps.spans.size());
     for (const EditSpan& span : ps.spans)
-      plan.diffs.push_back(diffFromSpan(initialLines, initialTree, goalTree, span));
+      plan.diffs.push_back(diffFromSpan(initialLines, *p.initialTree, *p.goalTree, span));
     plans.push_back(std::move(plan));
   }
   return plans;
@@ -806,58 +649,35 @@ vector<CostBreakdown> calculateBreakdown(
     const Lines& goalLines,
     const Config& config,
     CostOptions options) {
-  Tree initialTree(initialLines);
-  Tree goalTree(goalLines);
-  if (initialTree.text == goalTree.text) return {};
-
-  const Segmentation segmentation =
-      options.hardSplit
-          ? computeSegments(initialLines, goalLines, initialTree, goalTree, config, options)
-          : wholeBufferSegmentation(initialLines, goalLines);
-  const vector<SegmentSolve> segs =
-      solveSegments(initialLines, goalLines, segmentation, config, options);
-  vector<PlanSpans> planSpans =
-      combineSegments(segs, segmentation.crossingMove, max(1, options.maxPlans));
-
-  // Owning segment of a full-coordinate old position (regions never straddle a
-  // cut block, so the containing segment is unique).
-  auto segmentOf = [&](int oldFlat) {
-    int si = 0;
-    for (size_t s = 0; s < segs.size(); s++)
-      if (segs[s].seg.flatOldBegin <= oldFlat) si = (int)s;
-    return si;
+  const SolvedPipeline p = runPipeline(initialLines, goalLines, config, options);
+  if (p.equal) return {};
+  const Reduction& red = *p.reduction;
+  const Solver& solver = *p.solver;
+  // Span boundaries are always active positions; map raw old position -> active index.
+  auto activeOld = [&](int raw) {
+    return (int)(lower_bound(red.oldPos.begin(), red.oldPos.end(), raw) - red.oldPos.begin());
   };
 
   vector<CostBreakdown> breakdowns;
-  breakdowns.reserve(planSpans.size());
-  for (const PlanSpans& ps : planSpans) {
+  breakdowns.reserve(p.planSpans.size());
+  for (const PlanSpans& ps : p.planSpans) {
     CostBreakdown bd;
     double listed = 0.0;
-    int prevSi = -1, prevLocalEnd = -1;
+    int prevEnd = -1;  // active old index of the previous region's old end
     for (const EditSpan& span : ps.spans) {
-      DiffState diff = diffFromSpan(initialLines, initialTree, goalTree, span);
-      const int si = segmentOf(span.oldText.begin);
-      const SegmentSolve& seg = segs[si];
-      const int localBegin = span.oldText.begin - seg.seg.flatOldBegin;
-      const int localEnd = span.oldText.end - seg.seg.flatOldBegin;
-      double del = seg.solver->delCost(localBegin, localEnd);
+      DiffState diff = diffFromSpan(initialLines, *p.initialTree, *p.goalTree, span);
+      const int aBegin = activeOld(span.oldText.begin);
+      const int aEnd = activeOld(span.oldText.end);
+      const double del = solver.delCost(aBegin, aEnd);
       KeyedSequence typed;
-      typed.append(string_view(goalTree.text).substr(
+      typed.append(string_view(p.goalTree->text).substr(
           span.newText.begin, span.newText.end - span.newText.begin));
-      double ins = RunningEffort(typed.keys, config).getEffort(config);
-      // Inter-region movement, attributed to the later region. Across a cut:
-      // previous segment's charged trailing run + the block crossing constant +
-      // this segment's charged leading run.
-      double mv = 0.0;
-      if (prevSi == si) {
-        mv = seg.solver->moveCost(prevLocalEnd, localBegin);
-      } else if (prevSi >= 0) {
-        mv = segs[prevSi].solver->moveCost(prevLocalEnd, segs[prevSi].solver->n);
-        for (int b = prevSi; b < si; b++) mv += segmentation.crossingMove[b];
-        mv += seg.solver->moveCost(0, localBegin);
-      }
-      prevSi = si;
-      prevLocalEnd = localEnd;
+      const double ins = RunningEffort(typed.keys, config).getEffort(config);
+      // Inter-region movement: one motion from the previous region's end to this
+      // region's begin (one unified DP, so no severing and no coupling); the first
+      // region is free.
+      const double mv = prevEnd < 0 ? 0.0 : solver.moveCost(prevEnd, aBegin);
+      prevEnd = aEnd;
       listed += options.diffOpenPenalty + del + ins + mv;
       bd.regions.push_back(RegionBreakdown{std::move(diff), del, ins, mv});
     }

@@ -64,8 +64,8 @@ TEST(VimDiffApproval, OneCharGapBetweenEdits) {
   verifyMarkdown(renderCase("one-char gap between two edits", "abcde", "aXcYe"));
 }
 
-// Over-merge: VimDiff's optimum keeps the whole line and re-types "bbb"; its
-// surgical two-edit split sits one plan below.
+// The optimum keeps "bbb": retyping the whole line straddles the collapsed kept
+// block (no single `dd`), so the surgical two-edit split wins.
 TEST(VimDiffApproval, TwoWordEditsKeepingWord) {
   verifyMarkdown(renderCase("two edits keeping a whole word", "aaa bbb ccc", "xxx bbb yyy"));
 }
@@ -91,13 +91,14 @@ TEST(VimDiffApproval, ThreeEditsOverShortGaps) {
                         "ehfaf beeac edgae", "effaf eeac gdgae"));
 }
 
-// Short kept gap: the optimum over-merges; the surgical split is a lower plan.
+// Short kept gap "b cd e" that still clears the collapse gate, so the optimum is
+// the surgical first+last char split keeping the middle.
 TEST(VimDiffApproval, FirstLastCharShortGap) {
   verifyMarkdown(renderCase("first+last char, short kept gap", "ab cd ef", "Xb cd eY"));
 }
 
-// Contrast: the kept gap "oo bar ba" is long enough that retyping loses, so
-// Plan 1 is already the surgical split — the over-merge is gap-length bounded.
+// Long kept gap "oo bar ba": retyping it loses by far, so the optimum is the
+// surgical first+last char split.
 TEST(VimDiffApproval, FirstLastCharLongGap) {
   verifyMarkdown(renderCase("first+last char, long kept gap", "foo bar baz", "Xoo bar baY"));
 }

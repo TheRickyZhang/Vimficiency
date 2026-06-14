@@ -12,12 +12,6 @@ struct CostOptions {
   double diffOpenPenalty = 1.0;   // per-region operator/mode overhead
   double moveDeleteScale = 1.0;   // scales keystroke move/delete vs insert effort
   int maxPlans = 1;
-  // Hard-split: cut at long kept whole-line blocks no optimal plan straddles
-  // and solve the pieces independently, making planner work scale with changed
-  // neighborhoods instead of the slice (see VimDiff.cpp § Hard-split; exact up
-  // to a bounded seam slack). Off = single whole-buffer solve, kept as the
-  // measurement/testing escape hatch.
-  bool hardSplit = true;
 };
 
 // One candidate partition and its planner cost.

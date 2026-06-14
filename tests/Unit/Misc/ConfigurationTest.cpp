@@ -254,8 +254,10 @@ TEST_F(ConfigurationTest, CountPenaltyOverrideAffectsMotionRanking) {
 
   NavOptimizer opt(Config::uniform());
   NavBoundary boundary;
+  // 4w ranks below cheaper find-based alternatives, so a larger result cap is
+  // needed to find it in the baseline (discovery, not top-rank).
   NavOptimizerParams params = NavOptimizerParams{}
-      .withMaxResults(30)
+      .withMaxResults(150)
       .withMaxNodesPopped(20000)
       .withMinCountRepeat(4)
       .withMaxResultsPerEndPos(2);

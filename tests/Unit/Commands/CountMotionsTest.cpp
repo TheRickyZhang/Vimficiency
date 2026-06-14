@@ -159,7 +159,17 @@ TEST_F(CountMotionsOptimizerTest, CountGe_BackwardToWordEnd) {
   CursorPos end(0, 17);  // end of "four"
   string userSeq = "gegegege";
 
-  auto results = runOptimizer(wordLine, start, end, userSeq);
+  // 4ge is generated but ranks below cheaper find-based alternatives, so a
+  // larger result cap is needed to assert it is still produced (discovery,
+  // not top-rank — ranked menus are not stable assertions).
+  NavOptimizer opt(Config::uniform());
+  NavBoundary boundary;
+  auto results = opt.optimize(wordLine, start, end,
+                              NavOptimizerParams{}
+                                  .withMaxResults(150)
+                                  .withMaxNodesPopped(20000)
+                                  .withMaxResultsPerEndPos(2),
+                              userSeq, boundary, navContext).getResults();
 
   // Should find count-prefixed ge (4ge lands at 17)
   EXPECT_TRUE(contains_all(results, {"4ge"})) << "Should find count-prefixed 4ge";
