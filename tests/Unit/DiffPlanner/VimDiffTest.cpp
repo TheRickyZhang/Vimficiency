@@ -49,6 +49,77 @@ TEST(VimDiffTest, RoundTripsHandcrafted) {
   expectRoundTrip("hello", "");
 }
 
+// Hard-split fires on a long kept whole-line block between two edits, and the
+// split solve must agree with the unsplit one: same round-trip, same surgical
+// regions, plan-1 cost within the seam slack (in practice a unit or two of
+// closed-form crossing + fake-paragraph-start wobble).
+TEST(VimDiffTest, HardSplitMatchesUnsplitOnSeparatedEdits) {
+  Config config = Config::uniform();
+  const string keep =
+      "alpha beta gamma\ndelta epsilon\nzeta eta theta\niota kappa lambda\n";
+  Lines initial = toLines("first XX line\n" + keep + "last YY line");
+  Lines goal = toLines("first ZZZ line\n" + keep + "last WW line");
+
+  vector<VimDiff::Plan> split = VimDiff::calculate(initial, goal, config);
+  VimDiff::CostOptions noSplit;
+  noSplit.hardSplit = false;
+  vector<VimDiff::Plan> unsplit = VimDiff::calculate(initial, goal, config, noSplit);
+  ASSERT_FALSE(split.empty());
+  ASSERT_FALSE(unsplit.empty());
+
+  EXPECT_EQ(MyersDiff::applyAllDiffState(split.front().diffs, initial).flatten(),
+            goal.flatten());
+  EXPECT_NEAR(split.front().cost, unsplit.front().cost, 4.0);
+
+  ASSERT_EQ(split.front().diffs.size(), 2u);
+  ASSERT_EQ(unsplit.front().diffs.size(), 2u);
+  for (size_t i = 0; i < 2; i++) {
+    EXPECT_EQ(split.front().diffs[i].deletedText, unsplit.front().diffs[i].deletedText);
+    EXPECT_EQ(split.front().diffs[i].insertedText, unsplit.front().diffs[i].insertedText);
+    EXPECT_EQ(split.front().diffs[i].beginPos, unsplit.front().diffs[i].beginPos);
+  }
+}
+
+// Randomized split-vs-unsplit agreement on small buffers (kept small enough
+// that the unsplit cubic solve stays fast): round-trip always, plan-1 cost
+// within the seam slack.
+TEST(VimDiffTest, HardSplitStaysNearUnsplitOnRandomCases) {
+  Config config = Config::uniform();
+  mt19937 rng(20260612);
+  uniform_int_distribution<int> wordLen(2, 7);
+  uniform_int_distribution<int> letter(0, 25);
+  auto randWord = [&] {
+    string w;
+    for (int i = wordLen(rng); i > 0; i--) w += (char)('a' + letter(rng));
+    return w;
+  };
+
+  for (int it = 0; it < 6; it++) {
+    vector<string> lines;
+    for (int l = 0; l < 8; l++) {
+      string line;
+      for (int w = 0; w < 3; w++) line += (w ? " " : "") + randWord();
+      lines.push_back(line);
+    }
+    Lines initial(lines.begin(), lines.end());
+    vector<string> goalVec = lines;
+    goalVec[0] = randWord() + " " + goalVec[0];
+    goalVec[7] += " " + randWord();
+    Lines goal(goalVec.begin(), goalVec.end());
+
+    vector<VimDiff::Plan> split = VimDiff::calculate(initial, goal, config);
+    VimDiff::CostOptions noSplit;
+    noSplit.hardSplit = false;
+    vector<VimDiff::Plan> unsplit = VimDiff::calculate(initial, goal, config, noSplit);
+    ASSERT_FALSE(split.empty());
+    ASSERT_FALSE(unsplit.empty());
+    EXPECT_EQ(MyersDiff::applyAllDiffState(split.front().diffs, initial).flatten(),
+              goal.flatten());
+    EXPECT_NEAR(split.front().cost, unsplit.front().cost, 4.0)
+        << "case " << it << ": split partition diverged past the seam slack";
+  }
+}
+
 TEST(VimDiffTest, IdenticalBuffersProduceNoDiffs) {
   Config config = Config::uniform();
   Lines lines = toLines("hello world\nsecond line");

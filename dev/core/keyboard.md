@@ -133,10 +133,15 @@ The `RunningEffort` class (`Effort/RunningEffort.h`) computes typing cost from `
 - Same-finger bigrams (penalty)
 - Same-key repeats (extra penalty)
 - Hand alternation (bonus)
-- Long same-hand runs (penalty beyond threshold)
 - Good/bad rolls (inward vs outward finger sequences)
 
-The weighted sum of these metrics produces the final effort score used by the optimizer's A* heuristic.
+The weighted sum of these metrics produces the final effort score used by the
+optimizer's A* heuristic. Every metric is bigram-window: `RunningEffort` is a
+monoid with O(1) `merge` and a one-key boundary, which is what lets VimDiff
+collapse insert costs into prefix sums (`insCost(q,j) = PS(j) - PS(q) - cut(q)`,
+pinned by `tests/Unit/Misc/EffortDecompositionTest.cpp`). A metric with a wider
+context window (e.g. a long same-hand-run penalty) would break that identity —
+that test fails first if one is added.
 
 ## Adding New Keys or Commands
 

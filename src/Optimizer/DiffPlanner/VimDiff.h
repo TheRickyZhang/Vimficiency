@@ -6,23 +6,18 @@
 #include "Keyboard/Config.h"
 #include "Types/Lines.h"
 
-// Character-granular diff partition planner (composition:diffAlgorithm=0), the
-// default. The DiffTree is only a cost oracle: the partition search runs over flat
-// character positions, so diff boundaries are not constrained to tree units. See
-// dev/optimizer/diff-generation.md § VimDiff.
 namespace VimDiff {
 
 struct CostOptions {
   double diffOpenPenalty = 1.0;   // per-region operator/mode overhead
   double moveDeleteScale = 1.0;   // scales keystroke move/delete vs insert effort
-  // Number of distinct partitions to return, ascending by planner cost. The
-  // single-plan DP generalizes to K-best by keeping each cell's `maxPlans`
-  // cheapest sub-paths rather than one (the standard K-best lemma: K per cell
-  // suffices for global top-K under additive nonnegative costs). Cost is
-  // O(maxPlans) over the single-plan search, with a sort/truncate per cell. Each
-  // DP path is a distinct edit-span set, so the plans need no dedup. The default
-  // of 1 reproduces the historical single-best behavior exactly.
   int maxPlans = 1;
+  // Hard-split: cut at long kept whole-line blocks no optimal plan straddles
+  // and solve the pieces independently, making planner work scale with changed
+  // neighborhoods instead of the slice (see VimDiff.cpp § Hard-split; exact up
+  // to a bounded seam slack). Off = single whole-buffer solve, kept as the
+  // measurement/testing escape hatch.
+  bool hardSplit = true;
 };
 
 // One candidate partition and its planner cost.

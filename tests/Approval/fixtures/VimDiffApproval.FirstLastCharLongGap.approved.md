@@ -12,7 +12,7 @@ Xoo bar baY
 
 _Edit costs: delete / insert / move_
 
-### Plan 1: cost 13
+### Plan 1: cost 8.73205
 
 ```
 f
@@ -26,18 +26,9 @@ z
 ->
 Y
 ```
-`1 / 1 / 7`
+`1 / 1 / 2.73205`
 
-### Plan 2: cost 14
-
-```
-foo bar baz
-->
-Xoo bar baY
-```
-`2 / 11 / 0`
-
-### Plan 3: cost 14
+### Plan 2: cost 10.7321
 
 ```
 f
@@ -47,8 +38,24 @@ X
 `1 / 1 / 0`
 
 ```
-baz
+az
 ->
-baY
+aY
 ```
-`2 / 3 / 5`
+`2 / 2 / 2.73205`
+
+### Plan 3: cost 10.7321
+
+```
+fo
+->
+Xo
+```
+`2 / 2 / 0`
+
+```
+z
+->
+Y
+```
+`1 / 1 / 2.73205`

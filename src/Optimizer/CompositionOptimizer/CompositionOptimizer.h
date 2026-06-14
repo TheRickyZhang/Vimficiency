@@ -139,7 +139,12 @@ struct CompositionOptimizer {
     const NavContext& navigationContext = NavContext(),
 
     // Cooperative stop signal; null runs the search to its normal caps.
-    const SearchControl* control = nullptr
+    const SearchControl* control = nullptr,
+
+    // Calibration/diagnostic seam: when non-null, search over this exact
+    // partition instead of running the diff planner (see
+    // CompositionSearchContext). Used by the plan-regret harness.
+    const std::vector<DiffState>* forcedDiffs = nullptr
   );
 
   // Same as `optimize()`, but additionally records a per-edit byte span for
