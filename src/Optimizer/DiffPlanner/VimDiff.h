@@ -12,6 +12,9 @@ struct CostOptions {
   double diffOpenPenalty = 1.0;   // per-region operator/mode overhead
   double moveDeleteScale = 1.0;   // scales keystroke move/delete vs insert effort
   int maxPlans = 1;
+  // Collapse matched-run interiors so DP work scales with diff size, not buffer
+  // size. Off = exact char-level DP (the baseline; for verification/diagnostics).
+  bool collapseRuns = true;
 };
 
 // One candidate partition and its planner cost.

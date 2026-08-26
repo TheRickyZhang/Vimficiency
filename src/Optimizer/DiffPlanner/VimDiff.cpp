@@ -6,11 +6,13 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "Effort/RunningEffort.h"
 #include "Keyboard/KeyedSequence.h"
+#include "MyersDiff.h"
 #include "Tree.h"
 #include "Utils/Debug.h"
 #include "VimCore/CharMask.h"
@@ -25,6 +27,10 @@ namespace VimDiff {
 namespace {
 
 constexpr double INF = numeric_limits<double>::max() / 4.0;
+// Char-level cells kept at each edge of a collapsed matched run, so the DP can slide
+// an edit boundary to the cost-optimal alignment (the optimal slide is bounded:
+// sliding k chars costs ~k to retype but saves only sub-linear navigation).
+constexpr int MATCH_MARGIN = 8;
 using TextRange = Tree::TextRange;
 using Node = Tree::Node;
 
@@ -39,69 +45,21 @@ double countPenalty(int k, double scale) {
   return ((int)to_string(k).size() + sqrt((double)k) - 1.0) * scale;
 }
 
-// Tiled command-cost oracle, shared by deletion and movement: price a flat span
-// [from,to) as the cheapest tiling of counted commands, via a per-end-position DP
-// run once per start `a`. For end q, the chunk ending there is the cheapest `{k}`
-// command across levels. Deletion pays the operator (`deleteCost`); movement is the
-// bare motion (`levelCost`) — the same shapes minus the `d`:
-//   - char    `{k}x` / `{k}l`          : [q-k, q),                     base 1 / 1
-//   - word    `{k}de`,`dw` / `{k}e`,`w`: k alnum/_ runs ending at q,   base 2 / 1
-//   - bigword `{k}dE`,`dW` / `{k}E`,`W`: k non-blank runs ending at q, base 3 / 2
-//   - line    `{k}dd` / `{k}j`         : k whole lines ending at q,    base 2 / 1
-//   - para    `{k}dap` / `{k}}`        : k paragraphs ending at q,     base 3 / 2
-// plus the count penalty `penalty(k) = digits(k) + sqrt(k) - 1` (0 at k=1, so a plain
-// uncounted command is just `base`; concave, so each extra unit costs less). The
-// chunk shapes transfer to movement exactly because a delete's extent IS its
-// motion's landing point (`dw` = `d`+`w`); a movement tiling is a path of landings.
-// Line/para movement chunks approximate `{k}j` between unit starts — column
-// adjustment within a line is below this oracle's fidelity.
-//
-// Word/big runs are read from character class and are SPAN-LOCAL: a run start is
-// clamped to `a`, so a contiguous run counts as one word even inside a larger global
-// word (deleting "bbbbbbb" out of "abbbbbbba" = one `de` = 2, not 7 chars). A chunk
-// may swallow whitespace on one side at count `k` — `dw` trailing, or `de` from a
-// leading space — and on both sides at count `k+1` (`d{k+1}w` from the leading
-// space); interior separators inside a counted multi-run chunk are necessarily
-// included. Newlines are neither word/big/ws, so word/big runs never cross lines.
-// The clamp also lets a partial-word delete (a run prefix) cost `base`; that
-// over-credits vs a real `de`, but keeps the partitioner from over-pricing mid-word
-// cuts (single chars still cost 1, the char edge winning).
-//
-// Words/bigwords/chars cap the count scan at CAP (there are many); lines/paragraphs
-// scan all earlier starts (there are few). The buffer is fixed during search, so the
-// full table is precomputed once — O(CAP*N^2), plus O(#lines^2) per start — read O(1).
+// Span cost oracle for deletion/movement, tiled from counted char/word/bigword/
+// line/paragraph commands. Word/bigword chunks are span-local.
 class TilingCost {
 public:
   enum class Kind { Delete, Move };
 
-  // Builds boundaries + penalty only. query() works immediately; cost() needs
-  // buildActiveTable() first.
   TilingCost(const Tree& tree, double scale, Kind kind)
       : n_(static_cast<int>(tree.text.size())), kind_(kind), scale_(scale) {
     buildBoundaries(tree);
     buildPenalty(scale);
   }
 
-  // Cost over ACTIVE unit indices (see buildActiveTable); 0 when from>=to.
-  double cost(int from, int to) const { return from >= to ? 0.0 : table_[from][to]; }
-
-  // Build the reduced cost table over active unit boundaries. oldPos are raw
-  // boundaries (front 0, back n_); unit u spans [oldPos[u],oldPos[u+1]) and is a
-  // forced block transition of cost blockCost[u] when isBlock[u], else tiled with
-  // char/word/line/para chunks that never cross a block. Boundaries stay full-
-  // context (raw), so there is no slice wobble. O(U^2) over the diff-sized unit
-  // count.
-  void buildActiveTable(const vector<int>& oldPos, const vector<char>& isBlock,
-                        const vector<double>& blockCost) {
-    const int U = (int)oldPos.size() - 1;
-    table_.assign(U + 1, vector<double>(U + 1, INF));
-    if ((int)scratch_.size() < n_ + 1) scratch_.assign(n_ + 1, INF);
-    for (int as = 0; as <= U; as++) sweepActive(as, oldPos, isBlock, blockCost);
-  }
-
-  // Lazy single tiling query of block-free content [from,to), O(to-from), without
-  // the O(N^2) table. Used by the reduction builder for the collapse gate and
-  // per-block move/delete costs.
+  // Cheapest counted-command tiling of the raw span [from,to), O(span). Queried over
+  // raw positions, so the cost is exact across any collapsed-run interior. 0 when
+  // from>=to.
   double query(int from, int to) const {
     if (from >= to) return 0.0;
     if ((int)scratch_.size() < n_ + 1) scratch_.assign(n_ + 1, INF);
@@ -140,7 +98,6 @@ private:
   vector<int> lineStarts_, paraStarts_;  // sorted, terminated by n_
   vector<int> lineIdx_, paraIdx_;        // line/para start position -> list index, else -1
   vector<double> penalty_;               // (digits(k)+sqrt(k)-1)*scale, 0 at k<=1
-  vector<vector<double>> table_;
 
   void buildBoundaries(const Tree& tree) {
     const string& text = tree.text;
@@ -231,47 +188,9 @@ private:
   double unitBase(Level level) const {
     return kind_ == Kind::Delete ? deleteCost(level) : levelCost(level);
   }
-
-  // One row of the active table: tile from active start `as`. Char-stretches use
-  // the raw chunk relaxers with the floor reset to the current stretch start (so
-  // chunks never cross a block); each block unit is a forced single transition.
-  // scratch_ is the raw-indexed working array; only stretch positions and block
-  // boundaries are written, and every read is a position written earlier this
-  // sweep, so no clearing between sweeps is needed.
-  void sweepActive(int as, const vector<int>& oldPos, const vector<char>& isBlock,
-                   const vector<double>& blockCost) {
-    vector<double>& cost = scratch_;
-    vector<double>& row = table_[as];
-    const int U = (int)oldPos.size() - 1;
-    cost[oldPos[as]] = 0.0;
-    row[as] = 0.0;
-    int stretchStart = oldPos[as];
-    const double charBase = unitBase(Level::Char) * scale_;
-    const double wordBase = unitBase(Level::Word) * scale_;
-    const double bigBase = unitBase(Level::BigWord) * scale_;
-    const double lineBase = unitBase(Level::Line) * scale_;
-    const double paraBase = unitBase(Level::Paragraph) * scale_;
-    for (int au = as + 1; au <= U; au++) {
-      const int rawQ = oldPos[au];
-      if (isBlock[au - 1]) {
-        cost[rawQ] = cost[oldPos[au - 1]] + blockCost[au - 1];
-        stretchStart = rawQ;
-      } else {
-        double best = INF;
-        for (int k = 1; k <= CAP && rawQ - k >= stretchStart; k++)
-          best = min(best, cost[rawQ - k] + charBase + penalty_[k]);
-        relaxRuns(best, cost, stretchStart, rawQ, wordBase, isWord_, wordIdx_, wordStarts_, wordEnds_);
-        relaxRuns(best, cost, stretchStart, rawQ, bigBase, isBig_, bigIdx_, bigStarts_, bigEnds_);
-        relaxUnits(best, cost, stretchStart, rawQ, lineBase, lineIdx_, lineStarts_);
-        relaxUnits(best, cost, stretchStart, rawQ, paraBase, paraIdx_, paraStarts_);
-        cost[rawQ] = best;
-      }
-      row[au] = cost[rawQ];
-    }
-  }
 };
 
-// FNV-1a over a byte range; O(1) segment-match checks in the reduced DP.
+// FNV-1a over a byte range; O(1) unit-match checks.
 uint64_t fnv1a(string_view s) {
   uint64_t h = 1469598103934665603ull;
   for (char c : s) {
@@ -281,43 +200,130 @@ uint64_t fnv1a(string_view s) {
   return h;
 }
 
-// Reduced coordinate system. Long matched runs collapse to single "block" units;
-// changed regions and short matches stay character-level. Each side becomes a
-// sequence of units (one block or one char), and both the DP and the tiling oracle
-// run over the unit boundaries (oldPos/newPos) so work scales with the diff, not
-// the buffer. A block carries its precomputed move/delete cost; new-side typing
-// stays raw (insert prefix sums cover collapsed runs directly).
-struct Reduction {
-  vector<int> oldPos, newPos;                // active raw boundaries; front()=0, back()=n/m
-  vector<char> oldIsBlock;                    // per old unit u: [oldPos[u],oldPos[u+1]) is a block
-  vector<double> oldBlockMove, oldBlockDel;   // per old unit; 0 for non-blocks
-  vector<uint64_t> oldSegHash, newSegHash;    // per unit content hash
+// The DP's coordinate system. `collapse=false` is plain char-level (every position
+// a unit) — the exact baseline. `collapse=true` skips the interior of matched runs
+// the optimum provably keeps (type(run) > move(run) + diffOpenPenalty), so the unit
+// count is diff-sized. Changed regions and short/spannable matched runs stay
+// char-level, so the DP over these units still explores every alignment within a
+// changed region and is exact there; only provably-kept runs are skipped.
+class PositionMap {
+public:
+  PositionMap(const Tree& oldTree, const Tree& newTree, const Lines& oldLines,
+              const Lines& newLines, const Config& config, const CostOptions& options,
+              bool collapse) {
+    const string& A = oldTree.text;
+    const string& B = newTree.text;
+    const int n = (int)A.size();
+    const int m = (int)B.size();
 
-  int oldUnits() const { return (int)oldPos.size() - 1; }
-  int newUnits() const { return (int)newPos.size() - 1; }
+    if (!collapse) {
+      oldPos_.reserve(n + 1);
+      newPos_.reserve(m + 1);
+      for (int i = 0; i <= n; i++) oldPos_.push_back(i);
+      for (int j = 0; j <= m; j++) newPos_.push_back(j);
+      for (int i = 0; i < n; i++) oldSegHash_.push_back(fnv1a(string_view(A).substr(i, 1)));
+      for (int j = 0; j < m; j++) newSegHash_.push_back(fnv1a(string_view(B).substr(j, 1)));
+      return;
+    }
+
+    TilingCost moveOracle(oldTree, options.moveDeleteScale, TilingCost::Kind::Move);
+    vector<int> lineStarts;
+    for (const Node& nd : oldTree[Level::Line]) lineStarts.push_back(nd.text.begin);
+    sort(lineStarts.begin(), lineStarts.end());
+
+    // Split into matched/changed regions via line-level Myers (gaps = matched runs).
+    struct Region {
+      int oldB, oldE, newB, newE;
+      bool matched;
+    };
+    vector<Region> regions;
+    int oldFlat = 0, newFlat = 0;
+    for (const DiffState& d : MyersDiff::calculate(oldLines, newLines)) {
+      const int diffOldBegin = d.beginPos.line < (int)lineStarts.size()
+                                   ? lineStarts[d.beginPos.line] + d.beginPos.col
+                                   : n;
+      const int gapLen = diffOldBegin - oldFlat;
+      if (gapLen > 0) regions.push_back({oldFlat, diffOldBegin, newFlat, newFlat + gapLen, true});
+      const int dOldE = diffOldBegin + (int)d.deletedText.size();
+      const int dNewB = newFlat + gapLen;
+      const int dNewE = dNewB + (int)d.insertedText.size();
+      if (dOldE > diffOldBegin || dNewE > dNewB)
+        regions.push_back({diffOldBegin, dOldE, dNewB, dNewE, false});
+      oldFlat = dOldE;
+      newFlat = dNewE;
+    }
+    if (n - oldFlat > 0 || m - newFlat > 0) regions.push_back({oldFlat, n, newFlat, m, true});
+
+    oldPos_.push_back(0);
+    newPos_.push_back(0);
+    // A unit spans [oldPos_.back(), oldEnd); a collapsed run is one such unit (its
+    // span hashed whole). The Solver prices it via the raw-span oracle, so no
+    // per-unit block cost is stored.
+    auto addOldUnit = [&](int oldEnd) {
+      oldSegHash_.push_back(fnv1a(string_view(A).substr(oldPos_.back(), oldEnd - oldPos_.back())));
+      oldPos_.push_back(oldEnd);
+    };
+    auto addNewUnit = [&](int newEnd) {
+      newSegHash_.push_back(fnv1a(string_view(B).substr(newPos_.back(), newEnd - newPos_.back())));
+      newPos_.push_back(newEnd);
+    };
+    auto addCharSpan = [&](int oFrom, int oTo, int nFrom, int nTo) {
+      for (int p = oFrom + 1; p <= oTo; p++) addOldUnit(p);
+      for (int q = nFrom + 1; q <= nTo; q++) addNewUnit(q);
+    };
+    for (const Region& rg : regions) {
+      if (!rg.matched) {
+        addCharSpan(rg.oldB, rg.oldE, rg.newB, rg.newE);
+        continue;
+      }
+      // Collapse the run interior, keeping MATCH_MARGIN char-level cells at each edge.
+      // An optimal edit boundary can slide a little into a matched run for an
+      // alignment saving (sub-linear nav gain) but only a bounded distance — sliding k
+      // chars costs ~k to retype, so beyond the margin it is never optimal. Keeping
+      // the margin char-level lets the DP find that boundary (Plan 1 stays the true
+      // optimum); the raw-span oracle prices commands across the collapsed interior.
+      const int off = rg.newB - rg.oldB;
+      const int coreB = rg.oldB + MATCH_MARGIN;
+      const int coreE = rg.oldE - MATCH_MARGIN;
+      bool collapsed = false;
+      if (coreB < coreE) {
+        KeyedSequence typed;
+        typed.append(string_view(A).substr(coreB, coreE - coreB));
+        const double type = RunningEffort(typed.keys, config).getEffort(config);
+        const double mv = moveOracle.query(coreB, coreE);
+        collapsed = type > mv + options.diffOpenPenalty;
+      }
+      if (collapsed) {
+        addCharSpan(rg.oldB, coreB, rg.newB, coreB + off);
+        addOldUnit(coreE);
+        addNewUnit(coreE + off);
+        addCharSpan(coreE, rg.oldE, coreE + off, rg.newE);
+      } else {
+        addCharSpan(rg.oldB, rg.oldE, rg.newB, rg.newE);
+      }
+    }
+  }
+
+  int oldUnits() const { return (int)oldPos_.size() - 1; }
+  int newUnits() const { return (int)newPos_.size() - 1; }
+  int oldRaw(int i) const { return oldPos_[i]; }
+  int newRaw(int j) const { return newPos_[j]; }
+  int oldIndex(int raw) const {
+    return (int)(lower_bound(oldPos_.begin(), oldPos_.end(), raw) - oldPos_.begin());
+  }
+  TextRange oldRange(int begin, int end) const { return TextRange{oldRaw(begin), oldRaw(end)}; }
+  TextRange newRange(int begin, int end) const { return TextRange{newRaw(begin), newRaw(end)}; }
+
+  bool unitMatch(int oldUnitEnd, int newUnitEnd) const {
+    return oldRaw(oldUnitEnd) - oldRaw(oldUnitEnd - 1) ==
+               newRaw(newUnitEnd) - newRaw(newUnitEnd - 1) &&
+           oldSegHash_[oldUnitEnd - 1] == newSegHash_[newUnitEnd - 1];
+  }
+
+private:
+  vector<int> oldPos_, newPos_;
+  vector<uint64_t> oldSegHash_, newSegHash_;
 };
-
-// Character-level coordinates: every position is a unit boundary. This is the
-// exact baseline; efficiency work must preserve this state space lazily rather
-// than pruning matched-run interiors.
-Reduction buildReduction(const Tree& oldTree, const Tree& newTree,
-                         const Lines&, const Lines&, const Config&, const CostOptions&) {
-  const string& A = oldTree.text;
-  const string& B = newTree.text;
-  const int n = (int)A.size();
-  const int m = (int)B.size();
-  Reduction r;
-  r.oldPos.reserve(n + 1);
-  r.newPos.reserve(m + 1);
-  for (int i = 0; i <= n; i++) r.oldPos.push_back(i);
-  for (int j = 0; j <= m; j++) r.newPos.push_back(j);
-  r.oldIsBlock.assign(n, 0);
-  r.oldBlockMove.assign(n, 0.0);
-  r.oldBlockDel.assign(n, 0.0);
-  for (int i = 0; i < n; i++) r.oldSegHash.push_back(fnv1a(string_view(A).substr(i, 1)));
-  for (int j = 0; j < m; j++) r.newSegHash.push_back(fnv1a(string_view(B).substr(j, 1)));
-  return r;
-}
 
 struct PlanSpans {
   vector<EditSpan> spans;
@@ -347,15 +353,14 @@ struct Solver {
 
   const Tree& oldTree;
   const Tree& newTree;
-  const Reduction& red;
-  const vector<int>& oldPos;  // active old index -> raw position
-  const vector<int>& newPos;  // active new index -> raw position
+  const PositionMap& pos;
   const Config& config;
   CostOptions options;
   string_view A;
   string_view B;
   int n;
   int m;
+  int commonSuffix = 0;
   int U;  // old unit count; active old indices run 0..U
   int V;  // new unit count; active new indices run 0..V
   int K;
@@ -366,18 +371,17 @@ struct Solver {
   // RunningEffort is a monoid with one-key boundary context, so typing effort
   // decomposes exactly: insCost(q,j) = PS_[j] - PS_[q] - cut_[q] over RAW new
   // positions, PS_ the prefix effort of typing B[0:j) and cut_[q] the bigram
-  // correction straddling q. O(m) storage; a collapsed new run is covered because
-  // PS_ spans the whole raw buffer. The DP translates active new index -> raw.
+  // correction straddling q. The DP translates active new index -> raw.
   vector<double> PS_, cut_;
-  TilingCost del;   // reduced counted-tiling delete oracle over active old units
+  TilingCost del;   // counted-tiling delete oracle (dd/de/dw/...), queried over raw spans
   TilingCost move;  // same tiling with bare-motion bases (dw->w, dd->j, x->l)
+  mutable unordered_map<long long, double> moveMemo_, delMemo_;
 
-  Solver(const Tree& oldT, const Tree& newT, const Reduction& reduction, const Config& cfg,
+  Solver(const Tree& oldT, const Tree& newT, const PositionMap& positions, const Config& cfg,
          CostOptions opts, int maxPlans)
-      : oldTree(oldT), newTree(newT), red(reduction), oldPos(reduction.oldPos),
-        newPos(reduction.newPos), config(cfg), options(opts),
+      : oldTree(oldT), newTree(newT), pos(positions), config(cfg), options(opts),
         A(oldT.text), B(newT.text), n((int)A.size()), m((int)B.size()),
-        U(reduction.oldUnits()), V(reduction.newUnits()), K(max(1, maxPlans)),
+        U(positions.oldUnits()), V(positions.newUnits()), K(max(1, maxPlans)),
         gK(U + 1, vector<vector<Cand>>(V + 1)),
         dK(U + 1, vector<vector<Cand>>(V + 1)),
         fK(U + 1, vector<vector<Cand>>(V + 1)),
@@ -385,8 +389,6 @@ struct Solver {
         dDone(U + 1, vector<char>(V + 1, 0)),
         del(oldT, opts.moveDeleteScale, TilingCost::Kind::Delete),
         move(oldT, opts.moveDeleteScale, TilingCost::Kind::Move) {
-    del.buildActiveTable(red.oldPos, red.oldIsBlock, red.oldBlockDel);
-    move.buildActiveTable(red.oldPos, red.oldIsBlock, red.oldBlockMove);
     buildInsPrefix();
     while (commonPrefix_ < n && commonPrefix_ < m && A[commonPrefix_] == B[commonPrefix_])
       commonPrefix_++;
@@ -417,14 +419,31 @@ struct Solver {
     }
   }
 
-  // Oracle queries take ACTIVE old indices (the reduced tables are active-indexed).
-  double moveCost(int from, int to) const { return move.cost(from, to); }
-  double delCost(int from, int to) const { return del.cost(from, to); }
+  // Oracle over ACTIVE old indices, priced by tiling the RAW span [oldRaw(from),
+  // oldRaw(to)) — counted commands tile across any collapsed run interior, so a
+  // collapsed run and char-level coords give identical costs (this keeps Plan 1 the
+  // true optimum). Memoized. This exactness costs an O(span) walk per distinct query,
+  // which is why runtime is not fully diff-bound — see comment at calculate().
+  double moveCost(int from, int to) const { return rawCost(move, moveMemo_, from, to); }
+  double delCost(int from, int to) const { return rawCost(del, delMemo_, from, to); }
+  double rawCost(const TilingCost& oracle, unordered_map<long long, double>& memo, int from,
+                 int to) const {
+    const int a = pos.oldRaw(from), b = pos.oldRaw(to);
+    if (a >= b) return 0.0;
+    const long long key = (long long)a * (n + 1) + b;
+    auto it = memo.find(key);
+    if (it != memo.end()) return it->second;
+    return memo[key] = oracle.query(a, b);
+  }
+  double insPrefix(int at) const { return PS_[pos.newRaw(at)]; }
+  double insStartTerm(int at) const { return PS_[pos.newRaw(at)] + cut_[pos.newRaw(at)]; }
+  double insCost(int from, int to) const {
+    return from >= to ? 0.0 : insPrefix(to) - insStartTerm(from);
+  }
 
   // Old unit i-1 matches new unit j-1: equal length and content (hashed).
   bool unitMatch(int i, int j) const {
-    return oldPos[i] - oldPos[i - 1] == newPos[j] - newPos[j - 1] &&
-           red.oldSegHash[i - 1] == red.newSegHash[j - 1];
+    return pos.unitMatch(i, j);
   }
 
   // Bounded insert into a cost-ascending list capped at K. `upper_bound` keeps
@@ -437,12 +456,11 @@ struct Solver {
     if ((int)cands.size() > K) cands.pop_back();
   }
 
-  // Positioned to START an edit at active (i,j). A collapsed run is one matched
-  // edge, so chaining over active edges treats it as a single free-movement step.
+  // Positioned to START an edit at active (i,j).
   const vector<Cand>& G(int i, int j) {
     if (gDone[i][j]) return gK[i][j];
     vector<Cand>& out = gK[i][j];
-    if (oldPos[i] == newPos[j] && oldPos[i] <= commonPrefix_)
+    if (pos.oldRaw(i) == pos.newRaw(j) && pos.oldRaw(i) <= commonPrefix_)
       out.push_back({0.0, -1, -1});  // leading run: free
     for (int t = 1; i - t >= 0 && j - t >= 0 && unitMatch(i - t + 1, j - t + 1); t++) {
       const vector<Cand>& pf = fK[i - t][j - t];  // matched run + prior edit
@@ -466,7 +484,7 @@ struct Solver {
     return out;
   }
 
-  // Fill F row by row. insCost(q,j) = PS_[newPos[j]] - PS_[newPos[q]] - cut_[newPos[q]],
+  // Fill F row by row. insCost(q,j) = PS_[newRaw(j)] - PS_[newRaw(q)] - cut_[newRaw(q)],
   // so a candidate's cost at any later j is its q-local part plus a j-constant; each
   // row keeps two running K-best lists (branch 0 over D(i,q), q<=j; branch 1 over
   // G(i,q), q<j), O(K) per cell, exact. b0 inserts before b1 to match tie order.
@@ -476,14 +494,14 @@ struct Solver {
       for (int j = 0; j <= V; j++) {
         const vector<Cand>& d = D(i, j);
         for (int r = 0; r < (int)d.size(); r++)
-          insertCand(b0, {d[r].cost - PS_[newPos[j]] - cut_[newPos[j]], j, r, 0});
+          insertCand(b0, {d[r].cost - insStartTerm(j), j, r, 0});
         if (j >= 1) {
           const vector<Cand>& g = G(i, j - 1);
           for (int r = 0; r < (int)g.size(); r++)
-            insertCand(b1, {g[r].cost - PS_[newPos[j - 1]] - cut_[newPos[j - 1]], j - 1, r, 1});
+            insertCand(b1, {g[r].cost - insStartTerm(j - 1), j - 1, r, 1});
         }
         vector<Cand>& out = fK[i][j];
-        const double shift = PS_[newPos[j]] + options.diffOpenPenalty;
+        const double shift = insPrefix(j) + options.diffOpenPenalty;
         for (const Cand& c : b0) insertCand(out, {c.cost + shift, c.sel, c.rank, 0});
         for (const Cand& c : b1) insertCand(out, {c.cost + shift, c.sel, c.rank, 1});
       }
@@ -506,10 +524,10 @@ struct Solver {
     if (c.branch == 0) {  // delete + insert
       const Cand& dc = dK[i][q][c.rank];
       int a = dc.sel;
-      out.push_back(EditSpan{TextRange{oldPos[a], oldPos[i]}, TextRange{newPos[q], newPos[j]}});
+      out.push_back(EditSpan{pos.oldRange(a, i), pos.newRange(q, j)});
       walkG(a, q, dc.rank, out);
     } else {  // pure insertion
-      out.push_back(EditSpan{TextRange{oldPos[i], oldPos[i]}, TextRange{newPos[q], newPos[j]}});
+      out.push_back(EditSpan{pos.oldRange(i, i), pos.newRange(q, j)});
       walkG(i, q, c.rank, out);
     }
   }
@@ -539,7 +557,7 @@ struct Solver {
     vector<Top> tops;
     for (int i = 0; i <= U; i++)
       for (int j = 0; j <= V; j++)
-        if (n - oldPos[i] == m - newPos[j] && n - oldPos[i] <= commonSuffix_) {
+        if (n - pos.oldRaw(i) == m - pos.newRaw(j) && n - pos.oldRaw(i) <= commonSuffix_) {
           const vector<Cand>& cands = fK[i][j];
           for (int r = 0; r < (int)cands.size(); r++) tops.push_back({cands[r].cost, i, j, r});
         }
@@ -560,10 +578,8 @@ struct Solver {
   }
 };
 
-// Hard absurdity bound, not a perf envelope. Over the reduced unit counts U/V the
-// K-best tables are O(U*V) and the oracle O(U*U); long matched runs collapse to
-// single units, so this is reached only by a genuinely huge *changed* region.
-// Fail loudly rather than degrade.
+// Hard bound for the dense tables. Future sparse maps should lower U/V before
+// this check rather than raising it.
 constexpr long long MAX_PLANNER_CELLS = 100'000'000;
 
 void checkPlannerSize(int U, int V) {
@@ -590,20 +606,18 @@ DiffState diffFromSpan(const Lines& initialLines,
 }
 
 
-// Shared pipeline for both public entry points: build the trees, the reduction
-// (collapsed/char units), and the solved plans from one unified DP. The trees,
-// reduction, and solver are heap-held so the solver's references stay valid when
-// the pipeline is returned by value; calculateBreakdown reads the live solver.
+// Shared pipeline for calculate/calculateBreakdown.
 struct SolvedPipeline {
   std::unique_ptr<Tree> initialTree, goalTree;
-  std::unique_ptr<Reduction> reduction;
+  std::unique_ptr<PositionMap> positions;
   std::unique_ptr<Solver> solver;
   vector<PlanSpans> planSpans;
   bool equal = false;  // initial already equals goal
 };
 
 SolvedPipeline runPipeline(const Lines& initialLines, const Lines& goalLines,
-                           const Config& config, const CostOptions& options) {
+                           const Config& config, const CostOptions& options,
+                           bool needBreakdown) {
   SolvedPipeline out;
   out.initialTree = std::make_unique<Tree>(initialLines);
   out.goalTree = std::make_unique<Tree>(goalLines);
@@ -611,10 +625,13 @@ SolvedPipeline runPipeline(const Lines& initialLines, const Lines& goalLines,
     out.equal = true;
     return out;
   }
-  out.reduction = std::make_unique<Reduction>(
-      buildReduction(*out.initialTree, *out.goalTree, initialLines, goalLines, config, options));
-  checkPlannerSize(out.reduction->oldUnits(), out.reduction->newUnits());
-  out.solver = std::make_unique<Solver>(*out.initialTree, *out.goalTree, *out.reduction, config,
+  // Production collapses matched-run interiors (diff-bound); the breakdown/K-best
+  // diagnostic path keeps exact char-level coordinates (small inputs).
+  const bool collapse = !needBreakdown && options.collapseRuns;
+  out.positions = std::make_unique<PositionMap>(*out.initialTree, *out.goalTree, initialLines,
+                                                goalLines, config, options, collapse);
+  checkPlannerSize(out.positions->oldUnits(), out.positions->newUnits());
+  out.solver = std::make_unique<Solver>(*out.initialTree, *out.goalTree, *out.positions, config,
                                         options, options.maxPlans);
   out.planSpans = out.solver->reconstructPlans();
   return out;
@@ -627,7 +644,7 @@ vector<Plan> calculate(
     const Lines& goalLines,
     const Config& config,
     CostOptions options) {
-  const SolvedPipeline p = runPipeline(initialLines, goalLines, config, options);
+  const SolvedPipeline p = runPipeline(initialLines, goalLines, config, options, false);
   if (p.equal) return {};
 
   vector<Plan> plans;
@@ -648,14 +665,10 @@ vector<CostBreakdown> calculateBreakdown(
     const Lines& goalLines,
     const Config& config,
     CostOptions options) {
-  const SolvedPipeline p = runPipeline(initialLines, goalLines, config, options);
+  const SolvedPipeline p = runPipeline(initialLines, goalLines, config, options, true);
   if (p.equal) return {};
-  const Reduction& red = *p.reduction;
+  const PositionMap& pos = *p.positions;
   const Solver& solver = *p.solver;
-  // Span boundaries are always active positions; map raw old position -> active index.
-  auto activeOld = [&](int raw) {
-    return (int)(lower_bound(red.oldPos.begin(), red.oldPos.end(), raw) - red.oldPos.begin());
-  };
 
   vector<CostBreakdown> breakdowns;
   breakdowns.reserve(p.planSpans.size());
@@ -665,8 +678,8 @@ vector<CostBreakdown> calculateBreakdown(
     int prevEnd = -1;  // active old index of the previous region's old end
     for (const EditSpan& span : ps.spans) {
       DiffState diff = diffFromSpan(initialLines, *p.initialTree, *p.goalTree, span);
-      const int aBegin = activeOld(span.oldText.begin);
-      const int aEnd = activeOld(span.oldText.end);
+      const int aBegin = pos.oldIndex(span.oldText.begin);
+      const int aEnd = pos.oldIndex(span.oldText.end);
       const double del = solver.delCost(aBegin, aEnd);
       KeyedSequence typed;
       typed.append(string_view(p.goalTree->text).substr(

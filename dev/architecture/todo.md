@@ -95,6 +95,75 @@ is a multi-token structural macro" comment).
 
 ---
 
+## 7. Rebalance diff generation against composition search
+
+**What.** A three-step investigation, in order:
+
+1. **Simplify diff generation.** `VimDiff` is an exact K-best DP over a hand-built
+   surrogate cost model. Reduce it to the simplest thing that still ranks
+   partitions well. The exactness is with respect to the surrogate, not to real
+   Vim cost, so it may be buying nothing.
+2. **Measure.** (a) Time split between diff generation and composition search on
+   realistic slices — `VIMFY_TIME_PHASES` already prints per-phase and per-diff
+   timing; a healthy split is something like 10/90. (b) How well the K plan
+   rankings correspond to the best sequence actually findable from each
+   (`tests/Debug/PlanRegret.cpp` via the `forcedDiffs` seam). (c) Whether the two
+   stages can be combined into one globally optimal search rather than
+   partition-then-optimize.
+3. **Complexity.** Derive the time complexity of both stages and check that
+   measured scaling matches. A mismatch means either the model is wrong or a cap
+   is binding.
+
+**Why it matters.** Production consumes `plans.front()` with `maxPlans` at its
+default of 1 (`CompositionSearchContext.cpp:78`), so plan 1 must be right.
+Exactness costs an `O(N)` oracle walk per span query — the only reason planner
+runtime is buffer-bound rather than diff-bound. Whether that price buys better
+partitions has never been measured: `SparseVsDense` measures agreement with the
+surrogate's own value, while `PlanRegret` measures rank inversion, which is the
+thing that actually decides plan quality.
+
+**Complexity as currently understood** (`M` = differing chars, `N` = buffer
+chars, `E` = planned edits, `P` = pops, `B` = branching per pop):
+
+| stage | cost | note |
+|---|---|---|
+| VimDiff search | `O(M³)` | `O(M²)` cells, `O(M)` sweep each |
+| VimDiff oracle | `O(M²·N·CAP)` | `O(M²)` distinct spans, `O(N)` walk each; dominates |
+| Composition construction | `O(E · P_t · B_t)` | `E` Transform A* runs; dominates the `O(E·N)` buffer rebuild and `O(E·L²)` text-object scan |
+| Composition search | `O(P_c · P_n · B_n)` | **nested**: each pop can fire up to ~9 NavOptimizer A* runs (8 ranked start positions + the diff-range search) |
+
+The headline is that composition is not one A* but two levels — a nav search
+sits inside the expansion step. All three searches are hard-capped
+(`maxNodesPopped` 50000), so wall time is governed by *where the caps bind*, not
+by the asymptotics; that is exactly why step 2 has to be empirical.
+
+**Concrete candidate found while deriving the above.** The `starts` loop in
+`CompositionOptimizer.cpp:578` issues up to 8 single-point NavOptimizer searches
+from the same cursor, each rebuilding its own `Lines` slice and `BufferIndex`.
+`startPositions()` is clipped to the diff range by `restrictValidStartRegion`
+(`PlannedEditArtifacts.cpp:243`), so it is a holey subset of that range — the
+gaps come from start starvation under the shared Transform queue, which is why it
+cannot be one `CharInterval`. But the *bounding* range is just the diff range,
+which the fallback search twenty lines below already targets. Replacing the loop
+with that single range search plus a filter of landings against
+`startPositions()` gives one slice, one `BufferIndex`, one A*, and the same
+reachable set.
+
+Caveat: not a pure win. Today the 8-cap plus the `costToGoal` sort bounds
+successors per pop at 8 ranked landings; the range search returns whatever nav's
+`maxResults` / `maxResultsPerEndPos` allow, so composition branching — and hence
+pop counts and results — can change. Measure before and after, same as the rest
+of this item.
+
+---
+
+**Decision rule.** If diff generation is a small share of end-to-end time, stop —
+the current design is fine and the effort belongs in composition. If it is a
+large share, run `PlanRegret` with a cheap approximate oracle against the exact
+one; equal regret means exactness can be dropped and the `N` factor disappears.
+
+---
+
 ## Noted alternative: item 1 vs. the current approach
 
 The defense layers chosen for the track-states fix (`BuildConfig.h` + `static_assert` + workflow `jq` check + differentiated dashboard message) are cheaper and more localized than `CMakePresets.json`. Item 1 becomes the better path only when configuration count or CI complexity makes per-flag discipline hard to maintain — otherwise the current three-layer defense subsumes what presets would give us.

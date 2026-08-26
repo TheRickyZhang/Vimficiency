@@ -569,37 +569,19 @@ optimizeImpl(
             });
       }
 
-      vector<CursorPos> starts = transformResult.startPositions();
-      std::sort(starts.begin(), starts.end(), [&](CursorPos a, CursorPos b) {
-        return ctx.costToGoal(pos, a) < ctx.costToGoal(pos, b);
-      });
-
-      int searchedStarts = 0;
-      for (CursorPos start : starts) {
-        if (start == pos) continue;
-        exploreMotionsToInterval(
-            current, pos, start.line, start.line, currentLines,
-            /*maxResults=*/1, /*keepMultiplePerLanding=*/false,
-            [&](const Lines&, int beginLine) -> CharInterval {
-              CursorPos localStart(start.line - beginLine, start.col);
-              return CharInterval(localStart, localStart);
-            });
-        if (++searchedStarts >= 8) break;
-      }
-      if (searchedStarts > 0) {
-        continue;
-      }
-
       debug("  motion search from", pos, "to edit region [" +
             to_string(nextEdit.beginPos.line) + "," + to_string(nextEdit.beginPos.col)
             + ")-[" + to_string(nextEdit.endPos.line) + "," +
             to_string(nextEdit.endPos.col) + ")");
 
-      // Motions to the next edit's diff range.
+      // Motions to the next edit's diff range. Every valid Transform start lies
+      // inside that range (restrictValidStartRegion), so this one search reaches
+      // all of them; maxResults is the count of target positions rather than a
+      // cap, so no reachable start is dropped.
       exploreMotionsToInterval(
           current, pos, nextEdit.beginPos.line, nextEdit.editEndLine() - 1,
           currentLines,
-          clamp(nextEdit.origCharCount(), 1, 10),
+          nextEdit.origCharCount(),
           /*keepMultiplePerLanding=*/false,
           [&](const Lines& subset, int beginLine) -> CharInterval {
             CursorPos localBegin(nextEdit.beginPos.line - beginLine, nextEdit.beginPos.col);
