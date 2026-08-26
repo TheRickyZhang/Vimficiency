@@ -217,14 +217,12 @@ cost matrix; it does not forbid exploiting the oracle's internal structure:
   states with O(CAP) chunk transitions), giving O(N^2·CAP·K) exact — but the
   span-local entry clamp needs per-run G-minima machinery, and fused K-best
   paths lose span-set distinctness (tilings of one span duplicate). Designed
-  but deliberately not built: with hard-split (below) bounding segments to
-  changed neighborhoods, measured planner times are single-digit ms at the
-  500-line slice ceiling, so the remaining cubic applies only to a single huge
-  contiguous rewrite — which composition's 16-edit/transform limits choke on
-  anyway. Revisit only if segment-size measurements change.
+  but not built.
 
-`N` is the size of a *change region*. Hard-split (below) keeps it proportional to
-the diff, not the buffer.
+Coordinate collapse (below) shrinks the DP's cell count toward the diff size,
+but the exact oracle remains an O(span) raw-span tiling per query, so planner
+runtime is ~O(buffer) — see "Exact vs diff-bound" below for why an O(1)
+cross-block oracle (which would make it truly diff-bound) is unachieved.
 
 ### Tiled command-cost oracle (delete + movement)
 
@@ -269,39 +267,54 @@ longer runs chain chunks); lines/paragraphs scan all earlier starts. The buffer
 is fixed during search, so both full `[a][i]` tables are precomputed once —
 `O(CAP·N²)` each — and read `O(1)` by the G/D/F search.
 
-### Hard-split decomposition (implemented)
+### Coordinate collapse + raw-span oracle (implemented)
 
-Planner work scales with changed neighborhoods, not the slice: `computeSegments`
-(VimDiff.cpp) cuts at long kept whole-line blocks no optimal plan straddles,
-solves the line-aligned segments independently, and recombines (cross-sum top-K
-per segment + plan-independent crossing-move constants). A cut fires only where
-keeping the block dominates any straddle by a slack margin:
+`PositionMap` (VimDiff.cpp) shrinks the K-best DP by collapsing the interior of
+matched runs the optimum provably keeps — the Myers gaps where
+`type(run) > moveUB(run) + diffOpenPenalty` — into single units, while keeping
+`MATCH_MARGIN` char-level cells at each run edge. The margin is load-bearing: an
+optimal edit boundary can slide a few chars into a kept run for an alignment
+saving (inserting `a` before `ad` attaches at col 0 or 1 at *different* cost),
+but the slide is bounded — sliding `k` chars costs ~`k` to retype against a
+sub-linear navigation gain — so a small char margin keeps every cost-optimal
+boundary representable. This drops the cell count toward the diff size.
 
-```
-PENALTY + moveUB(R) + SPLIT_SLACK < insCost(R)     (ins <= del + ins)
-```
+The oracle stays **exact** by pricing `delCost`/`moveCost` over the *raw* span
+(`TilingCost::query`, memoized): a counted command tiles across a collapsed run's
+interior using the real characters, so a collapsed run and full char-level
+coordinates give identical costs. Verified against the char-level baseline by
+`tests/Debug/SparseVsDense.cpp` (collapse on vs off; 11.5k adversarial
+small-alphabet + mutated cases; zero cost mismatches).
+`CostOptions::collapseRuns=false` is the exact char-level escape (used by
+`calculateBreakdown` and the A/B reference side).
 
-with `moveUB` a valid counted-motion tiling of the block and `SPLIT_SLACK`
-bounding what a cut can lose (counted-chunk concavity coupling across each
-seam plus the closed-form crossing approximation). Blocks are whole lines whose
-aligning newline is strictly inside the matched gap (from the Myers alignment),
-so both buffers stay line-aligned at every cut and segment slices keep faithful
-line structure; a segment's first line can fake a paragraph start — bounded
-oracle wobble within the slack. Leading/trailing kept blocks are cut
-unconditionally (free zones). Interior segments charge movement over their
-leading/trailing kept runs (`Solver` chargeLeading/chargeTrailing) so the
-inter-edit gaps crossing a cut stay priced. Pure insertions at the buffer end
-sit exactly at the final piece's end — `diffsWithin` is end-inclusive there,
-and a `CHECK` guarantees no diff is ever dropped by segmentation.
+### Exact vs diff-bound: a real tension (the oracle is O(span), not O(1))
 
-`CostOptions::hardSplit=false` is the measurement/testing escape hatch.
-Equivalence is pinned by `VimDiffTest.HardSplit*` (split vs unsplit plan-1
-cost within the seam slack, identical regions on separated edits) and the
-fixed-seed `PlanRegret` corpus. Measured effect: `VimDiffPlan/BufferSize`
-40 lines 14.4s → 5ms, 100 lines ≈ 7ms (flat in buffer size);
-`CompositionOpt/BufferSizeLarge/500` — the plugin's `MAX_SEARCH_LINES`
-ceiling — runs end-to-end in ~70ms where the unsplit solver needed
-multi-GB tables.
+Collapse shrinks DP *cells* to diff size, but the raw-span oracle costs an
+O(span) walk per distinct query, so runtime is ~O(buffer), not O(diff). Making
+the oracle O(1) (an active-coordinate table pricing counted commands across a
+collapsed block from precomputed line/char counts) was tried three ways —
+char-margin blocks, whole-line-core blocks with a severing table, and
+whole-line-core blocks with a cross-block table — and **every reduced oracle is
+inexact** (misprices by ≤ ~3 keystrokes on ~7–13% of mutated cases, measured by
+SparseVsDense). The cause is structural: an exact tiling of a span that crosses a
+kept run can place counted-command boundaries on positions *inside* the run
+(e.g. `{k}dd` over the run's line starts), and exactness also needs the
+char-level margin cells for the boundary slide — a reduced O(1) oracle that drops
+interior positions loses some of those tilings.
+
+> Exact pricing forces an O(span) oracle, which is incompatible with O(diff)
+> runtime. Both cannot hold for this cost model. This is not a proven theorem,
+> but it is unachieved after the variants above and the obstacle is concrete.
+
+We choose **exact**: composition consumes `plans.front()`, so a wrong plan-1 cost
+mis-ranks the partition. Collapse still buys a large constant-factor win over the
+char-level baseline (`VimDiffPlan/BufferSize/100` ≈168s → ≈8s debug) by removing
+most DP cells; only the oracle walk keeps it from being asymptotically
+diff-bound. Composition runs VimDiff on edit *slices* (usually small), so this is
+acceptable in practice; a genuinely huge slice with few edits is the remaining
+slow case. A correct O(1) cross-block oracle (or a proof none exists) is the open
+follow-up.
 
 ### Validation
 

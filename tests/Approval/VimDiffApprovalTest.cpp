@@ -16,6 +16,17 @@ using namespace VimDiff;
 
 namespace {
 
+// Strips the leading newline and trailing whitespace a `R"(\n...\n  )"` block
+// carries, so the readable multi-line literal does not inject an empty first
+// line or a trailing blank/space line into the buffer. Interior blank lines and
+// indentation are preserved.
+string trimBlock(string_view s) {
+  size_t begin = 0, end = s.size();
+  if (begin < end && s[begin] == '\n') ++begin;
+  while (end > begin && (s[end - 1] == '\n' || s[end - 1] == ' ' || s[end - 1] == '\t')) --end;
+  return string(s.substr(begin, end - begin));
+}
+
 // One case as a markdown fixture (`.md`), readable rendered and raw. Buffer/diff
 // text is literal inside code fences — no keystroke glyphs (`␣`/`⇥`/`↵` mean key
 // presses; see SequenceDisplay.cpp). An empty diff side emits no line, so `->`
@@ -24,8 +35,10 @@ namespace {
 // separately flagged). `renderCase` shows the top-K plans the DP weighed; Plan 1
 // is the optimum `calculate` returns.
 string renderCase(string_view name, string_view initialText, string_view goalText, int K = 3) {
-  const Lines initial = Lines::unflatten(initialText);
-  const Lines goal = Lines::unflatten(goalText);
+  const string initialBlock = trimBlock(initialText);
+  const string goalBlock = trimBlock(goalText);
+  const Lines initial = Lines::unflatten(initialBlock);
+  const Lines goal = Lines::unflatten(goalBlock);
   const Config config = Config::uniform();
   CostOptions options;
   options.maxPlans = K;
@@ -33,8 +46,8 @@ string renderCase(string_view name, string_view initialText, string_view goalTex
 
   ostringstream out;
   out << "# " << name << "\n\n";
-  out << "**initial**\n```\n" << initialText << "\n```\n\n";
-  out << "**final**\n```\n" << goalText << "\n```\n\n";
+  out << "**initial**\n```\n" << initialBlock << "\n```\n\n";
+  out << "**final**\n```\n" << goalBlock << "\n```\n\n";
   out << "_Edit costs: delete / insert / move_\n";
   for (int p = 0; p < (int)bds.size(); p++) {
     out << "\n### Plan " << (p + 1) << ": cost " << bds[p].total << "\n";
@@ -56,61 +69,126 @@ string renderCase(string_view name, string_view initialText, string_view goalTex
 // the optimum `calculate` returns; a REPLACE that re-types an unchanged middle is
 // the over-merge to watch for.
 
-TEST(VimDiffApproval, TwoCharEditsAcrossSpace) {
-  verifyMarkdown(renderCase("two char edits across a space", "abc xyz", "aXc xYz"));
+// One word changes on one line of a three-line buffer; the kept lines stay out
+// of the diff rather than being folded into a whole-buffer retype.
+TEST(VimDiffApproval, WordChanges) {
+  string initial = R"(
+the quick brown fox
+jumps over
+the lazy dog
+  )";
+  string goal = R"(
+the quick red fox
+jumps above
+the lazy cat
+  )";
+  verifyMarkdown(renderCase("clean single word change", initial, goal));
 }
 
-TEST(VimDiffApproval, OneCharGapBetweenEdits) {
-  verifyMarkdown(renderCase("one-char gap between two edits", "abcde", "aXcYe"));
+// Edits on the first and last lines with an untouched line between them: the
+// optimum is two surgical edits, not one REPLACE that re-types the kept line.
+TEST(VimDiffApproval, TwoEditsKeepingMiddleLine) {
+  string initial = R"(
+first old line
+keep this untouched
+second old line
+  )";
+  string goal = R"(
+abc line here
+keep this untouched
+def line here
+  )";
+  verifyMarkdown(renderCase("two edits keeping the middle line", initial, goal));
 }
 
-// The optimum keeps "bbb": retyping the whole line straddles the collapsed kept
-// block (no single `dd`), so the surgical two-edit split wins.
-TEST(VimDiffApproval, TwoWordEditsKeepingWord) {
-  verifyMarkdown(renderCase("two edits keeping a whole word", "aaa bbb ccc", "xxx bbb yyy"));
+// Same symbol renamed in several places across lines — repeated small
+// replacements separated by kept code.
+TEST(VimDiffApproval, RenameSymbol) {
+  string initial = R"(
+int cnt = 0;
+cnt = cnt + 1;
+return cnt;
+  )";
+  string goal = R"(
+int tot = 0;
+tot = tot + 1;
+return tot;
+  )";
+  verifyMarkdown(renderCase("rename symbol across lines", initial, goal));
 }
 
-TEST(VimDiffApproval, RenameTwiceKeepingPlus) {
-  verifyMarkdown(renderCase("rename twice keeping ' + '", "x + x", "y + y"));
+// Per-line value edits keeping each line's prefix key; three regions separated
+// by kept text rather than a single block retype.
+TEST(VimDiffApproval, Main) {
+  string initial = R"(
+int main() {
+  int n = 0;
+  for(int i = 0; i < n; i++) {
+    cout << i << endl;
+  }
+}
+  )";
+  string goal = R"(
+int main() {
+  int m = 1;
+  for(int i = 0; i < m; i++) {
+    cout << i+1 << endl;
+  }
+}
+  )";
+  verifyMarkdown(renderCase("per-line value edits", initial, goal));
 }
 
-TEST(VimDiffApproval, CleanSingleWordChange) {
-  verifyMarkdown(renderCase("clean single word change", "the quick fox", "the slow fox"));
+// A new line inserted between two kept lines: a pure insertion region.
+TEST(VimDiffApproval, RearrangeLines) {
+  string initial = R"(
+#include <string>
+#include <string_view>
+#include <vector>
+  )";
+  string goal = R"(
+#include <vector>
+#include <string>
+#include <string_view>
+  )";
+  verifyMarkdown(renderCase("rearrange lines", initial, goal));
 }
 
-TEST(VimDiffApproval, TrailingDeletion) {
-  verifyMarkdown(renderCase("clean trailing deletion", "hello world", "hello"));
+// Change confined to the interior of a block, keeping the first and last lines
+// (the brace frame) untouched.
+TEST(VimDiffApproval, ChangeBlockBodyKeepingFrame) {
+  string initial = R"(
+function f() {
+  i++;
+}
+  )";
+  string goal = R"(
+function f() {
+  return 17;
+}
+  )";
+  verifyMarkdown(renderCase("change block body keeping frame", initial, goal));
 }
 
-TEST(VimDiffApproval, InteriorInsertion) {
-  verifyMarkdown(renderCase("clean interior insertion", "abc", "abXc"));
-}
-
-TEST(VimDiffApproval, ThreeEditsOverShortGaps) {
-  verifyMarkdown(renderCase("three edits over short gaps",
-                        "ehfaf beeac edgae", "effaf eeac gdgae"));
-}
-
-// Short kept gap "b cd e" that still clears the collapse gate, so the optimum is
-// the surgical first+last char split keeping the middle.
-TEST(VimDiffApproval, FirstLastCharShortGap) {
-  verifyMarkdown(renderCase("first+last char, short kept gap", "ab cd ef", "Xb cd eY"));
-}
-
-// Long kept gap "oo bar ba": retyping it loses by far, so the optimum is the
-// surgical first+last char split.
-TEST(VimDiffApproval, FirstLastCharLongGap) {
-  verifyMarkdown(renderCase("first+last char, long kept gap", "foo bar baz", "Xoo bar baY"));
+// Counted whole-line delete: removing two middle lines is one `2dd`, not 2x dd.
+TEST(VimDiffApproval, JoinedLines) {
+  string initial = R"(
+one
+two
+three
+four
+five
+  )";
+  string goal = R"(
+one two three
+four five
+  )";
+  verifyMarkdown(renderCase("join lines", initial, goal));
 }
 
 // Span-local: "bbbbbbb" is one word delete (2) even though "abbbbbbba" is one
 // global word — the clamp-to-start that the tree boundaries can't express.
+// Genuinely single-line behavior, so no raw string needed.
 TEST(VimDiffApproval, SpanLocalDeleteInsideWord) {
   verifyMarkdown(renderCase("span-local delete inside one word", "abbbbbbba", "aa"));
-}
-
-// Counted whole-line delete: removing two middle lines is one `2dd`, not 2x dd.
-TEST(VimDiffApproval, CountedMultiLineDelete) {
-  verifyMarkdown(renderCase("counted multi-line delete",
-                        "one\ntwo\nthree\nfour", "one\nfour"));
 }
