@@ -31,9 +31,11 @@ std::vector<Plan> calculate(
     const Config& config,
     CostOptions options = {});
 
-// Per-region cost the planner weighed. `move` is the coarsest-cover traversal
-// from the previous region's old end to this region's old begin (0 for the
-// first). Penalty is `diffOpenPenalty` per region (implied; folded into total).
+// Per-region cost the planner weighed. `ins` is the insert phase: typed effort
+// plus the ending <Esc>, plus the insert-mode entry key when nothing was
+// deleted. `move` is the coarsest-cover traversal from the previous region's
+// old end to this region's old begin (0 for the first). Penalty is
+// `diffOpenPenalty` per region (implied; folded into total).
 // Because VimDiff has no merge/refine pass, `total` equals the DP optimum
 // exactly. Diagnostic surface — `calculate` does not use it.
 struct RegionBreakdown {

@@ -41,7 +41,7 @@ void BM_VimDiffPlan(benchmark::State& state, CompositionCaseSpec spec) {
 static int registerVimDiffBenchmarks = []() {
   // Same shapes as CompositionOpt/BufferSize*, planner-only. ~100 lines (~2k
   // flat chars) is where the cubic DP dominates; larger slices approach the
-  // MAX_PLANNER_CELLS guard — see diff-generation.md § Hard-split.
+  // MAX_PLANNER_CELLS guard — see diff-generation.md § Complexity.
   for (int numLines : {10, 20, 40, 100}) {
     CompositionCaseSpec spec{"BufferSize/" + to_string(numLines), numLines, 20, 5};
     benchmark::RegisterBenchmark("VimDiffPlan/" + spec.name, BM_VimDiffPlan, spec)

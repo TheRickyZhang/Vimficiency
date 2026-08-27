@@ -44,7 +44,8 @@ entries directly by index.)
 ### Count-penalty overrides (`count_penalty_overrides`)
 
 A count prefix like `8j` is cheaper than eight `j`s but not free. The
-penalty grows with count and motion span. Per count-class overrides let
+penalty grows with count (concavely: each extra unit costs less than the last)
+and motion span. Per count-class overrides let
 you reshape this curve.
 
 ## Planned topics for this page

@@ -1,7 +1,7 @@
 #include "VimDiff.h"
 
 #include <algorithm>
-#include <cmath>
+#include <array>
 #include <limits>
 #include <memory>
 #include <string>
@@ -13,6 +13,7 @@
 #include "Effort/RunningEffort.h"
 #include "Keyboard/KeyedSequence.h"
 #include "MyersDiff.h"
+#include "Optimizer/GlobalRuntimeOptions.h"
 #include "Tree.h"
 #include "Utils/Debug.h"
 #include "VimCore/CharMask.h"
@@ -20,7 +21,9 @@
 using namespace std;
 using DiffTree::deleteCost;
 using DiffTree::Level;
+using DiffTree::LEVEL_COUNT;
 using DiffTree::levelCost;
+using DiffTree::levelIndex;
 using DiffTree::Tree;
 
 namespace VimDiff {
@@ -39,14 +42,25 @@ struct EditSpan {
   TextRange newText;
 };
 
-// Counted-command penalty: digits typed + concave count cost, 0 at k<=1.
-double countPenalty(int k, double scale) {
+// Cost of a count prefix: the digit keystrokes (scaled like the other keystrokes) plus
+// the shared cognitive penalty for the level's class, 0 at k<=1.
+template<CountClass C>
+double countPrefixCost(int k, double scale) {
   if (k <= 1) return 0.0;
-  return ((int)to_string(k).size() + sqrt((double)k) - 1.0) * scale;
+  return (int)to_string(k).size() * scale + runtimeCountPenalty<C>({k, k});
 }
 
+// To-boundary commands price a partial line flat, so cutting a line/paragraph
+// command mid-line costs a bounded amount: `D`/`$` to the line end, `d0` back to
+// the line start.
+constexpr double TO_LINE_END_KEYS = 2.0;    // D, $ (shifted)
+constexpr double TO_LINE_START_KEYS = 2.0;  // d0
+
 // Span cost oracle for deletion/movement, tiled from counted char/word/bigword/
-// line/paragraph commands. Word/bigword chunks are span-local.
+// line/paragraph commands plus the to-boundary commands. Word/bigword chunks are
+// span-local. Deletion chunks `{k}dd`/`{k}dap` start on a unit start; movement
+// chunks `{k}j`/`{k}}` start anywhere in the source unit (column adjustment on
+// landing is below the oracle's fidelity).
 class TilingCost {
 public:
   enum class Kind { Delete, Move };
@@ -54,7 +68,11 @@ public:
   TilingCost(const Tree& tree, double scale, Kind kind)
       : n_(static_cast<int>(tree.text.size())), kind_(kind), scale_(scale) {
     buildBoundaries(tree);
-    buildPenalty(scale);
+    buildPenalty<CountClass::EditChar, CountClass::MovementChar>(Level::Char);
+    buildPenalty<CountClass::EditWord, CountClass::MovementWord>(Level::Word);
+    buildPenalty<CountClass::EditBigWord, CountClass::MovementBigWord>(Level::BigWord);
+    buildPenalty<CountClass::EditLine, CountClass::MovementLine>(Level::Line);
+    buildPenalty<CountClass::EditParagraph, CountClass::MovementParagraph>(Level::Paragraph);
   }
 
   // Cheapest counted-command tiling of the raw span [from,to), O(span). Queried over
@@ -62,7 +80,11 @@ public:
   // from>=to.
   double query(int from, int to) const {
     if (from >= to) return 0.0;
-    if ((int)scratch_.size() < n_ + 1) scratch_.assign(n_ + 1, INF);
+    if ((int)scratch_.size() < n_ + 1) {
+      scratch_.assign(n_ + 1, INF);
+      lineMinAt_.assign(lineStarts_.size(), INF);
+      paraMinAt_.assign(paraStarts_.size(), INF);
+    }
     vector<double>& cost = scratch_;
     cost[from] = 0.0;
     const double charBase = unitBase(Level::Char) * scale_;
@@ -70,15 +92,42 @@ public:
     const double bigBase = unitBase(Level::BigWord) * scale_;
     const double lineBase = unitBase(Level::Line) * scale_;
     const double paraBase = unitBase(Level::Paragraph) * scale_;
+    const double toLineEnd = TO_LINE_END_KEYS * scale_;
+    const double toLineStart = TO_LINE_START_KEYS * scale_;
+    const vector<double>& charPen = penalty_[levelIndex(Level::Char)];
+    const vector<double>& wordPen = penalty_[levelIndex(Level::Word)];
+    const vector<double>& bigPen = penalty_[levelIndex(Level::BigWord)];
+    const vector<double>& linePen = penalty_[levelIndex(Level::Line)];
+    const vector<double>& paraPen = penalty_[levelIndex(Level::Paragraph)];
+    // Running minima over the current line/paragraph's positions >= from: where a
+    // from-anywhere command can start. Finalized into lineMinAt_/paraMinAt_ when
+    // the sweep reaches the next unit start.
+    double lineMin = 0.0, paraMin = 0.0;
+    int lineStart = lineStartOf_[from];
     for (int q = from + 1; q <= to; q++) {
+      if (lineIdx_[q] >= 0) {
+        lineMinAt_[lineIdx_[q] - 1] = lineMin;
+        lineMin = INF;
+        lineStart = q;
+      }
+      if (paraIdx_[q] >= 0) {
+        paraMinAt_[paraIdx_[q] - 1] = paraMin;
+        paraMin = INF;
+      }
       double best = INF;
       for (int k = 1; k <= CAP && q - k >= from; k++)
-        best = min(best, cost[q - k] + charBase + penalty_[k]);
-      relaxRuns(best, cost, from, q, wordBase, isWord_, wordIdx_, wordStarts_, wordEnds_);
-      relaxRuns(best, cost, from, q, bigBase, isBig_, bigIdx_, bigStarts_, bigEnds_);
-      relaxUnits(best, cost, from, q, lineBase, lineIdx_, lineStarts_);
-      relaxUnits(best, cost, from, q, paraBase, paraIdx_, paraStarts_);
+        best = min(best, cost[q - k] + charBase + charPen[k]);
+      relaxRuns(best, cost, from, q, wordBase, wordPen, isWord_, wordIdx_, wordStarts_,
+                wordEnds_);
+      relaxRuns(best, cost, from, q, bigBase, bigPen, isBig_, bigIdx_, bigStarts_, bigEnds_);
+      relaxUnits(best, cost, from, q, lineBase, linePen, lineIdx_, lineStarts_, lineMinAt_);
+      relaxUnits(best, cost, from, q, paraBase, paraPen, paraIdx_, paraStarts_, paraMinAt_);
+      if (q == n_ || isNewline_[q]) best = min(best, lineMin + toLineEnd);  // D / $
+      if (kind_ == Kind::Delete && lineStart >= from && q > lineStart)   // d0
+        best = min(best, cost[lineStart] + toLineStart);
       cost[q] = best;
+      lineMin = min(lineMin, best);
+      paraMin = min(paraMin, best);
     }
     return cost[to];
   }
@@ -89,21 +138,25 @@ private:
   int n_;
   Kind kind_;
   double scale_;
-  mutable vector<double> scratch_;  // reused temp for query()
-  vector<char> isWord_, isBig_, isWs_;
+  mutable vector<double> scratch_;               // reused temp for query()
+  mutable vector<double> lineMinAt_, paraMinAt_;  // per-unit min reach cost, per query
+  vector<char> isWord_, isBig_, isWs_, isNewline_;
+  vector<int> lineStartOf_;              // position -> start of its line
   vector<int> wsRunStart_;               // ws position -> start of its whitespace run
   vector<int> wordStarts_, wordEnds_;    // ordered alnum/_ runs
   vector<int> bigStarts_, bigEnds_;      // ordered non-blank runs
   vector<int> wordIdx_, bigIdx_;         // word/big char -> index into the run lists
   vector<int> lineStarts_, paraStarts_;  // sorted, terminated by n_
   vector<int> lineIdx_, paraIdx_;        // line/para start position -> list index, else -1
-  vector<double> penalty_;               // (digits(k)+sqrt(k)-1)*scale, 0 at k<=1
+  array<vector<double>, LEVEL_COUNT> penalty_;  // [level][k] count-prefix cost, 0 at k<=1
 
   void buildBoundaries(const Tree& tree) {
     const string& text = tree.text;
     isWord_.assign(n_, 0);
     isBig_.assign(n_, 0);
     isWs_.assign(n_, 0);
+    isNewline_.assign(n_ + 1, 0);
+    lineStartOf_.assign(n_ + 1, 0);
     wsRunStart_.assign(n_, 0);
     wordIdx_.assign(n_, -1);
     bigIdx_.assign(n_, -1);
@@ -111,7 +164,10 @@ private:
       isWord_[p] = VimCore::CharMask::isSmallWord(text[p]);
       isBig_[p] = VimCore::CharMask::isBigWord(text[p]);
       isWs_[p] = VimCore::CharMask::isWhitespace(text[p]);
+      isNewline_[p] = text[p] == '\n';
     }
+    for (int p = 1; p <= n_; p++)
+      lineStartOf_[p] = isNewline_[p - 1] ? p : lineStartOf_[p - 1];
     for (int p = 0; p < n_; p++) {
       wsRunStart_[p] = (isWs_[p] && p > 0 && isWs_[p - 1]) ? wsRunStart_[p - 1] : p;
       if (isWord_[p]) {
@@ -137,9 +193,13 @@ private:
     for (int i = 0; i < (int)paraStarts_.size(); i++) paraIdx_[paraStarts_[i]] = i;
   }
 
-  void buildPenalty(double scale) {
-    penalty_.assign(n_ + 2, 0.0);
-    for (int k = 2; k <= n_ + 1; k++) penalty_[k] = countPenalty(k, scale);
+  template<CountClass Del, CountClass Mov>
+  void buildPenalty(Level level) {
+    vector<double>& table = penalty_[levelIndex(level)];
+    table.assign(n_ + 2, 0.0);
+    for (int k = 2; k <= n_ + 1; k++)
+      table[k] = kind_ == Kind::Delete ? countPrefixCost<Del>(k, scale_)
+                                       : countPrefixCost<Mov>(k, scale_);
   }
 
   // Counted word/bigword chunks ending at q: find the run whose chunk ends at q
@@ -149,8 +209,9 @@ private:
   // in trailing whitespace (`d{k+1}w`), but not in the de-shape (`d{k}e` from the
   // space lands on the k-th run end).
   void relaxRuns(double& best, const vector<double>& cost, int a, int q, double base,
-                 const vector<char>& isClass, const vector<int>& idx,
-                 const vector<int>& starts, const vector<int>& ends) const {
+                 const vector<double>& penalty, const vector<char>& isClass,
+                 const vector<int>& idx, const vector<int>& starts,
+                 const vector<int>& ends) const {
     const int i = q - 1;
     int j;
     bool endsInWs = false;
@@ -165,23 +226,29 @@ private:
     for (int k = 1; k <= CAP && j - k + 1 >= 0; k++) {
       const int run = j - k + 1;
       if (ends[run] <= a) break;  // run fully before the chunk start
-      best = min(best, cost[max(a, starts[run])] + base + penalty_[k]);
+      best = min(best, cost[max(a, starts[run])] + base + penalty[k]);
       const int rs = starts[run];
       if (rs > a && isWs_[rs - 1])  // from the space before the run
-        best = min(best, cost[max(a, wsRunStart_[rs - 1])] + base + penalty_[k + endsInWs]);
+        best = min(best, cost[max(a, wsRunStart_[rs - 1])] + base + penalty[k + endsInWs]);
     }
   }
 
-  // Counted whole-line/paragraph deletes ending at q (q must be a start or n_): scan
-  // all earlier starts >= a, k = number of units between.
+  // Counted line/paragraph chunks ending at q (q must be a unit start or n_), k =
+  // number of units between. Deletes start on an earlier unit start >= a; moves
+  // start anywhere in an earlier unit that reaches past a (its min reach cost).
   void relaxUnits(double& best, const vector<double>& cost, int a, int q, double base,
-                  const vector<int>& idxAt, const vector<int>& starts) const {
+                  const vector<double>& penalty, const vector<int>& idxAt,
+                  const vector<int>& starts, const vector<double>& unitMin) const {
     if (idxAt[q] < 0) return;
     const int jq = idxAt[q];
     for (int i = jq - 1; i >= 0; i--) {
-      const int ls = starts[i];
-      if (ls < a) break;
-      best = min(best, cost[ls] + base + penalty_[jq - i]);
+      if (kind_ == Kind::Delete) {
+        if (starts[i] < a) break;
+        best = min(best, cost[starts[i]] + base + penalty[jq - i]);
+      } else {
+        if (starts[i + 1] <= a) break;
+        best = min(best, unitMin[i] + base + penalty[jq - i]);
+      }
     }
   }
 
@@ -373,6 +440,10 @@ struct Solver {
   // positions, PS_ the prefix effort of typing B[0:j) and cut_[q] the bigram
   // correction straddling q. The DP translates active new index -> raw.
   vector<double> PS_, cut_;
+  // Mode overhead a region pays beyond its typed text: the <Esc> that ends any
+  // insert, and the key that enters insert mode when nothing was deleted first (a
+  // delete+insert uses the change form, whose operator already enters insert).
+  double escEffort_, insertEntryEffort_;
   TilingCost del;   // counted-tiling delete oracle (dd/de/dw/...), queried over raw spans
   TilingCost move;  // same tiling with bare-motion bases (dw->w, dd->j, x->l)
   mutable unordered_map<long long, double> moveMemo_, delMemo_;
@@ -387,6 +458,7 @@ struct Solver {
         fK(U + 1, vector<vector<Cand>>(V + 1)),
         gDone(U + 1, vector<char>(V + 1, 0)),
         dDone(U + 1, vector<char>(V + 1, 0)),
+        escEffort_(getEffort("<Esc>", cfg)), insertEntryEffort_(getEffort("i", cfg)),
         del(oldT, opts.moveDeleteScale, TilingCost::Kind::Delete),
         move(oldT, opts.moveDeleteScale, TilingCost::Kind::Move) {
     buildInsPrefix();
@@ -486,24 +558,28 @@ struct Solver {
 
   // Fill F row by row. insCost(q,j) = PS_[newRaw(j)] - PS_[newRaw(q)] - cut_[newRaw(q)],
   // so a candidate's cost at any later j is its q-local part plus a j-constant; each
-  // row keeps two running K-best lists (branch 0 over D(i,q), q<=j; branch 1 over
-  // G(i,q), q<j), O(K) per cell, exact. b0 inserts before b1 to match tie order.
+  // row keeps two running K-best lists (branch 0 over D(i,q), q<j; branch 1 over
+  // G(i,q), q<j), O(K) per cell, exact. A pure deletion (q==j) pays no mode overhead,
+  // so D(i,j) enters `out` directly and joins b0 only for later columns.
   void solveAll() {
     for (int i = 0; i <= U; i++) {
       vector<Cand> b0, b1;
       for (int j = 0; j <= V; j++) {
+        vector<Cand>& out = fK[i][j];
         const vector<Cand>& d = D(i, j);
         for (int r = 0; r < (int)d.size(); r++)
-          insertCand(b0, {d[r].cost - insStartTerm(j), j, r, 0});
+          insertCand(out, {d[r].cost + options.diffOpenPenalty, j, r, 0});
+        const double shift = insPrefix(j) + options.diffOpenPenalty + escEffort_;
+        for (const Cand& c : b0) insertCand(out, {c.cost + shift, c.sel, c.rank, 0});
         if (j >= 1) {
           const vector<Cand>& g = G(i, j - 1);
           for (int r = 0; r < (int)g.size(); r++)
             insertCand(b1, {g[r].cost - insStartTerm(j - 1), j - 1, r, 1});
         }
-        vector<Cand>& out = fK[i][j];
-        const double shift = insPrefix(j) + options.diffOpenPenalty;
-        for (const Cand& c : b0) insertCand(out, {c.cost + shift, c.sel, c.rank, 0});
-        for (const Cand& c : b1) insertCand(out, {c.cost + shift, c.sel, c.rank, 1});
+        for (const Cand& c : b1)
+          insertCand(out, {c.cost + shift + insertEntryEffort_, c.sel, c.rank, 1});
+        for (int r = 0; r < (int)d.size(); r++)
+          insertCand(b0, {d[r].cost - insStartTerm(j), j, r, 0});
       }
     }
   }
@@ -684,7 +760,11 @@ vector<CostBreakdown> calculateBreakdown(
       KeyedSequence typed;
       typed.append(string_view(p.goalTree->text).substr(
           span.newText.begin, span.newText.end - span.newText.begin));
-      const double ins = RunningEffort(typed.keys, config).getEffort(config);
+      double ins = RunningEffort(typed.keys, config).getEffort(config);
+      if (span.newText.end > span.newText.begin) {
+        ins += solver.escEffort_;
+        if (span.oldText.end == span.oldText.begin) ins += solver.insertEntryEffort_;
+      }
       // Inter-region movement: one motion from the previous region's end to this
       // region's begin (one unified DP, so no severing and no coupling); the first
       // region is free.

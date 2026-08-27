@@ -16,50 +16,50 @@
 
 _Edit costs: delete / insert / move_
 
-### Plan 1: cost 26.7321
+### Plan 1: cost 28
 
 ```
 ->
 vector>
 #include <
 ```
-`0 / 18 / 0`
+`0 / 20 / 0`
 
 ```
 
 #include <vector>
 ->
 ```
-`3 / 0 / 3.73205`
+`3 / 0 / 3`
 
-### Plan 2: cost 26.7321
+### Plan 2: cost 28
 
 ```
 ->
 <vector>
 #include 
 ```
-`0 / 18 / 0`
+`0 / 20 / 0`
 
 ```
 
 #include <vector>
 ->
 ```
-`3 / 0 / 3.73205`
+`3 / 0 / 3`
 
-### Plan 3: cost 26.7321
+### Plan 3: cost 28
 
 ```
 ->
  <vector>
 #include
 ```
-`0 / 18 / 0`
+`0 / 20 / 0`
 
 ```
 
 #include <vector>
 ->
 ```
-`3 / 0 / 3.73205`
+`3 / 0 / 3`

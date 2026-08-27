@@ -40,6 +40,23 @@ struct CountPenaltyParams {
   double spanSlope = 0.0;
 };
 
+// Concave count cost, in units of a class's countSlope: each extra unit costs the
+// full slope for the first COUNT_FULL_SLOPE_UNITS, half for the next
+// COUNT_HALF_SLOPE_UNITS, a fifth beyond. Piecewise-linear so a counted command
+// decomposes into a start cost plus a per-unit slope, which is what lets VimDiff
+// price counts incrementally.
+inline constexpr int COUNT_FULL_SLOPE_UNITS = 4;
+inline constexpr int COUNT_HALF_SLOPE_UNITS = 10;
+inline constexpr double COUNT_HALF_SLOPE = 0.5;
+inline constexpr double COUNT_TAIL_SLOPE = 0.2;
+
+constexpr double countSlopeUnits(int extra) {
+  const int full = std::min(extra, COUNT_FULL_SLOPE_UNITS);
+  const int half = std::clamp(extra - COUNT_FULL_SLOPE_UNITS, 0, COUNT_HALF_SLOPE_UNITS);
+  const int tail = std::max(extra - COUNT_FULL_SLOPE_UNITS - COUNT_HALF_SLOPE_UNITS, 0);
+  return full + COUNT_HALF_SLOPE * half + COUNT_TAIL_SLOPE * tail;
+}
+
 template<CountClass C>
 inline constexpr CountPenaltyParams CountPenaltySpec{0.0, 0.0, 0.0};
 
@@ -117,7 +134,7 @@ private:
 
     int span = std::max(0, in.span);
     return p.base +
-           p.countSlope * static_cast<double>(in.count - 1) +
+           p.countSlope * countSlopeUnits(in.count - 1) +
            p.spanSlope * static_cast<double>(span);
   }
 };
