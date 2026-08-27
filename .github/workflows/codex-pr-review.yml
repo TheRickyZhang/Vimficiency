@@ -72,11 +72,12 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          model: gpt-5.2-codex
-          # gpt-5.2-codex only accepts `text.verbosity = "medium"` on the
-          # OpenAI Responses API. The action defaults to "low", which the
-          # model rejects. Override via the Codex CLI's `-c` config flag
-          # (maps to the API's text.verbosity param).
+          # gpt-5.2-codex was shut down 2026-07-23; gpt-5.6-sol is OpenAI's
+          # listed replacement.
+          model: gpt-5.6-sol
+          # The action defaults `text.verbosity` to "low"; the retired codex
+          # model rejected anything but "medium", and "medium" is a valid value
+          # for the replacement, so keep it via the Codex CLI's `-c` flag.
           codex-args: >-
             --output-schema .github/codex/schemas/pr_review.schema.json
             -c model_verbosity="medium"

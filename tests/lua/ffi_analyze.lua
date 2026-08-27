@@ -57,6 +57,15 @@ local function find_result(results, seq)
   return nil
 end
 
+local function find_result_ending_with(results, suffix)
+  for _, result in ipairs(results) do
+    if result.seq:sub(-#suffix) == suffix then
+      return result
+    end
+  end
+  return nil
+end
+
 local function with_reset_config(fn)
   ffi_lib.reset_config()
   local ok, err = pcall(fn)
@@ -66,9 +75,13 @@ end
 
 test("ffi.configure: count penalty overrides affect analyze costs", function()
   with_reset_config(function()
+    -- After reset_config every key costs 1.0 and only the count penalty is
+    -- added on top, so `4w`/`4W` are the only two-key paths to col 19 and
+    -- become the strict minimum once their penalty is zeroed. Asserting on
+    -- that extreme (and its opposite) avoids pinning a ranked menu.
     local line = "one two three four five six"
     local function analyze()
-      local results = ffi_lib.analyze(
+      return ffi_lib.analyze(
         { line }, { line },
         0, #line - 1,
         false, false,
@@ -78,14 +91,20 @@ test("ffi.configure: count penalty overrides affect analyze costs", function()
         40, 20,
         20
       )
-      return results
     end
 
-    local baseline = analyze()
-    local baseline_4w = find_result(baseline, "4w")
-    local baseline_4W = find_result(baseline, "4W")
-    assert_true(baseline_4w ~= nil or baseline_4W ~= nil,
-      "expected baseline to include 4w or 4W")
+    local NO_PENALTY = { base = 0.0, count_slope = 0.0, span_slope = 0.0 }
+    ffi_lib.configure({
+      count_penalty_overrides = { MovementWord = NO_PENALTY, MovementBigWord = NO_PENALTY },
+    })
+    local free = analyze()
+    local free_4w = find_result(free, "4w")
+    local free_4W = find_result(free, "4W")
+    assert_true(free_4w ~= nil and free_4W ~= nil,
+      "zero count penalty must surface 4w and 4W; got " .. vim.inspect(free))
+    assert_eq(free_4w.cost, 2.0, "4w with no count penalty costs its two keys")
+    assert_eq(free_4W.cost, 2.0, "4W with no count penalty costs its two keys")
+    assert_eq(free[1].cost, 2.0, "two-key counted motions must be the cheapest result")
 
     ffi_lib.configure({
       count_penalty_overrides = {
@@ -93,21 +112,11 @@ test("ffi.configure: count penalty overrides affect analyze costs", function()
         MovementBigWord = { base = 60.0 },
       },
     })
-
-    local overridden = analyze()
-    if baseline_4w then
-      local candidate = find_result(overridden, "4w")
-      if candidate then
-        assert_true(candidate.cost > baseline_4w.cost + 40.0,
-          "4w should become much more expensive")
-      end
-    end
-    if baseline_4W then
-      local candidate = find_result(overridden, "4W")
-      if candidate then
-        assert_true(candidate.cost > baseline_4W.cost + 40.0,
-          "4W should become much more expensive")
-      end
+    local expensive = analyze()
+    for _, seq in ipairs({ "4w", "4W" }) do
+      local candidate = find_result(expensive, seq)
+      assert_true(candidate == nil or candidate.cost > 60.0,
+        seq .. " must be priced out or carry the 60.0 base; got " .. vim.inspect(candidate))
     end
   end)
 end)
@@ -143,21 +152,25 @@ test("ffi.analyze: preserves substitute payload and cost for exact 2->3 scenario
 
   assert_true(user_cost > 0, "user cost should parse as a positive number")
 
-  local replace = find_result(results, "$Ef2r3")
-  assert_true(replace ~= nil, "expected replace candidate $Ef2r3")
+  -- The nav prefix is whatever the search currently prefers; only the edit
+  -- tail and its payload are the FFI contract under test.
+  local replace = find_result_ending_with(results, "r3")
+  assert_true(replace ~= nil,
+    "expected a replace candidate ending in r3; got " .. vim.inspect(results))
   replace = assert(replace)
-  assert_true(replace.cost > 0, "$Ef2r3 should keep a positive cost")
+  assert_true(replace.cost > 0, replace.seq .. " should keep a positive cost")
 
-  local substitute = find_result(results, "$Ef2s3<Esc>")
+  local substitute = find_result_ending_with(results, "s3<Esc>")
   assert_true(substitute ~= nil,
-    "expected substitute candidate $Ef2s3<Esc>; got " .. vim.inspect(results))
+    "expected a substitute candidate ending in s3<Esc>; got " .. vim.inspect(results))
   substitute = assert(substitute)
   assert_true(substitute.cost > 0,
-    "$Ef2s3<Esc> should keep a positive cost, got " .. tostring(substitute.cost))
+    substitute.seq .. " should keep a positive cost, got " .. tostring(substitute.cost))
 
-  local truncated = find_result(results, "$Ef2s")
-  assert_true(truncated == nil,
-    "truncated $Ef2s result must not appear after ffi parsing")
+  for _, result in ipairs(results) do
+    assert_true(result.seq:sub(-1) ~= "s",
+      "substitute payload must survive ffi parsing; got truncated " .. result.seq)
+  end
 end)
 
 test("ffi.analyze_start_async: worker result matches sync analyze", function()
