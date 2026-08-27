@@ -7,7 +7,15 @@ They are added on top of physical key effort.
 
 For each `CountClass`, penalty is:
 
-`base + countSlope * (count - 1) + spanSlope * max(0, span)`
+`base + countSlope * countSlopeUnits(count - 1) + spanSlope * max(0, span)`
+
+`countSlopeUnits` is concave and piecewise linear: each extra unit counts fully
+for the first `COUNT_FULL_SLOPE_UNITS` (4), half for the next
+`COUNT_HALF_SLOPE_UNITS` (10), and a fifth beyond. So `5dd` costs `4 * 0.5`,
+`15dd` costs `9 * 0.5`, `40dd` costs `14 * 0.5`. The shape is shared by every
+class; `countSlope` scales it. Piecewise linearity is load-bearing for
+`VimDiff`: it lets a counted command be priced as a start cost plus a per-unit
+slope (see `dev/optimizer/diff-generation.md` § Complexity).
 
 Rules:
 - `count <= 1` always returns `0.0`.
@@ -34,6 +42,13 @@ Counted motion emitters apply penalty at creation time:
 - `{n}x` -> `CountClass::EditChar`
 
 For full-edit mode (`ModePolicy<false>`), goal-conversion paths also preserve counted penalties when converting `d...` to change-prefixed forms.
+
+### VimDiff
+
+The diff planner's tiling oracle prices every counted chunk as digit keystrokes
+plus `runtimeCountPenalty` for the level's class (`EditChar`/`MovementChar`
+through `EditParagraph`/`MovementParagraph`), so planner and downstream search
+charge counts identically.
 
 ## Runtime Overrides
 

@@ -16,86 +16,65 @@ def line here
 
 _Edit costs: delete / insert / move_
 
-### Plan 1: cost 30.8284
+### Plan 1: cost 34
 
 ```
 first old
 ->
 abc
 ```
-`3.41421 / 3 / 0`
+`2 / 4 / 0`
 
 ```
+
+
 ->
  here
-```
-`0 / 5 / 1`
 
 ```
-second old
+`1 / 7 / 1`
+
+```
+second old lin
 ->
-def
+def line her
 ```
-`3.41421 / 3 / 2`
+`2 / 13 / 1`
 
-```
-->
-e her
-```
-`0 / 5 / 1`
-
-### Plan 2: cost 30.8284
+### Plan 2: cost 34
 
 ```
 first old
 ->
 abc
 ```
-`3.41421 / 3 / 0`
+`2 / 4 / 0`
 
 ```
 ->
  here
 ```
-`0 / 5 / 1`
+`0 / 7 / 1`
 
 ```
-second old
+second old lin
 ->
-def
+def line her
 ```
-`3.41421 / 3 / 2`
+`2 / 13 / 2`
+
+### Plan 3: cost 34
 
 ```
+first old lin
 ->
- here
+abc line her
 ```
-`0 / 5 / 1`
-
-### Plan 3: cost 31.8284
+`2 / 13 / 0`
 
 ```
-first old
+second old lin
 ->
-abc
+def line her
 ```
-`3.41421 / 3 / 0`
-
-```
-->
- here
-```
-`0 / 5 / 1`
-
-```
-second old 
-->
-def 
-```
-`3.41421 / 4 / 2`
-
-```
-->
-e her
-```
-`0 / 5 / 1`
+`2 / 13 / 2`

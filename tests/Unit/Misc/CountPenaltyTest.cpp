@@ -68,3 +68,23 @@ TEST(CountPenaltyTest, PartialOverrideKeepsUnspecifiedFields) {
   // 1.0 + 0.5*(3-1) + 0.25*4 = 3.0
   EXPECT_NEAR(countPenalty<CountClass::EditWord>(in, overrides), 3.0, 1e-12);
 }
+
+TEST(CountPenaltyTest, CountCostIsConcaveAndPiecewiseLinear) {
+  // EditLine: base=0, countSlope=0.5. Full slope through 4 extra units, half
+  // through the next 10, a fifth beyond.
+  auto pen = [](int count) {
+    return countPenalty<CountClass::EditLine>(CountPenaltyInput{count, 0});
+  };
+  EXPECT_NEAR(pen(5), 0.5 * 4, 1e-12);
+  EXPECT_NEAR(pen(10), 0.5 * (4 + 0.5 * 5), 1e-12);
+  EXPECT_NEAR(pen(15), 0.5 * (4 + 0.5 * 10), 1e-12);
+  EXPECT_NEAR(pen(40), 0.5 * (4 + 0.5 * 10 + 0.2 * 25), 1e-12);
+
+  double prevMarginal = pen(2) - pen(1);
+  for (int count = 3; count <= 60; count++) {
+    const double marginal = pen(count) - pen(count - 1);
+    EXPECT_LE(marginal, prevMarginal + 1e-12) << "count " << count;
+    EXPECT_GT(marginal, 0.0) << "count " << count;
+    prevMarginal = marginal;
+  }
+}

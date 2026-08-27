@@ -131,7 +131,10 @@ minimizing
 PENALTY*t + sum delCost(Di) + sum insCost(Ii) + sum moveCost(interior Ki)
 ```
 
-`insCost` is the real effort model; `delCost` and `moveCost` are the same
+`insCost` is the real effort model plus the mode overhead a region with typed
+text pays: the `<Esc>` that ends the insert, and the insert-mode entry key when
+nothing was deleted first (a delete+insert takes the change form, whose
+operator already enters insert). `delCost` and `moveCost` are the same
 counted-tiling keystroke oracle (below) with different per-level bases —
 deletion pays the operator, movement is the bare motion. Leading `K0` and
 trailing `Kt` are free (you start at the first edit, end at the last) — and free
@@ -198,7 +201,10 @@ but additive movement charges per-char traversal and can never collapse a
 spanned unit — it overcharges exactly the long matched gaps we want to skip
 cheaply, so it is a worse model, not a faster equivalent. The concave count
 penalty makes the production tiling oracle subadditive too, so QI stays
-violated after the counted rewrite. (Empirically:
+violated after the counted rewrite; but because that penalty is piecewise
+linear (see `dev/optimizer/count-penalty.md`), a counted command is a start
+cost plus a per-unit slope, which is what a Gotoh-style state DP needs — the
+planned route back to quadratic. (Empirically:
 `tests/Debug/VimDiffPrototype.cpp`, `QuadrangleInequality` — ~19k violations
 for move/delete, 0 for insert; the prototype carries its own surrogate oracle
 copy, so it validates the DP shape independent of oracle calibration.)
@@ -230,8 +236,9 @@ cross-block oracle (which would make it truly diff-bound) is unachieved.
 *set* of counted Vim commands that tile it (`TilingCost` in `VimDiff.cpp`, one
 class, two base tables). An END-anchored DP runs once per start `a`: for each
 end `q`, the chunk ending there is the cheapest `{k}` command across levels,
-`base + penalty(k)` where `penalty(k) = digits(k) + sqrt(k) - 1` (0 at `k=1`, so
-an uncounted command is just `base`; concave, so each extra unit costs less):
+`base + penalty(k)` where `penalty(k)` is the digit keystrokes plus the shared
+cognitive count penalty for the level's class (`CountPenalty.h`, honouring
+runtime overrides), 0 at `k=1` so an uncounted command is just `base`:
 
 | chunk ending at `q`        | delete (`deleteCost`) | move (`levelCost`) |
 |----------------------------|-----------------------|--------------------|
@@ -240,11 +247,19 @@ an uncounted command is just `base`; concave, so each extra unit costs less):
 | `k` non-blank runs         | `{k}dE`/`dW` = 3      | `{k}E`/`W` = 2     |
 | `k` whole lines            | `{k}dd` = 2           | `{k}j` = 1         |
 | `k` whole paragraphs       | `{k}dap` = 3          | `{k}}` = 2         |
+| rest of the line           | `D` = 2               | `$` = 2            |
+| line start to here         | `d0` = 2              | —                  |
 
 The chunk shapes transfer to movement exactly because a delete's extent *is* its
 motion's landing point (`dw` = `d`+`w`); a movement tiling is a path of motion
-landings. Line/paragraph movement chunks approximate `{k}j` between unit starts
-— column adjustment within a line is below the oracle's fidelity.
+landings. Deletion line/paragraph chunks start on a unit start (`dd` takes whole
+lines); movement chunks start anywhere in the source unit, since `{k}j` works
+from any column — the column adjustment on landing is below the oracle's
+fidelity. The to-boundary rows are what make a partial line cheap: without
+them, cutting a `{k}dd` mid-line re-tiles the partial lines word by word, which
+both overprices surgical edits (measured as a systematic preference for fewer,
+larger regions in `PlanRegret`) and makes the cost of cutting a command grow
+with line length instead of staying bounded.
 
 Word/big runs are read from character class (`CharMask`) and are **span-local**:
 a run start is clamped to `a`, so a contiguous run counts as one word even
@@ -342,12 +357,12 @@ consumers. `VimDiffPlan/*` in `vimfy_benchmarks` times the planner alone
 ### Status
 
 Implemented: the exact G/D/F DP with the collapsed insert-split min, the shared
-counted-tiling oracle for delete and movement (span-local runs,
-`digits(k)+sqrt(k)-1` count penalty), K-best plans (`CostOptions::maxPlans`),
-and hard-split decomposition — wired as the default `diffAlgorithm=0`. The
-remaining cubic applies per segment; the fused O(N^2·CAP) rewrite is designed
-(see the complexity section) but parked until segment-size measurements demand
-it.
+counted-tiling oracle for delete and movement (span-local runs, digit
+keystrokes plus the shared `CountPenalty` model), per-region mode overhead
+(`<Esc>`, insert entry), K-best plans (`CostOptions::maxPlans`), and matched-run
+collapse — wired as the default `diffAlgorithm=0`. The DP is still cubic in
+the active cell count; the Gotoh-style state DP (see the complexity section) is
+the planned fix.
 
 Deliberately not modeled yet: dot-repeat credit for identical repeated regions —
 composition itself does not exploit `.` across planned edits yet, so a planner
