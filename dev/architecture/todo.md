@@ -12,6 +12,35 @@ Completed items should be deleted, not crossed out.
 
 ---
 
+## 0. Composition consumes only `plans.front()` — evaluate the tied set
+
+**What.** `CompositionSearchContext.cpp:77` takes the planner's single best
+plan. Since the shared concave count model and the to-boundary oracle chunks
+(2026-08-26), `VimDiff`'s top-K plans tie *exactly* in most `PlanRegret`
+inversions (inversions where plan 1 and plan 2 have equal planner cost: 3 → 64
+of 96 cases), and K-best returns ties in generation order, so plan 1 among
+equals is arbitrary. The harness's tie-adjusted metric (tied plans treated as
+interchangeable) is 10/96 inversions, mean regret 0.35 keystrokes; the raw
+metric is ~73/96, mean ~4. The entire gap is tie-breaking, not the cost model.
+
+Two non-heuristic fixes, in preference order:
+
+1. Hand composition the whole tied set (usually 2–4 plans) instead of
+   `front()` and keep the real best. Exact by definition; costs a small multiple
+   of composition time only when the planner is genuinely indifferent.
+2. Give the planner the effects that actually separate the ties — a
+   newline-inclusive region costs `<CR>` plus Transform's autoindent fixups
+   (`<Space>`/`<Del>`), `cc` vs `D`+retype — so it stops tying. More work, and
+   it chases Transform behavior.
+
+**Threshold.** The next change to `VimDiff` or to how composition consumes
+plans. Success is the raw `PlanRegret` numbers converging to the tie-adjusted
+ones. Note `PlanRegret` is nondeterministic run to run (multi-threaded
+composition; ±5 inversions), so compare tie-adjusted regret, not inversion
+counts.
+
+---
+
 ## 1. Move the CI bench workflow onto `CMakePresets.json`
 
 **What.** Replace the ad-hoc `-D` flags in `bench.yml` (e.g. `-DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF -DVIMF_TRACK_STATES=ON ...`) with named presets (`release-track`, `release-bench`, etc.) defined in `CMakePresets.json`. Preset names are validated against the file, so a typo fails loudly at `cmake --preset` time rather than being silently accepted as an unused cache variable.
