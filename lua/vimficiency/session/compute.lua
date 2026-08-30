@@ -254,9 +254,8 @@ local function finalize(ctx, results, user_cost, dbg, analyze_ms)
   -- the breakdown the optimizer planned against. Same validated slices, so it
   -- can't fail here.
   local comp = (config.optimizer or {}).composition or {}
-  local diff_open_penalty = comp.diffOpenPenalty
   local diffs = ffi_optimizer.compute_diffs(
-    ctx.initial_slice, ctx.goal_slice, comp.diffAlgorithm, diff_open_penalty)
+    ctx.initial_slice, ctx.goal_slice, comp.diffAlgorithm)
   if #diffs == 0 then
     diffs = disk.empty_array()
   end

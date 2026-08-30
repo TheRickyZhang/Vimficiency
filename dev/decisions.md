@@ -14,19 +14,11 @@ to deeper docs when needed.
 
 ## Pretty text (`src/Utils/PrettyText.h`)
 - Named `PrettyText` / `prettify`, not `GlyphText` / `glyphize` — because "pretty" matches the user-facing intent (make whitespace/control chars visible), while "glyph" was implementation jargon and "glyphize" is a made-up verb.
-- Centralized in `Utils/PrettyText.h`, not `Interpreter/SequenceDisplay.cpp` — because DiffTree/VimDiff diagnostics also need this, and Optimizer→Interpreter is a backwards layering.
+- Centralized in `Utils/PrettyText.h`, not `Interpreter/SequenceDisplay.cpp` — because VimDiff diagnostics also need this, and Optimizer→Interpreter is a backwards layering.
 - `PrettyText` is a tagged struct (`struct PrettyText { std::string text; }`) built only via `explicit` constructors — because the type itself signals "rendering has happened", and the `.text` accessor marks the boundary back to untagged text.
 - A free function `prettify(c/sv) → std::string` exists alongside the struct — for sites that don't need to keep the type tag (e.g. concatenating into an existing `std::string`). Without this, those sites would have to write `PrettyText(x).text`, which is friction without benefit.
 - The plural-string constructor delegates to the singular-char dispatch (`appendGlyph`) — single source of truth for the char→glyph mapping.
 - `SequenceDisplay.cpp` uses the raw glyph constants (`PRETTY_SPACE`, `PRETTY_TAB`, `PRETTY_NEWLINE`) directly when mapping `<Space>`/`<Tab>`/`<CR>` key notation, because that's a *different* operation (notation → glyph) from rendering text.
-
-## DiffTree visualization (`DiffTree::Tree::operator<<`)
-- Output is a constituency-style character-aligned diagram, e.g. `⟦i n t ␣┃b e _ c o┃( ) ␣┃{⟧` — denser and higher-signal than the previous per-node bullet list.
-- Outer delimiters are `⟦` / `⟧` (U+27E6/U+27E7), and internal dividers are `┃` (U+2503), not ASCII `[`/`]`/`|` — because source code routinely contains ASCII punctuation, and the ambiguity would force readers to disambiguate by position.
-- Char level is excluded from the visualization — because including it would force every adjacent-char gap to width 2 (close+open), roughly doubling row width with no extra information. Counts row still mentions Char.
-- Whitespace/control chars are rendered as visible glyphs (`␣`, `⇥`, `↵`) so they participate in alignment as 1-column cells.
-- No row labels (Root/Paragraph/...) on the visualization rows — the row order is canonical (top = coarsest), and the `counts:` line above documents the level names. Saved horizontal space.
-- Uses `operator<<` directly, not a `toString()` method — idiomatic C++ stream output and lets callers compose with `out << "Initial tree:\n" << tree;` without parens-and-method noise.
 
 ## VimDiff approval region format (`VimDiffApprovalTest`)
 - Each case prints both buffers, a cost legend, then top-K plans. Each region uses a vertical block: deleted text, `->`, inserted text, then `del / ins / move`.

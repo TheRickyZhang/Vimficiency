@@ -341,7 +341,9 @@ VFByteSlice vf_explore_poll(int job_id) {
 }
 
 // Signals cancellation and frees the job; the jthread destructor joins the
-// worker, which returns once it observes the flag (within ~one sub-search).
+// worker on this (main) thread. The flag is polled between composition setup
+// phases and per pop in every search loop, so the join is bounded by one
+// diff's precompute or one pop expansion.
 int vf_explore_cancel(int job_id) {
   std::unique_ptr<ExploreJob> owned = g_jobs.take(job_id);
   if (!owned) return 0;

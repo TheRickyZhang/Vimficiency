@@ -9,7 +9,6 @@
     F(int,    navPaddingAbove, withNavLinePaddingAbove, 1, parseInt)                       \
     F(int,    navPaddingBelow, withNavLinePaddingBelow, 1, parseInt)                       \
     F(double, overshootPenalty, withOvershootPenalty, 3.0, parseDouble)                    \
-    F(double, diffOpenPenalty, withDiffOpenPenalty, 1.0, parseDouble)                      \
     F(double, moveDeleteScale, withMoveDeleteScale, 1.0, parseDouble)                      \
     F(int,    transformMaxResultsPerStartPos, withTransformMaxResultsPerStartPos, 1, parseInt) \
     F(int,    diffAlgorithm, withDiffAlgorithm, 0, parseInt)  /* 0 = VimDiff default; 1 = MyersDiff fallback */

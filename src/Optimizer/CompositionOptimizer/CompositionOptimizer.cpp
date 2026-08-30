@@ -371,7 +371,7 @@ optimizeImpl(
     auto navResult = navOptimizer.optimize(
         slice.subset, slice.localPos, localInterval,
         navParams, "", slice.subsetBoundary, navigationContext,
-        slice.bufferIndex, slice.bufferIndexLineOffset);
+        slice.bufferIndex, slice.bufferIndexLineOffset, ctx.control);
     ctx.navNodesExplored += navResult.getStats().nodesExplored();
 
     for (const LandingResult& movResult : navResult.getResults()) {
@@ -476,7 +476,7 @@ optimizeImpl(
             boundary, params);
         if (!search) return;
         auto navResult = optimizeCompositionRangeMotion(
-            navOptimizer, *search, navigationContext, params, 1);
+            navOptimizer, *search, navigationContext, params, 1, ctx.control);
         ctx.navNodesExplored += navResult.getStats().nodesExplored();
 
         for (const LandingResult& movResult : navResult.getResults()) {
@@ -666,14 +666,14 @@ CompositionResult CompositionOptimizer::optimize(
   auto setupT0 = std::chrono::steady_clock::now();
   CompositionSearchContext ctx(initialLines, initialPos, goalLines, goalPos,
                                userSequence, navigationContext, boundary,
-                               params, config, forcedDiffs);
-  ctx.control = control;
+                               params, config, forcedDiffs, control);
   if (timePhases) {
     std::cerr << "[phase] setup (ctx ctor) total: "
               << std::chrono::duration<double, std::milli>(
                      std::chrono::steady_clock::now() - setupT0).count()
               << " ms, diffs=" << ctx.totalEdits() << "\n";
   }
+  if (ctx.aborted) return {};
 
   if (ctx.totalEdits() > 16) {
     debug("Cannot support more than 16 edits");
@@ -713,8 +713,8 @@ CompositionTraceResult CompositionOptimizer::optimizeWithEditSpans(
 
   CompositionSearchContext ctx(initialLines, initialPos, goalLines, goalPos,
                                userSequence, navigationContext, boundary,
-                               params, config);
-  ctx.control = control;
+                               params, config, nullptr, control);
+  if (ctx.aborted) return {};
 
   if (ctx.totalEdits() > 16) {
     debug("Cannot support more than 16 edits");

@@ -16,7 +16,7 @@
 
 _Edit costs: delete / insert / move_
 
-### Plan 1: cost 28
+### Plan 1: cost 26
 
 ```
 ->
@@ -32,7 +32,7 @@ vector>
 ```
 `3 / 0 / 3`
 
-### Plan 2: cost 28
+### Plan 2: cost 26
 
 ```
 ->
@@ -48,7 +48,7 @@ vector>
 ```
 `3 / 0 / 3`
 
-### Plan 3: cost 28
+### Plan 3: cost 26
 
 ```
 ->

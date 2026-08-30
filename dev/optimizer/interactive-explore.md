@@ -50,12 +50,19 @@ precomputed plan (the precomputed-plan `View` constructor — never a half-ready
 View) and returns its id; the controller then installs the interactive handlers
 and renders. Closing or cancelling mid-compute calls `vf_explore_cancel`.
 
-The worker's search honours a `SearchControl` (cancel flag + optional deadline,
-checked in the composition A* loop). Cancel powers prompt teardown; the deadline
-(`compute_deadline_ms`, an explore setting; `0` = run to the natural caps) bounds
-worker latency by returning best-so-far. Responsiveness comes from the search
-being off-thread — the deadline only bounds how long the panel takes to fill,
-not the main thread, which only ever does an O(1) poll.
+The worker's search honours a `SearchControl` (cancel flag + optional deadline).
+Both are polled per pop in the composition A* loop and in every nested
+NavOptimizer search; the deadline (`compute_deadline_ms`, an explore setting;
+`0` = run to the natural caps) bounds worker latency by returning best-so-far.
+Cancel powers prompt teardown and is additionally polled between the
+composition setup phases (after diff planning, per-diff transform precompute,
+join plans), aborting to an empty plan — the deadline deliberately does not
+abort setup, since there is no best-so-far there and an in-flight plan is worth
+finishing. `vf_explore_cancel` joins the worker synchronously on the main
+thread, so that polling granularity is what bounds the close-time hitch.
+Responsiveness otherwise comes from the search being off-thread — the deadline
+only bounds how long the panel takes to fill, not the main thread, which only
+ever does an O(1) poll.
 
 ### Copied options
 

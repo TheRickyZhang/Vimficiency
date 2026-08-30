@@ -10,7 +10,6 @@
 //
 //   VIMFY_REGRET_SEEDS=8   seeds per catalog case
 //   VIMFY_REGRET_PLANS=4   K
-//   VIMFY_REGRET_P=<x>     override diffOpenPenalty for calibration sweeps
 //
 // Inversion lines show each plan's region count as [rN] next to its costs.
 //
@@ -62,7 +61,6 @@ TEST(PlanRegret, Catalog) {
   const Config config = Config::uniform();
   const int seeds = envInt("VIMFY_REGRET_SEEDS", 8);
   const int K = envInt("VIMFY_REGRET_PLANS", 4);
-  const double pOverride = envDouble("VIMFY_REGRET_P", -1.0);
 
   int cases = 0, singlePlan = 0, comparable = 0, inversions = 0, failures = 0;
   int pairs = 0, concordant = 0, tiedInversions = 0;
@@ -72,11 +70,9 @@ TEST(PlanRegret, Catalog) {
   for (const CompositionCaseSpec& spec : compositionCaseCatalog()) {
     for (int seed = 0; seed < seeds; seed++) {
       CompositionSetup s = buildCompositionSetup(spec, seed);
-      if (pOverride >= 0.0) s.params.diffOpenPenalty = pOverride;
       vector<VimDiff::Plan> plans = VimDiff::calculate(
           s.initial, s.goal, config,
           VimDiff::CostOptions{
-              .diffOpenPenalty = s.params.diffOpenPenalty,
               .moveDeleteScale = s.params.moveDeleteScale,
               .maxPlans = K,
           });
@@ -169,9 +165,7 @@ TEST(PlanRegret, DumpCase) {
          << VF::prettify(s.goal.flatten()) << "\n";
     vector<VimDiff::Plan> plans = VimDiff::calculate(
         s.initial, s.goal, config,
-        VimDiff::CostOptions{.diffOpenPenalty = s.params.diffOpenPenalty,
-                             .moveDeleteScale = s.params.moveDeleteScale,
-                             .maxPlans = K});
+        VimDiff::CostOptions{.moveDeleteScale = s.params.moveDeleteScale, .maxPlans = K});
     for (int p = 0; p < (int)plans.size(); p++) {
       CompositionOptimizer opt(config);
       auto res = opt.optimize(s.initial, {0, 0}, s.goal, {0, 0}, s.params, "",

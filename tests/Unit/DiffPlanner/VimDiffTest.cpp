@@ -206,4 +206,46 @@ TEST(VimDiffTest, AllPlansRoundTripAscendAndDiffer) {
   }
 }
 
+// The breakdown re-prices each plan region-by-region with the single-span
+// oracle; its total must equal the DP's path cost for the same plan. This pins
+// the multi-source deletion sweep to the single-source `query` it must agree with.
+TEST(VimDiffTest, BreakdownTotalsMatchPlanCosts) {
+  Config config = Config::qwerty();
+  mt19937 rng(4242);
+  uniform_int_distribution<int> ch(0, 4), lineCount(1, 5), lineLen(0, 14);
+  VimDiff::CostOptions options;
+  options.maxPlans = 4;
+  options.collapseRuns = false;
+  for (int it = 0; it < 300; it++) {
+    vector<string> v;
+    for (int l = lineCount(rng); l > 0; l--) {
+      string s;
+      for (int k = lineLen(rng); k > 0; k--) s += char('a' + ch(rng));
+      v.push_back(s);
+    }
+    Lines initial(v.begin(), v.end());
+    string g = initial.flatten();
+    for (int k = 1 + (int)(rng() % 4); k > 0; k--) {
+      int op = (int)(rng() % 3);
+      int pos = (int)(rng() % (g.size() + 1));
+      if (op == 0 && pos < (int)g.size()) g[pos] = char('a' + ch(rng));
+      else if (op == 1) g.insert(g.begin() + pos, char('a' + ch(rng)));
+      else if (pos < (int)g.size()) g.erase(g.begin() + pos);
+    }
+    Lines goal = Lines::unflatten(g);
+    vector<VimDiff::Plan> plans = VimDiff::calculate(initial, goal, config, options);
+    vector<VimDiff::CostBreakdown> bds = VimDiff::calculateBreakdown(initial, goal, config, options);
+    ASSERT_EQ(plans.size(), bds.size()) << initial.flatten() << " -> " << g;
+    for (size_t p = 0; p < plans.size(); p++) {
+      EXPECT_NEAR(plans[p].cost, bds[p].total, 1e-9)
+          << "plan " << p << " for \"" << initial.flatten() << "\" -> \"" << g << "\"";
+      ASSERT_EQ(plans[p].diffs.size(), bds[p].regions.size());
+      for (size_t r = 0; r < plans[p].diffs.size(); r++) {
+        EXPECT_EQ(plans[p].diffs[r].deletedText, bds[p].regions[r].diff.deletedText);
+        EXPECT_EQ(plans[p].diffs[r].insertedText, bds[p].regions[r].diff.insertedText);
+      }
+    }
+  }
+}
+
 }  // namespace

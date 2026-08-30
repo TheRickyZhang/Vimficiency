@@ -8,6 +8,7 @@
 
 #include "Optimizer/OptimizerResult.h"
 #include "Optimizer/LandingResult.h"
+#include "Optimizer/SearchControl.h"
 #include "Optimizer/SearchStats.h"
 
 #include "Boundary/NavBoundary.h"
@@ -39,12 +40,15 @@ struct NavOptimizer {
   NavOptimizer(const Config& config) : config(config) {}
 
   // Find sequences from initialPos to some positions in goalInterval.
-  // You usually want to pass params.maxResultsPerEndPos > 1
+  // You usually want to pass params.maxResultsPerEndPos > 1.
+  // `control` (optional) is polled each pop; the search returns best-so-far
+  // when it fires.
   LandingNavResult optimize(
     const Lines& lines, const CursorPos& initialPos, const CharInterval& goalInterval,
     NavOptimizerParams params = {}, std::string_view userSequence = "",
     const NavBoundary& boundary = NavBoundary(),
-    const NavContext& navigationContext = NavContext()
+    const NavContext& navigationContext = NavContext(),
+    const SearchControl* control = nullptr
   );
 
   // Same overload but takes a pre-built BufferIndex
@@ -53,7 +57,8 @@ struct NavOptimizer {
     NavOptimizerParams params, std::string_view userSequence,
     const NavBoundary& boundary,
     const NavContext& navigationContext,
-    const BufferIndex& bufferIndex, int lineOffset
+    const BufferIndex& bufferIndex, int lineOffset,
+    const SearchControl* control = nullptr
   );
 
   // single-cursor goal overload, underlying implementation is the same
@@ -62,6 +67,7 @@ struct NavOptimizer {
     const Lines& lines, const CursorPos& initialPos, const CursorPos& goalPos,
     NavOptimizerParams params = {}, std::string_view userSequence = "",
     const NavBoundary& boundary = NavBoundary(),
-    const NavContext& navigationContext = NavContext()
+    const NavContext& navigationContext = NavContext(),
+    const SearchControl* control = nullptr
   );
 };

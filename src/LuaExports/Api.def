@@ -102,8 +102,7 @@ VFByteSlice vf_compute_diffs(
   size_t encoded_initial_lines_len,
   const char* encoded_goal_lines,
   size_t encoded_goal_lines_len,
-  int diff_algorithm,
-  double diff_open_penalty);
+  int diff_algorithm);
 VFByteSlice vf_get_debug();
 VFByteSlice vf_get_warnings();
 VFByteSlice vf_get_optimizer_defaults();
