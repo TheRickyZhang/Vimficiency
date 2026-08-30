@@ -19,7 +19,7 @@
     /* minPrefixCount > maxPrefixCount disables count-prefixed exploration             \
        while leaving unprefixed exploration intact. */                                 \
     F(int,    minPrefixCount, withMinCountRepeat, 4,     parseInt)                     \
-    F(int,    maxPrefixCount, withMaxCountRepeat, 16,    parseInt)
+    F(int,    maxPrefixCount, withMaxCountRepeat, CountPrefixLimits::DEFAULT_MAX_PREFIX_COUNT, parseInt)
 
 // Shared between Nav and Composition. Not lifted to base — Transform doesn't
 // enumerate motions, so these would be dead there.

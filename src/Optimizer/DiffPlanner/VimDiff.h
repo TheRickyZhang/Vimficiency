@@ -4,6 +4,7 @@
 
 #include "DiffState.h"
 #include "Keyboard/Config.h"
+#include "Types/CountPrefixLimits.h"
 #include "Types/Lines.h"
 
 namespace VimDiff {
@@ -11,9 +12,10 @@ namespace VimDiff {
 struct CostOptions {
   double moveDeleteScale = 1.0;   // scales keystroke move/delete vs insert effort
   int maxPlans = 1;
-  // Collapse matched-run interiors so DP work scales with diff size, not buffer
-  // size. Off = exact char-level DP (the baseline; for verification/diagnostics).
-  bool collapseRuns = true;
+  // Cap for counted commands in the tiling oracle. The same knob the optimizer
+  // searches use — composition passes its live `maxPrefixCount` param — so the
+  // planner never prices a count the search cannot emit.
+  int maxPrefixCount = CountPrefixLimits::DEFAULT_MAX_PREFIX_COUNT;
 };
 
 // One candidate partition and its planner cost.

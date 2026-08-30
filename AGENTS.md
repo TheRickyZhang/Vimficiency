@@ -103,15 +103,16 @@ cmake --build build -j
 | `vimfy_approval_tests` | Approval snapshot tests | `./build/tests/vimfy_approval_tests --gtest_brief=1` |
 | `vimfy_property_tests` | Structured property tests | `scripts/vimfy_tests property` |
 | `vimfy_safety_tests` | Safety tests | `scripts/vimfy_tests safety` |
-| `vimfy_benchmarks` | Performance benchmarks | `./build/tests/vimfy_benchmarks` |
+| `vimfy_benchmarks` | Performance benchmarks | `./build-release/tests/vimfy_benchmarks` |
 | `vimfy_debug` | Scratch/debug tests | `./build/tests/vimfy_debug` |
 
 ```bash
 # Run all correctness tests
 scripts/vimfy_tests
 
-# Run all benchmarks
-./build/tests/vimfy_benchmarks
+# Run all benchmarks (from a Release tree — `build/` is Debug and its timings are
+# not meaningful; see dev/ci-and-benchmarks.md)
+./build-release/tests/vimfy_benchmarks
 ```
 
 **Other artifacts:** `build/libvimfy_core.a`, `build/libvimficiency.so`, `build/vimficiency_cli`

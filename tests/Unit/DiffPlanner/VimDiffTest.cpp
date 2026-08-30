@@ -206,16 +206,15 @@ TEST(VimDiffTest, AllPlansRoundTripAscendAndDiffer) {
   }
 }
 
-// The breakdown re-prices each plan region-by-region with the single-span
-// oracle; its total must equal the DP's path cost for the same plan. This pins
-// the multi-source deletion sweep to the single-source `query` it must agree with.
+// The breakdown re-prices each plan region-by-region from the transition
+// tables; its total must equal the DP's path cost for the same plan. This pins
+// the region walk and the transition tables to the DP path cost.
 TEST(VimDiffTest, BreakdownTotalsMatchPlanCosts) {
   Config config = Config::qwerty();
   mt19937 rng(4242);
   uniform_int_distribution<int> ch(0, 4), lineCount(1, 5), lineLen(0, 14);
   VimDiff::CostOptions options;
   options.maxPlans = 4;
-  options.collapseRuns = false;
   for (int it = 0; it < 300; it++) {
     vector<string> v;
     for (int l = lineCount(rng); l > 0; l--) {

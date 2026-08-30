@@ -147,7 +147,7 @@ is a multi-token structural macro" comment).
 default of 1 (`CompositionSearchContext.cpp:78`), so plan 1 must be right.
 Exactness costs an `O(N)` raw deletion sweep per goal column — the only reason planner
 runtime is buffer-bound rather than diff-bound. Whether that price buys better
-partitions has never been measured: `SparseVsDense` measures agreement with the
+partitions has never been measured: the (since-retired) collapse-vs-dense A/B measured agreement with the
 surrogate's own value, while `PlanRegret` measures rank inversion, which is the
 thing that actually decides plan quality.
 
@@ -156,8 +156,8 @@ cells per axis, ≈ diff size, `E` = planned edits, `P` = pops, `B` = branching 
 
 | stage | cost | note |
 |---|---|---|
-| VimDiff search | `O(n·m)` | pruned cells; per cell a bounded move pull + K-best inserts |
-| VimDiff sweep | `O(m·N·CAP)` | one raw deletion sweep per goal column; dominates |
+| VimDiff search | `O(n·m)` | pruned cells; bounded move/type/enter/exit relaxations per cell |
+| VimDiff sweeps | `O((n+m)·N·cap)` | move-table sweeps per pruned start + one deletion sweep per goal column |
 | Composition construction | `O(E · P_t · B_t)` | `E` Transform A* runs; dominates the `O(E·N)` buffer rebuild and `O(E·L²)` text-object scan |
 | Composition search | `O(P_c · P_n · B_n)` | **nested**: each pop can fire up to ~9 NavOptimizer A* runs (8 ranked start positions + the diff-range search) |
 

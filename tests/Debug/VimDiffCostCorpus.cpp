@@ -39,20 +39,17 @@ Lines randomBuffer(mt19937& rng, int maxLines, int maxLen, int alphabet) {
 }
 
 void dump(const string& tag, const Lines& a, const Lines& b, const Config& cfg, int K) {
-  for (bool collapse : {false, true}) {
-    VimDiff::CostOptions o;
-    o.collapseRuns = collapse;
-    o.maxPlans = K;
-    auto plans = VimDiff::calculate(a, b, cfg, o);
-    cout << tag << (collapse ? " C" : " E") << " plans=" << plans.size();
-    for (auto& p : plans) {
-      cout << " | " << fixed << setprecision(6) << p.cost << ":";
-      for (auto& d : p.diffs)
-        cout << " " << d.beginPos.line << "," << d.beginPos.col << "[" << d.deletedText.size()
-             << ">" << d.insertedText.size() << "]";
-    }
-    cout << "\n";
+  VimDiff::CostOptions o;
+  o.maxPlans = K;
+  auto plans = VimDiff::calculate(a, b, cfg, o);
+  cout << tag << " plans=" << plans.size();
+  for (auto& p : plans) {
+    cout << " | " << fixed << setprecision(6) << p.cost << ":";
+    for (auto& d : p.diffs)
+      cout << " " << d.beginPos.line << "," << d.beginPos.col << "[" << d.deletedText.size()
+           << ">" << d.insertedText.size() << "]";
   }
+  cout << "\n";
 }
 
 }  // namespace

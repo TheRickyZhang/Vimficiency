@@ -75,6 +75,7 @@ CompositionSearchContext::CompositionSearchContext(
             config,
             VimDiff::CostOptions{
                 .moveDeleteScale = params.moveDeleteScale,
+                .maxPrefixCount = params.maxPrefixCount,
             });
         if (!plans.empty()) rawDiffs = std::move(plans.front().diffs);
         break;
