@@ -84,8 +84,9 @@ command boundaries only inside the cost oracle (`moveCost`/`delCost`).
 ### Coordinates
 
 - `N` / `M`: raw sizes of the initial / goal text; `ri` / `rj`: raw positions.
-- `n` / `m`: pruned unit counts after matched-run collapse (below); `i` / `j`:
-  pruned indices. `PrunedUnits` maps `i -> initialRaw[i]` and `j -> goalRaw[j]`.
+- A `Block` is a raw span pair `[aBegin,aEnd) × [bBegin,bEnd)`; `n` / `m` are
+  its cell counts (one char per cell) and `i` / `j` its cell indices, so cell
+  `(i,j)` sits at raw `(ra,rb) = (aBegin+i, bBegin+j)`.
 - A DP step lands in cell `(i,j)` from its predecessor `(pi,pj)`; a successor
   is `(ni,nj)`. Spans are half-open `[begin,end)`.
 - `k` is always a command count (`{k}dd`); the K-best bound is `maxPlans`.
@@ -135,8 +136,9 @@ delete  out[pi][j]  -> out[i][j]   delete initial [pi,i):                  delCo
 enter   out[i][pj]  -> in[i][j]    pj = j-1, enter insert + type unit pj:  entry + <Esc> - cut(pj) + typed(pj)
 type    in[i][pj]   -> in[i][j]    pj = j-1, type goal unit pj:            typed(pj)
 exit    in[i][j]    -> out[i][j]   leave insert:                           free
-out[i][j] = 0 on the diagonal within the common prefix                    # leading free
-answer    = min over out[i][j] with initial[ri:] == goal[rj:]              # trailing free
+cross   prev out[n-t][m-t] -> out[i][i]   across the seal into the next block: moveCost over the gap
+out[i][j] = 0 on the first block's leading matched diagonal                # leading free
+answer    = min over the last block's trailing matched diagonal            # trailing free
 ```
 
 Typing is per-unit additive because `RunningEffort` is a monoid with a one-key
@@ -150,17 +152,19 @@ began — that is what makes two tables enough (charging `<Esc>` only when
 something was typed, or `entry` only when nothing was deleted, would need a
 third).
 
-`move[pi][i]` is a table in pruned coordinates, filled by
-`calculateTransitionCosts` before the DP runs (one tiling sweep per pruned
-start prices every end at once); `typed[j]`/`enter[j]` come from the effort
-prefix sums. Deletions have no table: an in-progress deletion's cost does not
-depend on where it started, so `relaxDeletes` prices every delete arrival of a
-column with one multi-source sweep over raw positions, seeded by the column's
-`out` cells — `O(N)` per column, independent of `n`. `solveVimDiff` is then the
-five relaxations above and nothing else, column-major: within a column `in`
-depends only on column `j-1` and `out` on smaller `i`, then the deletion sweep
-lands its arrivals. Regions are read off the winning path afterwards by
-`reconstructPlans`.
+The DP runs once per block (see *Sealing matched runs*). Per block,
+`move[pi][i]` is a table filled by `calculateTransitionCosts` before the DP
+runs (one tiling sweep per start prices every end at once), and
+`typed[j]`/`enter[j]` come from the goal's effort prefix sums. Deletions have
+no table: an in-progress deletion's cost does not depend on where it started,
+so `relaxDeletes` prices every delete arrival of a column with one multi-source
+sweep over the block's raw span, seeded by the column's `out` cells. A block
+after the first is entered by `CROSS` moves from the previous block's trailing
+matched diagonal, priced across the seal. `solveVimDiff` is then the five
+relaxations above and nothing else, column-major: within a column `in` depends
+only on column `j-1` and `out` on smaller `i`, then the deletion sweep lands
+its arrivals. Regions are read off the winning path afterwards by
+`reconstructPlans`, walking back across blocks.
 
 ### Top-K plans
 
@@ -183,17 +187,15 @@ diagnostic surface behind `tests/Approval/VimDiffApprovalTest.cpp`.
 
 ### Complexity
 
-Move table: `n` tiling sweeps of `O(N·cap)` chunk transitions each (`cap` = the
-shared `maxPrefixCount`), so `O(n·N·cap)`. DP: `O(n·m)` pruned cells; per cell,
-`move` pulls along the matched diagonal (`O(run length)` in pruned units, at
-most the computed edge margins for a collapsed run) and `type`/`enter`/`exit`
-are bounded inserts over `O(maxPlans)` candidates. Deletions are not per cell:
-`relaxDeletes` runs one multi-source sweep per goal column — `O(N·cap)` —
-because an in-progress deletion's value does not depend on where it started, so
-one carried K-best list prices every start at once. Total
-`~O((n + m)·N·cap + n·m)`. Every pruned start and goal column still pays a raw
-walk — see "Exact vs diff-bound" for why an `O(1)` cross-run oracle (which
-would make the planner diff-bound) is unachieved.
+Per block with `n × m` cells over a raw initial span of `N_k` chars (`cap` =
+the shared `maxPrefixCount`): the move table is `n` sweeps of `O(N_k·cap)`;
+the DP is `O(n·m)` cells, each a bounded insert over `O(maxPlans)` candidates
+plus a `move` pull along the matched diagonal; deletions are one multi-source
+sweep per goal column, `O(N_k·cap)`, because an in-progress deletion's value
+does not depend on where it started. Each seal adds one `CROSS` sweep per
+trailing-diagonal start, `O(margin·core)`. Since `Σ N_k` is the changed text
+plus margins plus unsealed short runs, the planner is diff-bound:
+`~O(Σ_k (n_k + m_k)·N_k·cap + n_k·m_k + Σ_seals margin·core)`.
 
 Why a sweep and not a per-cell running min: `moveCost`/`delCost` violate the
 quadrangle (Monge) inequality extensively (`insCost` satisfies it), so the
@@ -279,81 +281,73 @@ one left-to-right sweep from a start (`TilingCost::sweep`): a chunk ending at
 `ri` relaxes from the value reached at its start, and every end is reported as
 it is reached — one sweep prices a whole `move` table row, and with K-best
 lists as the carried value, a whole column of deletions (`relaxDeletes`).
-`query(begin,end)` is the one-span instance (the collapse gate).
+`query(begin,end)` is the one-span instance (the seal gate).
 
-### Coordinate collapse + raw-span oracle (implemented)
+### Sealing matched runs
 
-`collapseMatchedRuns` (VimDiff.cpp) shrinks the K-best DP by collapsing the
-interior of matched runs the optimum provably keeps into single units, with
-char-level cells kept at each run edge where an optimal edit boundary could
-still slide into the run for an alignment saving. Both decisions are value
-comparisons under the cost model, with no free constants — this is what makes
-`n`,`m` diff-sized rather than `N`,`M`:
+`sealMatchedRuns` (VimDiff.cpp) splits the alignment at every Myers-matched run
+the optimum provably never edits into. Such a run is a *separator*: every
+optimal path crosses it with one move, so the text before it and the text after
+it are independent subproblems. The output is a list of `Block`s — raw spans
+`[aBegin,aEnd) × [bBegin,bEnd)` — with a sealed core between consecutive
+blocks. Inside a block every cell is one character; there is no pruned
+coordinate system. Both decisions are value comparisons under the cost model,
+with no free constants:
 
-- **Margins**: a boundary at depth `d` retypes the `d` matched chars (they must
-  reappear in the goal), costing `ins(d)` minus at most one bigram seam
-  correction (`seamMax`, scanned over the chars that occur). It can save at most
-  the per-edge structural slack — `TilingCost::stopSlack`/`startSlack`, the
-  computed worst extra cost of ending/starting a delete tiling exactly at the
-  edge instead of crossing it: a counted chunk pays its split gap (read from the
-  pen tables), `{k}dd` the split gap plus a cover bound of the edge's partial
-  line, `{k}dap` additionally a counted `dd` within the paragraph, `D`/`d0` the
-  cover alone — plus the move over the slid-over chars (exact from an edge
-  sweep; the right edge adds the cost of stopping that sweep's tiling early).
-  Retype grows ~one keystroke per char while the slack is fixed per edge, so
-  the scan crosses over quickly. On wide lines the slack honestly grows with
-  that line's cover cost (running through to the line end with `D` is genuinely
-  tempting there), and the margin widens to match — no constant bounds it,
-  which is why the old hand-picked `MATCH_MARGIN = 8` was unsound.
-- **Gate**: collapse the remaining core iff
+- **Margins**: a boundary at depth `d` into a run retypes the `d` matched chars
+  (they must reappear in the goal), costing `ins(d)` minus at most one bigram
+  seam correction (`seamMax`, scanned over the chars that occur). It can save at
+  most the per-edge structural slack — `TilingCost::stopSlack`/`startSlack`,
+  the computed worst extra cost of ending/starting a delete tiling exactly at
+  the edge instead of crossing it: a counted chunk pays its split gap (read from
+  the pen tables), `{k}dd` the split gap plus a cover bound of the edge's
+  partial line, `{k}dap` additionally a counted `dd` within the paragraph,
+  `D`/`d0` the cover alone — plus the move over the slid-over chars (exact from
+  an edge sweep; the right edge adds the cost of stopping that sweep's tiling
+  early). Retype grows ~one keystroke per char while the slack is fixed per
+  edge, so the scan crosses over quickly. On wide lines the slack honestly grows
+  with that line's cover cost (running through to the line end with `D` is
+  genuinely tempting there), and the margin widens to match — no constant
+  bounds it, which is why the old hand-picked `MATCH_MARGIN = 8` was unsound.
+  The margin chars stay in the adjacent block; the core between the margins is
+  the seal.
+- **Gate**: seal the core iff
   `type(core) > move(core) + entry + <Esc> + both edge slacks`.
 
-The oracle stays **exact** by pricing `delCost`/`moveCost` over the *raw* span:
-a counted command tiles across a collapsed run's interior using the real
-characters, so a collapsed run and full char-level coordinates give identical
-costs. The derivation was validated before the char-level baseline was retired
+Crossing a seal is still one move: `CROSS` transitions connect the previous
+block's trailing matched diagonal to the next block's leading one, each priced
+by one raw sweep across the core, so a region-to-region move costs exactly what
+a single `move` query over the whole gap would. No deletion crosses a seal
+(deleting the core means retyping it, which the gate excluded), so deletion
+sweeps are block-local.
+
+The derivation was validated before the char-level baseline was retired
 (2026-08-30): a collapse-vs-dense A/B over 11.9k adversarial cases — small
 alphabets, mutations, wide lines (the `D`-through shape a fixed margin
-mispriced), tall paragraphs — with zero plan-1 cost mismatches; the baseline,
-its `collapseRuns` knob, and `tests/Debug/SparseVsDense.cpp` were then deleted.
+mispriced), tall paragraphs — with zero plan-1 cost mismatches. The move from
+collapsed cells to seals (2026-08-31) kept every plan-1 cost on the corpus; the
+only K-best plans lost are those retyping an entire sealed core, which the gate
+proves dominated.
 
-### Exact vs diff-bound: a real tension (the oracle is O(span), not O(1))
+### Diff-bound via seals
 
-Collapse makes the DP *cells* `O(n·m)`, but the tiling still walks raw initial
-positions — one `O(N)` sweep per pruned start for each of `del` and `move` —
-so the tables cost `O(n·N)`, not `O(n²)`.
-Making
-the oracle O(1) (a pruned-coordinate table pricing counted commands across a
-collapsed block from precomputed line/char counts) was tried three ways —
-char-margin blocks, whole-line-core blocks with a severing table, and
-whole-line-core blocks with a cross-block table — and **every reduced oracle is
-inexact** (misprices by ≤ ~3 keystrokes on ~7–13% of mutated cases, measured by
-the collapse-vs-dense A/B, since retired). The cause is structural: an exact tiling of a span that crosses a
-kept run can place counted-command boundaries on positions *inside* the run
-(e.g. `{k}dd` over the run's line starts), and exactness also needs the
-char-level margin cells for the boundary slide — a reduced O(1) oracle that drops
-interior positions loses some of those tilings.
-
-> Exact pricing forces an O(span) oracle, which is incompatible with `O(n·m)`
-> runtime. Both cannot hold for this cost model. This is not a proven theorem,
-> but it is unachieved after the variants above and the obstacle is concrete.
-
-We choose **exact**: composition consumes `plans.front()`, so a wrong plan-1 cost
-mis-ranks the partition. Collapse still buys a large constant-factor win over the
-char-level baseline (~20× on `VimDiffPlan/BufferSize/100`, measured before the
-baseline was retired) by removing
-most DP cells; only the oracle walk keeps it from being asymptotically
-diff-bound. Composition runs VimDiff on edit *slices* (usually small), so this is
-acceptable in practice; a genuinely huge slice with few edits is the remaining
-slow case. A correct O(1) cross-block oracle (or a proof none exists) is the open
-follow-up.
+Earlier versions kept one grid over the whole buffer and paid an `O(N)` raw
+walk per column, because a tiling of a span crossing a kept run can place
+counted-command boundaries inside the run; three attempts at an `O(1)`
+cross-run oracle were all inexact. Seals dissolve the tension without one:
+no optimal deletion crosses a sealed core, so no sweep ever needs to, and each
+block's sweeps stay within its own raw span. The only raw walks over a core
+are the per-seal `CROSS` sweeps, one per trailing-diagonal start. Runs that
+fail the gate are short (retyping them is competitive) and simply stay inside
+their block as characters.
 
 ### Validation
 
 `tests/Unit/DiffPlanner/VimDiffTest.cpp` covers the production planner: the diff
 round-trips to the goal, every K-best plan round-trips, is ascending by cost,
-and is distinct, and each plan's breakdown total (regions re-priced from the
-transition tables) equals its DP cost — the pin that the region walk recovers
+and is distinct, and each plan's breakdown total (regions re-priced with
+single-span oracle queries and the typing prefix sums) equals its DP cost — the
+pin that the region walk, the block-local sweeps, and the `CROSS` moves recover
 exactly what the path paid for. Cost-model behavior is pinned
 per case by the markdown approval fixtures behind
 `tests/Approval/VimDiffApprovalTest.cpp` (one case per file).
@@ -374,18 +368,16 @@ consumers. `VimDiffPlan/*` in `vimfy_benchmarks` times the planner alone
 
 ### Status
 
-Implemented: the four-stage pipeline (`collapseMatchedRuns`,
+Implemented: the four-stage pipeline (`sealMatchedRuns`,
 `calculateTransitionCosts`, `solveVimDiff` + `relaxDeletes`,
-`reconstructPlans`) with the exact two-table (`out`/`in`) DP, the shared
-counted-tiling oracle for delete and movement (span-local runs, digit
+`reconstructPlans`) with the exact two-table (`out`/`in`) DP run per block, the
+shared counted-tiling oracle for delete and movement (span-local runs, digit
 keystrokes plus the shared `CountPenalty` model, counts capped at the shared
 `maxPrefixCount`), insert-mode overhead (`entry` + `<Esc>` per typed region, no
-other per-region charge), K-best plans (`CostOptions::maxPlans`), and
-matched-run collapse with derived per-edge margins — wired as the default
-`diffAlgorithm=0`. Remaining cost is the raw-position walk in the sweeps
-(`O(N·cap)` per pruned start for the move table and per goal column for
-deletions); a per-seal crossing table would make the planner diff-bound (see
-"Exact vs diff-bound").
+other per-region charge), K-best plans (`CostOptions::maxPlans`), and sealing
+with derived per-edge margins — wired as the default `diffAlgorithm=0`. The
+planner is diff-bound; the remaining raw walks are the block-local sweeps and
+one `CROSS` sweep per seal start.
 
 Deliberately not modeled yet: dot-repeat credit for identical repeated regions —
 composition itself does not exploit `.` across planned edits yet, so a planner

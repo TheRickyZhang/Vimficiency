@@ -12,10 +12,7 @@ namespace VimDiff {
 struct CostOptions {
   double moveDeleteScale = 1.0;   // scales keystroke move/delete vs insert effort
   int maxPlans = 1;
-  // Cap for counted commands in the tiling oracle. The same knob the optimizer
-  // searches use — composition passes its live `maxPrefixCount` param — so the
-  // planner never prices a count the search cannot emit.
-  int maxPrefixCount = CountPrefixLimits::DEFAULT_MAX_PREFIX_COUNT;
+  int maxPrefixCount = CountPrefixLimits::DEFAULT_MAX_PREFIX_COUNT;  // same knob as the searches
 };
 
 // One candidate partition and its planner cost.
