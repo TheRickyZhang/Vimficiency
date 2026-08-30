@@ -15,7 +15,7 @@ when the methodologies prove different things about the same feature.
 | Property | Semantic invariant over generated structured project inputs | `vimfy_property_tests` | CI: fixed seed | `scripts/vimfy_tests property` |
 | Safety | Safe failure or bounded behavior over adversarial inputs | `vimfy_safety_tests` | CI: fixed seed | `scripts/vimfy_tests safety` |
 | Lua integration | Real-Neovim plugin/FFI scenarios | `scripts/vimfy_tests lua` | Yes | `scripts/vimfy_tests lua` |
-| Benchmark | Timing and search-counter trends on fixed fixtures | `vimfy_benchmarks` | No | `./build/tests/vimfy_benchmarks` |
+| Benchmark | Timing and search-counter trends on fixed fixtures | `vimfy_benchmarks` | No | `./build-release/tests/vimfy_benchmarks` |
 | Debug/manual | Scratch repros, noisy traces, human-approval exploration | `vimfy_debug` or disabled tests | No | `./build/tests/vimfy_debug` |
 
 `scripts/vimfy_tests` is the fast local correctness gate: unit, approval,
@@ -167,7 +167,7 @@ Fuzzing is a mode for searching either kind of property:
 | `vimfy_property_tests` | Structured semantic properties | `build/tests/vimfy_property_tests` | `scripts/vimfy_tests property` |
 | `vimfy_safety_tests` | Adversarial-input safety properties | `build/tests/vimfy_safety_tests` | `scripts/vimfy_tests safety` |
 | `scripts/vimfy_tests lua` | Lua/Neovim integration | repo root | `scripts/vimfy_tests lua` |
-| `vimfy_benchmarks` | Google Benchmark suites | `build/tests/vimfy_benchmarks` | `./build/tests/vimfy_benchmarks` |
+| `vimfy_benchmarks` | Google Benchmark suites | `build-release/tests/vimfy_benchmarks` | `./build-release/tests/vimfy_benchmarks` |
 | `vimfy_debug` | Scratch/debug tests | `build/tests/vimfy_debug` | `./build/tests/vimfy_debug` |
 
 FuzzTest is part of the normal test build. Property and safety tests should be
@@ -188,8 +188,9 @@ scripts/vimfy_tests lua
 # Run all default correctness checks through the helper script
 scripts/vimfy_tests
 
-# Run all benchmarks
-./build/tests/vimfy_benchmarks
+# Run all benchmarks — from a Release tree; `build/` is Debug and its timings
+# are not meaningful (see dev/ci-and-benchmarks.md for the configure recipe)
+./build-release/tests/vimfy_benchmarks
 
 # Run debug scratch tests
 ./build/tests/vimfy_debug
@@ -430,14 +431,14 @@ For benchmarks:
 
 ```bash
 # Fixed seeds; this is also the benchmark default
-./build/tests/vimfy_benchmarks
-VIMFY_SEED_MODE=fixed ./build/tests/vimfy_benchmarks
+./build-release/tests/vimfy_benchmarks
+VIMFY_SEED_MODE=fixed ./build-release/tests/vimfy_benchmarks
 
 # Replay seeds from tests/.last_seeds.txt
-VIMFY_SEED_MODE=replay ./build/tests/vimfy_benchmarks
+VIMFY_SEED_MODE=replay ./build-release/tests/vimfy_benchmarks
 
 # Rotate fixture seeds locally
-VIMFY_SEED_MODE=random ./build/tests/vimfy_benchmarks
+VIMFY_SEED_MODE=random ./build-release/tests/vimfy_benchmarks
 ```
 
 ## Lua Tests
@@ -467,7 +468,7 @@ Benchmarks prebuild fixed fixture sets and let Google Benchmark control the
 measured iteration loop. For deeper local analysis:
 
 ```bash
-./build/tests/vimfy_benchmarks \
+./build-release/tests/vimfy_benchmarks \
   --benchmark_repetitions=9 \
   --benchmark_enable_random_interleaving=true \
   --benchmark_out=bench.json \

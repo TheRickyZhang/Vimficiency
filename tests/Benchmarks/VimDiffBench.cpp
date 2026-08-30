@@ -2,7 +2,7 @@
 //
 // Planner-only timing for VimDiff::calculate — isolates diff planning from the
 // composition search that CompositionOpt/* times end-to-end. Guards the
-// out/in DP and its per-column deletion sweep. Not in the dashboard
+// out/in DP and its transition-cost sweeps. Not in the dashboard
 // suites; run ad hoc:
 //   ./build/tests/vimfy_benchmarks --benchmark_filter="VimDiffPlan.*"
 

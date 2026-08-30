@@ -60,11 +60,23 @@ every cross-regime comparison apples-to-oranges. The hook and its
 were removed; the timeline is now all-main, all-macOS-runner, so points are
 directly comparable.
 
-For ad-hoc pre-merge perf intuition, run the benchmark binary directly —
-`./build/tests/vimfy_benchmarks --benchmark_filter=<suite>` — which prints
-numbers without touching the chart. `bench-local-run.sh` itself still
-ingests and pushes to gh-pages, so only run it by hand when you actually
-want a point on the timeline (see *Re-running manually*).
+For ad-hoc pre-merge perf intuition, run the benchmark binary directly from a
+**Release** tree — `./build-release/tests/vimfy_benchmarks
+--benchmark_filter=<suite>` — which prints numbers without touching the
+chart. The default `build/` is a Debug configuration; its timings are
+dominated by uninlined container accessors (~6× Release on the planner
+suites) and are not comparable to the dashboard or to each other across
+structural changes. Configure the Release tree once:
+
+```bash
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF \
+  -DVIMF_TRACK_STATES=OFF -DFETCHCONTENT_FULLY_DISCONNECTED=OFF
+cmake --build build-release --target vimfy_benchmarks
+```
+
+`bench-local-run.sh` itself still ingests and pushes to gh-pages, so only run
+it by hand when you actually want a point on the timeline (see *Re-running
+manually*).
 
 ### Self-hosted macOS runner (`main`)
 
