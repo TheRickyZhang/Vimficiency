@@ -12,7 +12,7 @@ aa
 
 _Edit costs: delete / insert / move_
 
-### Plan 1: cost 3
+### Plan 1: cost 2
 
 ```
 bbbbbbb
@@ -27,7 +27,7 @@ abbbbbbb
 ->
 a
 ```
-`2 / 2 / 0`
+`2 / 3 / 0`
 
 ### Plan 3: cost 5
 
@@ -36,4 +36,4 @@ bbbbbbba
 ->
 a
 ```
-`2 / 2 / 0`
+`2 / 3 / 0`

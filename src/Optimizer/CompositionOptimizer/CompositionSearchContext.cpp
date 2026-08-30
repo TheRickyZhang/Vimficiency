@@ -11,6 +11,7 @@
 #include "Optimizer/DiffPlanner/VimDiff.h"
 #include "Optimizer/DiffPlanner/DiffAlgorithm.h"
 #include "Optimizer/DiffPlanner/MyersDiff.h"
+#include "Optimizer/SearchControl.h"
 #include "Utils/Debug.h"
 #include "Utils/PrettyText.h"
 
@@ -26,11 +27,13 @@ CompositionSearchContext::CompositionSearchContext(
     const NavBoundary& boundary,
     const CompositionOptimizerParams& params,
     const Config& config,
-    const std::vector<DiffState>* forcedDiffs)
+    const std::vector<DiffState>* forcedDiffs,
+    const SearchControl* control)
     : config(config),
       params(params),
       navContext(navContext),
       boundary(boundary),
+      control(control),
       goalPos(goalPos),
       overshootPenalty(params.overshootPenalty),
       maxLineLength(1000),
@@ -71,7 +74,6 @@ CompositionSearchContext::CompositionSearchContext(
             Lines(goalLines.begin(), goalLines.end()),
             config,
             VimDiff::CostOptions{
-                .diffOpenPenalty = params.diffOpenPenalty,
                 .moveDeleteScale = params.moveDeleteScale,
             });
         if (!plans.empty()) rawDiffs = std::move(plans.front().diffs);
@@ -88,6 +90,10 @@ CompositionSearchContext::CompositionSearchContext(
   }
   phaseMark("diff generation");
   debug("diff algorithm:", DiffAlgorithm::name(params.diffAlgorithm));
+  if (control && control->cancelRequested()) {
+    aborted = true;
+    return;
+  }
 
   // Preserve the historical Myers processing-order heuristic. VimDiff is
   // intentionally forward-only, and forced partitions are taken literally.
@@ -129,6 +135,7 @@ CompositionSearchContext::CompositionSearchContext(
   // Solve each edit region
   calculateTransformResults();
   phaseMark("calculateTransformResults");
+  if (aborted) return;
 
   debug("--- edit results ---");
   for (int i = 0; i < totalEdits(); i++) {
@@ -150,6 +157,10 @@ CompositionSearchContext::CompositionSearchContext(
   // Compute J (join lines) plans
   computeJoinPlans();
   phaseMark("computeJoinPlans");
+  if (control && control->cancelRequested()) {
+    aborted = true;
+    return;
+  }
 
   debug("--- join plans ---");
   for (int i = 0; i < totalEdits(); i++) {
@@ -309,6 +320,10 @@ vector<double> CompositionSearchContext::computeSuffixEditCosts() const {
 void CompositionSearchContext::calculateTransformResults() {
   const bool timePhases = std::getenv("VIMFY_TIME_PHASES") != nullptr;
   for (size_t i = 0; i < edits.size(); i++) {
+    if (control && control->cancelRequested()) {
+      aborted = true;
+      return;
+    }
     const DiffState& diff = edits[i].diffState;
     int nodesExplored = 0;
     auto t0 = std::chrono::steady_clock::now();

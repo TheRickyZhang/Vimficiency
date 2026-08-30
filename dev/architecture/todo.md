@@ -145,19 +145,19 @@ is a multi-token structural macro" comment).
 
 **Why it matters.** Production consumes `plans.front()` with `maxPlans` at its
 default of 1 (`CompositionSearchContext.cpp:78`), so plan 1 must be right.
-Exactness costs an `O(N)` oracle walk per span query — the only reason planner
+Exactness costs an `O(N)` raw deletion sweep per goal column — the only reason planner
 runtime is buffer-bound rather than diff-bound. Whether that price buys better
 partitions has never been measured: `SparseVsDense` measures agreement with the
 surrogate's own value, while `PlanRegret` measures rank inversion, which is the
 thing that actually decides plan quality.
 
-**Complexity as currently understood** (`M` = differing chars, `N` = buffer
-chars, `E` = planned edits, `P` = pops, `B` = branching per pop):
+**Complexity as currently understood** (`N` = initial buffer chars, `n`/`m` = pruned VimDiff
+cells per axis, ≈ diff size, `E` = planned edits, `P` = pops, `B` = branching per pop):
 
 | stage | cost | note |
 |---|---|---|
-| VimDiff search | `O(M³)` | `O(M²)` cells, `O(M)` sweep each |
-| VimDiff oracle | `O(M²·N·CAP)` | `O(M²)` distinct spans, `O(N)` walk each; dominates |
+| VimDiff search | `O(n·m)` | pruned cells; per cell a bounded move pull + K-best inserts |
+| VimDiff sweep | `O(m·N·CAP)` | one raw deletion sweep per goal column; dominates |
 | Composition construction | `O(E · P_t · B_t)` | `E` Transform A* runs; dominates the `O(E·N)` buffer rebuild and `O(E·L²)` text-object scan |
 | Composition search | `O(P_c · P_n · B_n)` | **nested**: each pop can fire up to ~9 NavOptimizer A* runs (8 ranked start positions + the diff-range search) |
 

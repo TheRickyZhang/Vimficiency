@@ -236,7 +236,6 @@ VFByteSlice vf_get_optimizer_defaults() {
     i("composition", "fMotionThreshold",      comp.fMotionThreshold);
     b("composition", "useDirectionalPruning", comp.useDirectionalPruning);
     d("composition", "overshootPenalty",      comp.overshootPenalty);
-    d("composition", "diffOpenPenalty",       comp.diffOpenPenalty);
     d("composition", "moveDeleteScale",       comp.moveDeleteScale);
     i("composition", "navPaddingAbove",       comp.navPaddingAbove);
     i("composition", "navPaddingBelow",       comp.navPaddingBelow);

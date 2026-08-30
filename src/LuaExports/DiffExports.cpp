@@ -32,8 +32,7 @@ VF::LuaExports::Result<string> computeDiffsImpl(
     size_t encoded_initial_lines_len,
     const char *encoded_goal_lines,
     size_t encoded_goal_lines_len,
-    int diff_algorithm,
-    double diff_open_penalty) {
+    int diff_algorithm) {
   auto initialText = helpers::requiredBytes(
       encoded_initial_lines, encoded_initial_lines_len, "encoded_initial_lines");
   if (!initialText) return unexpected(initialText.error());
@@ -52,9 +51,7 @@ VF::LuaExports::Result<string> computeDiffsImpl(
   // is the same breakdown (see CompositionSearchContext.cpp).
   vector<DiffState> diffs;
   if (diff_algorithm == DiffAlgorithm::VimDiff) {
-    vector<VimDiff::Plan> plans = VimDiff::calculate(
-        initialLines, goalLines, g_config_internal,
-        VimDiff::CostOptions{.diffOpenPenalty = diff_open_penalty});
+    vector<VimDiff::Plan> plans = VimDiff::calculate(initialLines, goalLines, g_config_internal);
     if (!plans.empty()) diffs = std::move(plans.front().diffs);
   } else if (diff_algorithm == DiffAlgorithm::MyersDiff) {
     diffs = MyersDiff::calculate(initialLines, goalLines);
@@ -83,8 +80,7 @@ VFByteSlice vf_compute_diffs(
     size_t encoded_initial_lines_len,
     const char *encoded_goal_lines,
     size_t encoded_goal_lines_len,
-    int diff_algorithm,
-    double diff_open_penalty) {
+    int diff_algorithm) {
   static string result_storage;
   return helpers::storeBytes(
       result_storage,
@@ -93,8 +89,7 @@ VFByteSlice vf_compute_diffs(
           encoded_initial_lines_len,
           encoded_goal_lines,
           encoded_goal_lines_len,
-          diff_algorithm,
-          diff_open_penalty));
+          diff_algorithm));
 }
 
 }

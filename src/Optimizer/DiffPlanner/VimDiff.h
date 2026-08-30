@@ -9,7 +9,6 @@
 namespace VimDiff {
 
 struct CostOptions {
-  double diffOpenPenalty = 1.0;   // per-region operator/mode overhead
   double moveDeleteScale = 1.0;   // scales keystroke move/delete vs insert effort
   int maxPlans = 1;
   // Collapse matched-run interiors so DP work scales with diff size, not buffer
@@ -32,10 +31,9 @@ std::vector<Plan> calculate(
     CostOptions options = {});
 
 // Per-region cost the planner weighed. `ins` is the insert phase: typed effort
-// plus the ending <Esc>, plus the insert-mode entry key when nothing was
-// deleted. `move` is the coarsest-cover traversal from the previous region's
-// old end to this region's old begin (0 for the first). Penalty is
-// `diffOpenPenalty` per region (implied; folded into total).
+// plus the insert-mode entry key and the ending <Esc> (0 when nothing is
+// typed). `move` is the counted-motion traversal from the previous region's
+// initial end to this region's initial begin (0 for the first).
 // Because VimDiff has no merge/refine pass, `total` equals the DP optimum
 // exactly. Diagnostic surface — `calculate` does not use it.
 struct RegionBreakdown {

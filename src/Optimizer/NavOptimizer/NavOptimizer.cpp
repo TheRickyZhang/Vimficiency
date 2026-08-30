@@ -30,9 +30,10 @@ LandingNavResult NavOptimizer::optimize(
     NavOptimizerParams params,
     string_view userSequence,
     const NavBoundary& boundary,
-    const NavContext& navContext) {
+    const NavContext& navContext,
+    const SearchControl* control) {
   return optimize(lines, initialPos, CharInterval(goalPos, goalPos),
-                  params, userSequence, boundary, navContext);
+                  params, userSequence, boundary, navContext, control);
 }
 
 LandingNavResult NavOptimizer::optimize(
@@ -42,10 +43,11 @@ LandingNavResult NavOptimizer::optimize(
     NavOptimizerParams params,
     string_view userSequence,
     const NavBoundary& boundary,
-    const NavContext& navContext) {
+    const NavContext& navContext,
+    const SearchControl* control) {
   BufferIndex localIndex(lines);
   return optimize(lines, startPos, range, params, userSequence,
-                  boundary, navContext, localIndex, 0);
+                  boundary, navContext, localIndex, 0, control);
 }
 
 LandingNavResult NavOptimizer::optimize(
@@ -57,7 +59,8 @@ LandingNavResult NavOptimizer::optimize(
     const NavBoundary& boundary,
     const NavContext& navContext,
     const BufferIndex& bufferIndex,
-    int lineOffset) {
+    int lineOffset,
+    const SearchControl* control) {
   assert(range.isValid() && "target interval must be non-empty");
 
   // startPos already in the goal interval — nothing to do, the empty motion
@@ -113,6 +116,7 @@ LandingNavResult NavOptimizer::optimize(
   [[maybe_unused]] set<Pos> uniquePositionsSeen;
 
   while (!pq.empty() && totalPops < params.maxNodesPopped) {
+    if (control && control->stopRequested(totalPops)) break;
     NavState s = pq.top(); pq.pop();
     totalPops++;
 

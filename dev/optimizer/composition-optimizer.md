@@ -6,9 +6,10 @@
 - Our first step is to generate planned edit regions. The **default is
   `VimDiff`** (`composition:diffAlgorithm=0`), a Vim-costed partition planner.
   It searches at character granularity and prices approximate keystrokes:
-  per-region penalty (~1) + inserted-text effort + counted-tiling movement and
-  deletion oracles (`{k}w`/`{k}dd`-shaped commands with a concave count
-  penalty). Details in `dev/optimizer/diff-generation.md` § VimDiff.
+  inserted-text effort plus insert entry + `<Esc>` per typed region, and
+  counted-tiling movement and deletion oracles (`{k}w`/`{k}dd`-shaped commands
+  with a concave count penalty). No separate per-region penalty. Details in
+  `dev/optimizer/diff-generation.md` § VimDiff.
 - `composition:diffAlgorithm=1` switches back to the historical character-level
   `MyersDiff` analysis (similar algorithm to git). It is kept as a fast fallback
   and baseline, not as the preferred planner. It separates individual diffs

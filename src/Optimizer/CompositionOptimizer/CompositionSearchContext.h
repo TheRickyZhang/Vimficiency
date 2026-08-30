@@ -101,6 +101,11 @@ struct CompositionSearchContext {
   // Set by the async FFI worker so the main A* loop can bail to best-so-far.
   const SearchControl* control = nullptr;
 
+  // Set when `control` was cancelled mid-construction. The remaining setup
+  // phases are skipped, so per-edit data is incomplete; callers must not
+  // search on an aborted context.
+  bool aborted = false;
+
   // Final cursor target. Search terminates when editsCompleted == totalEdits()
   // AND pos == goalPos. Used by heuristic() to score post-final-edit nav cost.
   CursorPos goalPos;
@@ -173,7 +178,8 @@ struct CompositionSearchContext {
       const NavBoundary& boundary,
       const CompositionOptimizerParams& params,
       const Config& config,
-      const std::vector<DiffState>* forcedDiffs = nullptr);
+      const std::vector<DiffState>* forcedDiffs = nullptr,
+      const SearchControl* control = nullptr);
 
   // ==========================================================================
   // CursorPos conversion helpers

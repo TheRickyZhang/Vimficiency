@@ -52,4 +52,5 @@ LandingNavResult optimizeCompositionRangeMotion(
     const CompositionRangeMotionSearch& search,
     const NavContext& navContext,
     const CompositionOptimizerParams& params,
-    int maxResults);
+    int maxResults,
+    const SearchControl* control = nullptr);

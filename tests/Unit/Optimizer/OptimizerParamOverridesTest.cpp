@@ -152,13 +152,11 @@ TEST(OptimizerParamOverrides, InvalidLinesRejectPayload) {
 TEST(OptimizerParamOverrides, CompositionSpecificKeyAppliesOnlyToComposition) {
   const auto overrides = parseGood(
       "composition:overshootPenalty=10.0\n"
-      "composition:diffOpenPenalty=12.5\n"
       "composition:diffAlgorithm=1");
 
   CompositionOptimizerParams comp;
   overrides.applyTo(comp);
   EXPECT_DOUBLE_EQ(comp.overshootPenalty, 10.0);
-  EXPECT_DOUBLE_EQ(comp.diffOpenPenalty, 12.5);
   EXPECT_EQ(comp.diffAlgorithm, 1);
 
   // Nav and Transform never read the composition scope.

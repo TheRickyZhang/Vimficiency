@@ -23,57 +23,23 @@ each planned edit into the current intermediate buffer.
 ## Algorithms
 
 - `diffAlgorithm=0`: `VimDiff::calculate`, the default Vim-costed planner. It
-  searches over character positions and uses `DiffTree` only as a cost oracle,
-  so tree units do not constrain diff boundaries.
+  searches over character positions of the flattened buffers; command
+  boundaries (words, lines, paragraphs) only price spans, they never constrain
+  where an edit begins or ends.
 - `diffAlgorithm=1`: `MyersDiff::calculate`, the historical character-level
   shortest-edit script plus local split/merge heuristics. It is useful as a fast
   baseline and fallback, but it does not model Vim command cost.
 
-## DiffTree Cost Scaffold
+## Flat text and unit boundaries
 
-`DiffTree` is a fixed hierarchy over flattened text:
-
-```
-Root -> Paragraph -> Line -> BigWord -> Word -> Char
-```
-
-Production `VimDiff` consumes only its flat `text` plus the Line/Paragraph node
-starts (word/bigword runs are re-derived span-locally from `CharMask` inside the
-tiling oracle); the per-level `levelCost`/`deleteCost` constants are the
-command-cost vocabulary. The Word/BigWord levels are still built for the
-prototype validator and tree approval snapshots. `VimDiff` emits ordered,
-non-overlapping original-buffer spans, then converts them to `DiffState` — tree
-units never constrain diff boundaries.
-
-### Tree Shape
-
-The tree is built over `Lines::flatten()`. Each node stores:
-
-- `text`: a half-open flat text range owned by that node
-- `children`: a half-open index range into the next level
-
-Construction invariants:
-
-- `Root` has one node.
-- Paragraphs split after empty or whitespace-only lines.
-- Lines include their terminating newline when present.
-- Empty buffers and final newlines create zero-length line nodes.
-- Empty buffers also create a zero-length paragraph node.
-- Word/BigWord nodes exclude newlines.
-- Leading whitespace attaches to the first word unit on a line.
-- Inter-word whitespace attaches to the previous word unit.
-- Whitespace-only spans do not create Word/BigWord nodes.
-
-Children are ordered but do not always cover all parent text. Newlines are the
-common gap.
-
-### Design Intent
-
-The tree is a cost scaffold, not an output format. It provides Vim-relevant
-boundaries for movement and delete pricing while `VimDiff` still returns flat
-original-buffer diffs. Coarse line/paragraph commands should compete with
-smaller edits, but tree-unit boundaries should not constrain where edits begin
-or end.
+`VimDiff` works on `FlatText`: `Lines::flatten()` plus the line and paragraph
+start positions (each list terminated by the text length, so unit `i` is
+`[starts[i], starts[i+1])`). A paragraph ends after a blank (empty or
+whitespace-only) line. Word/bigword runs are read from `CharMask` inside the
+tiling oracle. That is the entire structural input; the per-level keystroke
+constants (`MOVE_KEYS`/`DELETE_KEYS`: `l`/`x`, `w`/`dw`, `W`/`dW`, `j`/`dd`,
+`}`/`dap`) are the command-cost vocabulary. `VimDiff` emits ordered,
+non-overlapping original-buffer spans, then converts them to `DiffState`.
 
 ### Deferred Work
 
@@ -110,137 +76,164 @@ longer catches meaningful regressions.
 ## VimDiff (diffAlgorithm=0)
 
 `VimDiff` is the default because it optimizes the thing composition actually
-uses: planned edit regions. Real diffs are character-level — no tree partition,
-however chosen, can express every intuitive cross-level edit. VimDiff therefore
-uses `DiffTree` as a pure **cost oracle** and runs the partition search at
-character granularity. The tree still supplies `moveCost`/`delCost`; it no
-longer dictates region boundaries.
+uses: planned edit regions. Real diffs are character-level — no fixed
+word/line/paragraph partition can express every intuitive cross-level edit.
+VimDiff therefore runs the partition search at character granularity and uses
+command boundaries only inside the cost oracle (`moveCost`/`delCost`).
+
+### Coordinates
+
+- `N` / `M`: raw sizes of the initial / goal text; `ri` / `rj`: raw positions.
+- `n` / `m`: pruned unit counts after matched-run collapse (below); `i` / `j`:
+  pruned indices. `PositionMap` maps `i -> initialRaw(i)` and `j -> goalRaw(j)`.
+- A DP step lands in cell `(i,j)` from its predecessor `(pi,pj)`; a successor
+  is `(ni,nj)`. Spans are half-open `[begin,end)`.
+- `k` is always a command count (`{k}dd`); the K-best bound is `maxPlans`.
+- `entry` is the effort of the insert-entry keystroke (`i`), named to keep `i`
+  for the index.
 
 ### Objective
 
-A plan aligns old `A` and new `B` as kept runs interleaved with edits:
+A plan aligns the initial and goal text as kept runs interleaved with edits:
 
 ```
-A = K0 D1 K1 ... Dt Kt        (Di deleted)
-B = K0 I1 K1 ... It Kt        (Ii inserted, Ki kept => byte-identical in both)
+initial = K0 D1 K1 ... Dt Kt        (Di deleted)
+goal    = K0 I1 K1 ... It Kt        (Ii inserted, Ki kept => byte-identical in both)
 ```
 
 minimizing
 
 ```
-PENALTY*t + sum delCost(Di) + sum insCost(Ii) + sum moveCost(interior Ki)
+sum delCost(Di) + sum insCost(Ii) + sum moveCost(interior Ki)
 ```
 
-`insCost` is the real effort model plus the mode overhead a region with typed
-text pays: the `<Esc>` that ends the insert, and the insert-mode entry key when
-nothing was deleted first (a delete+insert takes the change form, whose
-operator already enters insert). `delCost` and `moveCost` are the same
+`insCost` is the real effort model plus `entry` + `<Esc>` whenever a region
+types anything — entering and leaving insert mode, charged the same whether or
+not the region deleted first. (A real delete+insert would use the change form
+and save the entry key; the planner deliberately does not model that, so a
+replace is overpriced by one key relative to a pure delete or insert. There is
+no per-region penalty beyond these keys.) `delCost` and `moveCost` are the same
 counted-tiling keystroke oracle (below) with different per-level bases —
 deletion pays the operator, movement is the bare motion. Leading `K0` and
 trailing `Kt` are free (you start at the first edit, end at the last) — and free
-*globally*, by construction, not per-recursive tree region. That freeness is
-sound for plan *comparison*: every optimal plan pins its first edit at the LCP
-boundary and its last at the suffix boundary (starting earlier deletes and
-retypes matched text for nothing), so movement to/from the session cursor is a
-constant across the partitions the DP weighs.
+*globally*, by construction. That freeness is sound for plan *comparison*:
+every optimal plan pins its first edit at the LCP boundary and its last at the
+suffix boundary (starting earlier deletes and retypes matched text for
+nothing), so movement to/from the session cursor is a constant across the
+partitions the DP weighs.
 
-### Inner/outer DP
+### Out/in DP
 
-Naively, the edit-start minimization is 2-D (`O(N^6)`). Hume's inner/outer split —
-separate the deletion sweep from the insertion sweep — makes each a 1-D min:
+Every cell `(i,j)` of the initial×goal grid has two tables: `out[i][j]` —
+normal mode, initial `[0,i)` consumed and goal `[0,j)` produced — and
+`in[i][j]` — insert mode, same coordinates. The steps are the keystrokes, each
+written with the predecessor cell it pulls from:
 
 ```
-G[a][b] = ready to START an edit at (a,b)
-        = (a==b and A[0:a]==B[0:b]) ? 0 : INF                      # leading free
-          OR  min_{t>=1, A[a-t:a]==B[b-t:b]} F[a-t][b-t] + moveCost(a-t, a)
-D[i][b] = started, deleted A[a:i)  (a<i)  = min_{a<i} G[a][b] + delCost(a, i)
-F[i][j] = just completed an edit ending at (i,j)
-        = PENALTY + min( min_b   D[i][b] + insCost(b,j),           # delete + insert
-                         min_{b<j} G[i][b] + insCost(b,j) )        # pure insert
-answer  = min_{A[i:n]==B[j:m]} F[i][j]                             # trailing free
+move    out[pi][pj] -> out[i][j]   i-pi == j-pj >= 1, units (pi,i] match:  moveCost(pi,i)
+delete  out[pi][j]  -> out[i][j]   delete initial [pi,i):                  delCost(pi,i)
+enter   out[i][pj]  -> in[i][j]    pj = j-1, enter insert + type unit pj:  entry + <Esc> - cut(pj) + typed(pj)
+type    in[i][pj]   -> in[i][j]    pj = j-1, type goal unit pj:            typed(pj)
+exit    in[i][j]    -> out[i][j]   leave insert:                           free
+out[i][j] = 0 on the diagonal within the common prefix                    # leading free
+answer    = min over out[i][j] with initial[ri:] == goal[rj:]              # trailing free
 ```
 
-`G` is the matched-gap layer Hume's tree DP doesn't need. Because the search is
-character-level there is **no refinement pass** (it is already finest-grained)
-and **no merge pass** (`G` requires `t>=1`, so adjacent fragments can't form — a
-straddling edit is strictly dominated by the merged one). One DP, and its
-objective *is* the emitted partition's cost — no post-hoc merge/refine pass is
-needed to reconcile the output to the objective.
+Typing is per-unit additive because `RunningEffort` is a monoid with a one-key
+boundary: `PS` is the prefix effort of typing all of the goal text and `cut`
+the bigram straddling a raw goal position, so typing raw `[begin,end)` costs
+`PS(end) - PS(begin) - cut(begin)`; the `cut` is paid once, on entry. Regions
+are not a DP concept: a region is a maximal stretch of delete/type steps
+between two moves, read off the winning path afterwards (`Solver::walk`).
+Since nothing is charged per region, the state needs no memory of where one
+began — that is what makes two tables enough (charging `<Esc>` only when
+something was typed, or `entry` only when nothing was deleted, would need a
+third).
+
+Deletion is not one step per cell. `delCost` is a tiling DP over the initial
+text (below), and a tiling DP is multi-source for free: seed every initial
+position with that column's `out` value and one left-to-right sweep over raw
+initial positions yields every deletion arrival in the column at once — the
+deletion is *extended* one chunk at a time, never re-priced from its start.
+`Solver::sweepDeletes` runs `TilingCost::sweep` once per goal column with the
+K-best lists as the propagated value, so the solver never scans deletion starts
+and never prices a span from scratch. Columns are filled left to right: `in`
+comes from the previous column, `out` from earlier columns (moves) and its own
+(exits, then the sweep).
 
 ### Top-K plans
 
-`CostOptions::maxPlans` (default 1) generalizes the same DP to the K cheapest
-*distinct* partitions, ascending by cost. Each cell keeps its `K` best sub-paths
-instead of one min; merging predecessor lists + edge cost and truncating to `K`
-at every cell yields the global top-K, since costs are additive and nonnegative
-(the standard K-best lemma: `K` per cell suffices). Each DP path is a distinct
-edit-span set (a bijection — the matched gaps pin every `(a,i,q,j)`), so the
-plans need no dedup. Cost is `O(maxPlans)` over the single-plan search via a
-bounded insert per candidate (each cell's list stays at most K long;
-materializing all predecessors per cell and sorting cost `O(N log N)` per cell
-and dominated the planner even at K=1). Reconstruction walks explicit
-backpointers rather than re-deriving by cost equality. `calculate` returns
-`vector<Plan>` (production takes `front()`); `calculateBreakdown` returns one
-breakdown per plan, the diagnostic surface behind
-`tests/Approval/VimDiffApprovalTest.cpp`.
+`CostOptions::maxPlans` (default 1) generalizes the same DP to the `maxPlans` cheapest
+*distinct* partitions, ascending by cost. Each cell keeps its `maxPlans` best
+candidates instead of one min; merging predecessor lists + edge cost and
+truncating to `maxPlans` at every cell yields the global top-K, since costs are
+additive and nonnegative (the standard K-best lemma: `maxPlans` per cell suffices).
+Many paths encode one partition (different tilings of a deleted span, delete
+and type steps interleaved, a move split in two), so a candidate carries a
+partition key — a hash of the cells its regions opened and closed at — and a
+cell keeps one candidate per key, the cheaper. Equal keys have identical
+futures, so this loses nothing. The final top-K additionally compares region
+lists, which also folds the one key-level artifact (a region closed by a move
+into the trailing run vs. left open at its end). Cost is `O(maxPlans)` over the
+single-plan search via a bounded insert per candidate. Reconstruction walks
+predecessors by cell + key. `calculate` returns `vector<Plan>` (production
+takes `front()`); `calculateBreakdown` returns one breakdown per plan, the
+diagnostic surface behind `tests/Approval/VimDiffApprovalTest.cpp`.
 
-### Complexity: O(N^3) exact, and no exact O(N^2)
+### Complexity
 
-This is the Waterman–Smith–Beyer regime (alignment with a *general* — here 2-D
-region + movement — gap cost). The three nested 1-D mins (`G` over the matched
-diagonal, `D` over the deletion start, `F` over the insertion start) are each
-`O(N)` per cell over `O(N^2)` cells => **`O(N^3)`** with range-costs memoized.
+Cells are `O(n·m)`, pruned. Per cell, `type`/`enter`/`exit` are a bounded
+insert per candidate (`O(maxPlans)` candidates), and `move` pulls along the
+matched diagonal — `O(run length)` in pruned units, at most
+`2·MATCH_MARGIN + 1` for a collapsed run. Deletion is not per cell: one sweep
+per goal column walks the raw initial text, `O(N·CAP)` chunk transitions plus
+the earlier-line-start scan for `{k}dd`/`{k}dap`. So the planner is
+`~O(N·m + n·m)` at the default `maxPlans = 1`: cells are diff-bound, but every
+goal column still pays a raw walk — see "Exact vs diff-bound" for why an `O(1)`
+cross-run oracle (which would make it `O(n·m)`) is unachieved.
 
-`O(N^2)`-exact would require the cost to satisfy the quadrangle (Monge)
-inequality so the sweeps become SMAWK row-minima. It does not.
-`moveCost`/`delCost` violate QI extensively; `insCost` satisfies it. The witness
-is `(0,1,1,k)`: `w(0,1)+w(1,k) > w(0,k)` — splitting a range mid-unit costs more
-than the whole, because enclosing a full unit lets one `}`/`dap` replace the
-parts (the *collapse*). Additivity would restore `O(N^2)` via running-min sweeps,
-but additive movement charges per-char traversal and can never collapse a
-spanned unit — it overcharges exactly the long matched gaps we want to skip
-cheaply, so it is a worse model, not a faster equivalent. The concave count
-penalty makes the production tiling oracle subadditive too, so QI stays
-violated after the counted rewrite; but because that penalty is piecewise
-linear (see `dev/optimizer/count-penalty.md`), a counted command is a start
-cost plus a per-unit slope, which is what a Gotoh-style state DP needs — the
-planned route back to quadratic. (Empirically:
-`tests/Debug/VimDiffPrototype.cpp`, `QuadrangleInequality` — ~19k violations
-for move/delete, 0 for insert; the prototype carries its own surrogate oracle
-copy, so it validates the DP shape independent of oracle calibration.)
+Why a sweep and not a per-cell running min: `moveCost`/`delCost` violate the
+quadrangle (Monge) inequality extensively (`insCost` satisfies it), so the
+generic SMAWK/concave-gap speedups for a black-box span oracle do not apply.
+The witness is `(0,1,1,k)`: `w(0,1)+w(1,k) > w(0,k)` — splitting a range
+mid-unit costs more than the whole, because enclosing a full unit lets one
+`}`/`dap` replace the parts (the *collapse*). Additivity would restore a
+running-min sweep, but additive movement charges per-char traversal and can
+never collapse a spanned unit — it overcharges exactly the long matched gaps we
+want to skip cheaply, so it is a worse model, not a faster equivalent. The
+concave count penalty (`dev/optimizer/count-penalty.md`) keeps the oracle
+subadditive too. (Measured on the earlier tree-scaffold prototype: ~19k QI
+violations for move/delete, 0 for insert.)
 
-**`O(N^3)` is the ceiling only for the black-box-oracle formulation.** The QI
-argument rules out the generic (SMAWK/concave-gap) sweep speedups on an opaque
-cost matrix; it does not forbid exploiting the oracle's internal structure:
+The QI argument rules out speedups on an opaque cost matrix; it does not forbid
+exploiting the oracle's internal structure, which is what the solver does:
 
-- The insert side is *exactly* collapsible today: `RunningEffort` is a monoid
+- The insert side is *exactly* per-unit additive: `RunningEffort` is a monoid
   with a one-key boundary (all metrics bigram-window; pinned by
-  `tests/Unit/Misc/EffortDecompositionTest.cpp`), so
-  `insCost(q,j) = PS(j) - PS(q) - cut(q)` and `F`'s split-min is a per-row
-  running K-best (`solveAll` in VimDiff.cpp) — O(K) per cell, with O(m) prefix
-  arrays replacing the old O(m^2) insTable.
-- The delete/move sides could be fused the same way (deletion/move-in-progress
-  states with O(CAP) chunk transitions), giving O(N^2·CAP·K) exact — but the
-  span-local entry clamp needs per-run G-minima machinery, and fused K-best
-  paths lose span-set distinctness (tilings of one span duplicate). Designed
-  but not built.
-
-Coordinate collapse (below) shrinks the DP's cell count toward the diff size,
-but the exact oracle remains an O(span) raw-span tiling per query, so planner
-runtime is ~O(buffer) — see "Exact vs diff-bound" below for why an O(1)
-cross-block oracle (which would make it truly diff-bound) is unachieved.
+  `tests/Unit/Misc/EffortDecompositionTest.cpp`), so `in` extends by
+  `PS(goalRaw(j)) - PS(goalRaw(pj))` per unit with the boundary `cut` paid once
+  on entry.
+- The delete side is fused into the tiling: the deletion-in-progress value is
+  the tiling DP's own reach value, so one multi-source sweep per goal column
+  prices every deletion arrival. The span-local entry clamp is handled by
+  per-run source minima within the sweep; K-best distinctness is the partition
+  key. Measured on `VimDiffPlan/*` (debug build): 8–14× over the old per-cell
+  start scan with memoized span queries.
+- The move side still prices each matched run with a single-source `query`
+  (memoized); runs are few and short in pruned units, so it is not the
+  bottleneck. Fusing it is the same sweep along the matched diagonal.
 
 ### Tiled command-cost oracle (delete + movement)
 
-`delCost(a,i)` and `moveCost(a,i)` price the flat range `[a,i)` as the cheapest
+`delCost(begin,end)` and `moveCost(begin,end)` price the raw initial span `[begin,end)` as the cheapest
 *set* of counted Vim commands that tile it (`TilingCost` in `VimDiff.cpp`, one
-class, two base tables). An END-anchored DP runs once per start `a`: for each
-end `q`, the chunk ending there is the cheapest `{k}` command across levels,
+class, two base tables). An end-anchored DP runs from `begin`: for each
+end `ri`, the chunk ending there is the cheapest `{k}` command across levels,
 `base + penalty(k)` where `penalty(k)` is the digit keystrokes plus the shared
 cognitive count penalty for the level's class (`CountPenalty.h`, honouring
 runtime overrides), 0 at `k=1` so an uncounted command is just `base`:
 
-| chunk ending at `q`        | delete (`deleteCost`) | move (`levelCost`) |
+| chunk ending at `ri`       | delete (`deleteCost`) | move (`levelCost`) |
 |----------------------------|-----------------------|--------------------|
 | `k` chars                  | `{k}x` = 1            | `{k}l` = 1         |
 | `k` alnum/_ runs           | `{k}de`/`dw` = 2      | `{k}e`/`w` = 1     |
@@ -253,7 +246,7 @@ runtime overrides), 0 at `k=1` so an uncounted command is just `base`:
 The chunk shapes transfer to movement exactly because a delete's extent *is* its
 motion's landing point (`dw` = `d`+`w`); a movement tiling is a path of motion
 landings. Deletion line/paragraph chunks start on a unit start (`dd` takes whole
-lines); movement chunks start anywhere in the source unit, since `{k}j` works
+lines); movement chunks start anywhere in their first unit, since `{k}j` works
 from any column — the column adjustment on landing is below the oracle's
 fidelity. The to-boundary rows are what make a partial line cheap: without
 them, cutting a `{k}dd` mid-line re-tiles the partial lines word by word, which
@@ -262,7 +255,7 @@ larger regions in `PlanRegret`) and makes the cost of cutting a command grow
 with line length instead of staying bounded.
 
 Word/big runs are read from character class (`CharMask`) and are **span-local**:
-a run start is clamped to `a`, so a contiguous run counts as one word even
+a run start is clamped to `begin`, so a contiguous run counts as one word even
 inside a larger global word (deleting `bbbbbbb` out of `abbbbbbba` = one `de` =
 2, not 7 chars). A chunk may swallow whitespace on one side at count `k` — `dw`
 trailing, or `de` from a leading space — and on both sides at count `k+1`
@@ -270,29 +263,32 @@ trailing, or `de` from a leading space — and on both sides at count `k+1`
 run prefix) cost `base`; that over-credits vs a real `de`, but keeps the
 partitioner from over-pricing mid-word cuts.
 
-Counted tiling keeps whole-unit commands cheap (contiguous lines = one `{n}dd`,
-a kept multi-word gap = one `{n}w`) while pricing partial/cross-word spans
+Counted tiling keeps whole-unit commands cheap (contiguous lines = one `{k}dd`,
+a kept multi-word gap = one `{k}w`) while pricing partial/cross-word spans
 honestly (`bc xy` tiles as `5x` ≈ 3.24). Movement priced as counted motions
 rather than a per-unit sum is what keeps surgical splits competitive: the split
 pays one cheap counted hop across each kept gap instead of a linear traversal,
 so short kept gaps no longer get folded into one big retyping REPLACE.
 
 Words/bigwords/chars cap the count scan at `CAP = 9` (single-digit counts;
-longer runs chain chunks); lines/paragraphs scan all earlier starts. The buffer
-is fixed during search, so both full `[a][i]` tables are precomputed once —
-`O(CAP·N²)` each — and read `O(1)` by the G/D/F search.
+longer runs chain chunks); lines/paragraphs scan all earlier starts. The tiling
+is one left-to-right sweep (`TilingCost::sweep`) that is multi-source by
+construction: any position may seed a "start here" value and a chunk ending at
+`ri` relaxes from the value reached at its start. `query(begin,end)` is the
+single-source scalar instance (movement pricing, diagnostics); the solver seeds
+it with a whole `out` column (see Out/in DP).
 
 ### Coordinate collapse + raw-span oracle (implemented)
 
 `PositionMap` (VimDiff.cpp) shrinks the K-best DP by collapsing the interior of
 matched runs the optimum provably keeps — the Myers gaps where
-`type(run) > moveUB(run) + diffOpenPenalty` — into single units, while keeping
+`type(run) > move(run) + entry + <Esc>` — into single units, while keeping
 `MATCH_MARGIN` char-level cells at each run edge. The margin is load-bearing: an
 optimal edit boundary can slide a few chars into a kept run for an alignment
 saving (inserting `a` before `ad` attaches at col 0 or 1 at *different* cost),
 but the slide is bounded — sliding `k` chars costs ~`k` to retype against a
 sub-linear navigation gain — so a small char margin keeps every cost-optimal
-boundary representable. This drops the cell count toward the diff size.
+boundary representable. This is what makes `n`,`m` diff-sized rather than `N`,`M`.
 
 The oracle stays **exact** by pricing `delCost`/`moveCost` over the *raw* span
 (`TilingCost::query`, memoized): a counted command tiles across a collapsed run's
@@ -305,9 +301,11 @@ small-alphabet + mutated cases; zero cost mismatches).
 
 ### Exact vs diff-bound: a real tension (the oracle is O(span), not O(1))
 
-Collapse shrinks DP *cells* to diff size, but the raw-span oracle costs an
-O(span) walk per distinct query, so runtime is ~O(buffer), not O(diff). Making
-the oracle O(1) (an active-coordinate table pricing counted commands across a
+Collapse makes the DP *cells* `O(n·m)`, but the tiling still walks raw initial
+positions — one `O(N)` sweep per goal column for deletion, an `O(span)` walk
+per matched run for movement — so runtime is `~O(N·m)`, not `O(n·m)`.
+Making
+the oracle O(1) (a pruned-coordinate table pricing counted commands across a
 collapsed block from precomputed line/char counts) was tried three ways —
 char-margin blocks, whole-line-core blocks with a severing table, and
 whole-line-core blocks with a cross-block table — and **every reduced oracle is
@@ -318,7 +316,7 @@ kept run can place counted-command boundaries on positions *inside* the run
 char-level margin cells for the boundary slide — a reduced O(1) oracle that drops
 interior positions loses some of those tilings.
 
-> Exact pricing forces an O(span) oracle, which is incompatible with O(diff)
+> Exact pricing forces an O(span) oracle, which is incompatible with `O(n·m)`
 > runtime. Both cannot hold for this cost model. This is not a proven theorem,
 > but it is unachieved after the variants above and the obstacle is concrete.
 
@@ -333,14 +331,15 @@ follow-up.
 
 ### Validation
 
-`tests/Debug/VimDiffPrototype.cpp` checks the G/D/F DP against a brute-force
-partition enumerator under the same oracle: 9 handcrafted + 4000 random small
-cases, zero mismatches. The DP is oracle-agnostic, so the delete-oracle
-calibration above can change without re-validating the search.
 `tests/Unit/DiffPlanner/VimDiffTest.cpp` covers the production planner: the diff
-round-trips to the goal, and every K-best plan round-trips, is ascending by cost,
-and is distinct. Cost-model behavior is pinned per case by the markdown approval
-fixtures behind `tests/Approval/VimDiffApprovalTest.cpp` (one case per file).
+round-trips to the goal, every K-best plan round-trips, is ascending by cost,
+and is distinct, and each plan's breakdown total (regions re-priced with the
+single-source `query`) equals its DP cost — the pin that the multi-source
+deletion sweep agrees with the single-span oracle. Cost-model behavior is pinned
+per case by the markdown approval fixtures behind
+`tests/Approval/VimDiffApprovalTest.cpp` (one case per file).
+`tests/Debug/VimDiffCostCorpus.cpp` dumps plan costs + span signatures over a
+deterministic corpus; run it (with `VIMFY_SEED_MODE=fixed`) before and after a solver refactor and diff.
 Use `./build/tests/vimfy_diff_debug <initial> <goal>` for side-by-side Myers and
 VimDiff output.
 
@@ -356,13 +355,16 @@ consumers. `VimDiffPlan/*` in `vimfy_benchmarks` times the planner alone
 
 ### Status
 
-Implemented: the exact G/D/F DP with the collapsed insert-split min, the shared
-counted-tiling oracle for delete and movement (span-local runs, digit
-keystrokes plus the shared `CountPenalty` model), per-region mode overhead
-(`<Esc>`, insert entry), K-best plans (`CostOptions::maxPlans`), and matched-run
-collapse — wired as the default `diffAlgorithm=0`. The DP is still cubic in
-the active cell count; the Gotoh-style state DP (see the complexity section) is
-the planned fix.
+Implemented: the exact two-table (`out`/`in`) DP with the per-column multi-source
+deletion sweep, the shared counted-tiling oracle for delete and movement
+(span-local runs, digit keystrokes plus the shared `CountPenalty` model),
+insert-mode overhead (`entry` + `<Esc>` per typed region, no other per-region
+charge), K-best plans (`CostOptions::maxPlans`), and matched-run collapse —
+wired as the default `diffAlgorithm=0`. Remaining cost is the raw-position walk in the sweep
+(`O(N)` per goal column) and the earlier-line-start scan for counted line
+chunks; a per-piece sliding-window min over the concave count penalty would make
+the latter O(pieces), and a per-seal crossing table would make the former
+diff-bound (see "Exact vs diff-bound").
 
 Deliberately not modeled yet: dot-repeat credit for identical repeated regions —
 composition itself does not exploit `.` across planned edits yet, so a planner

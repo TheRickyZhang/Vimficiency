@@ -1,9 +1,9 @@
 // tests/Unit/CompositionOptimizer/SearchControlTest.cpp
 //
-// SearchControl lets the async explore worker bail the composition A* search
-// early (cancel or deadline). Verifies: a non-triggering control is identical
-// to no control, and a pre-tripped control stops before the first pop without
-// crashing.
+// SearchControl lets the async explore worker bail the composition search
+// early. Verifies: a non-triggering control is identical to no control; a
+// pre-tripped cancel aborts during setup (empty plan, no pops); a passed
+// deadline lets setup finish and stops the A* loop before its first pop.
 //
 // Run: ./build/tests/vimfy_unit_tests --gtest_filter="CompositionSearchControl*"
 
@@ -61,18 +61,20 @@ TEST_F(CompositionSearchControlTest, NonTriggeringControlMatchesFullSearch) {
       << "fixture must exercise the loop for the contrast to be meaningful";
 }
 
-TEST_F(CompositionSearchControlTest, CancelledControlStopsBeforeFirstPop) {
+TEST_F(CompositionSearchControlTest, CancelledControlAbortsSetup) {
   SearchControl control;
   control.cancelled.store(true);
   CompositionResult res = opt.optimize(
       initial, initialPos, goal, goalPos, CompositionOptimizerParams{}, "",
       boundary, NavContext(), &control);
 
-  EXPECT_EQ(res.getStats().totalPops(), 0)
-      << "cancelled control must bail the A* loop before any pop";
+  EXPECT_EQ(res.totalEdits(), 0)
+      << "cancel must abort before per-edit precompute completes";
+  EXPECT_TRUE(res.getResults().empty());
+  EXPECT_EQ(res.getStats().totalPops(), 0);
 }
 
-TEST_F(CompositionSearchControlTest, PastDeadlineStopsBeforeFirstPop) {
+TEST_F(CompositionSearchControlTest, PastDeadlineFinishesSetupThenStopsBeforeFirstPop) {
   SearchControl control;
   control.hasDeadline = true;
   control.deadline = chrono::steady_clock::now() - chrono::seconds(1);
@@ -80,6 +82,10 @@ TEST_F(CompositionSearchControlTest, PastDeadlineStopsBeforeFirstPop) {
       initial, initialPos, goal, goalPos, CompositionOptimizerParams{}, "",
       boundary, NavContext(), &control);
 
+  EXPECT_GT(res.totalEdits(), 0)
+      << "a deadline must not abort setup; the plan is still produced";
   EXPECT_EQ(res.getStats().totalPops(), 0)
       << "an already-passed deadline must bail before any pop";
+  EXPECT_FALSE(res.getResults().empty())
+      << "best-so-far at zero pops is the whole-buffer rewrite fallback";
 }

@@ -112,8 +112,7 @@ VF::LuaExports::Result<AnalyzeInputs> decodeAnalyzeInputs(
 
 // The heavy half: the Nav-vs-Composition branch plus result-string formatting.
 // Runs on the calling thread for `vf_analyze` and on a worker for the async
-// trio. `control` bounds the Composition search; the Nav branch (initial==goal,
-// cheap) has no SearchControl overload and runs to its natural caps.
+// trio. `control` bounds whichever search runs.
 string runAnalyze(
     const AnalyzeInputs& in, const Config& config, const SearchControl* control) {
   vector<::Result> results;
@@ -133,7 +132,8 @@ string runAnalyze(
         navParams,
         in.keyseqText,
         in.boundary,
-        in.navContext).getResults();
+        in.navContext,
+        control).getResults();
     results.reserve(navResults.size());
     for (const auto& r : navResults) {
       results.emplace_back(r.getSequence(), r.getCost());
@@ -406,7 +406,9 @@ VFByteSlice vf_analyze_poll(int job_id) {
 }
 
 // Signals cancellation and frees the job; the jthread destructor joins the
-// worker, which returns best-so-far once it observes the flag.
+// worker on this (main) thread. The flag is polled between composition setup
+// phases and per pop in every search loop, so the join is bounded by one
+// diff's precompute or one pop expansion.
 int vf_analyze_cancel(int job_id) {
   std::unique_ptr<AnalyzeJob> owned = g_analyze_jobs.take(job_id);
   if (!owned) return 0;

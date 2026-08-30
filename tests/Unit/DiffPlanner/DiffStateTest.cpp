@@ -9,19 +9,14 @@
 
 #include <algorithm>
 #include <array>
-#include <iterator>
-#include <string_view>
 
 #include "Optimizer/DiffPlanner/DiffState.h"
 #include "Optimizer/DiffPlanner/MyersDiff.h"
-#include "Optimizer/DiffPlanner/Tree.h"
 #include "Optimizer/DiffPlanner/VimDiff.h"
 #include "Keyboard/Config.h"
 #include "Types/Lines.h"
 
 using namespace std;
-
-using TreeNode = DiffTree::Tree::Node;
 
 // =============================================================================
 // Helpers
@@ -56,50 +51,6 @@ static vector<DiffState> bestVimDiffs(
 static void expectVimDiffRoundTrip(const Lines& start, const Lines& end) {
   auto diffs = bestVimDiffs(start, end);
   EXPECT_EQ(MyersDiff::applyAllDiffState(diffs, start), end);
-}
-
-static string_view treeSpan(
-    const DiffTree::Tree& tree,
-    const TreeNode& node) {
-  const auto [begin, end] = node.text;
-  return string_view(tree.text).substr(
-      begin,
-      end - begin);
-}
-
-static void expectFormalRefinement(const DiffTree::Tree& tree) {
-  for (int level = 0; level < DiffTree::LEVEL_COUNT; level++) {
-    for (const TreeNode& node : tree[level]) {
-      EXPECT_LT(node.text.begin, node.text.end);
-    }
-  }
-
-  if (tree.text.empty()) {
-    for (int level = 0; level < DiffTree::LEVEL_COUNT; level++) {
-      EXPECT_TRUE(tree[level].empty());
-    }
-    return;
-  }
-
-  ASSERT_EQ(tree[DiffTree::Level::Root].size(), 1u);
-  EXPECT_EQ(tree[DiffTree::Level::Root][0].text.begin, 0);
-  EXPECT_EQ(tree[DiffTree::Level::Root][0].text.end, ssize(tree.text));
-
-  for (int level = 0; level < DiffTree::LEVEL_COUNT - 1; level++) {
-    const auto& children = tree[level + 1];
-    for (const TreeNode& parent : tree[level]) {
-      const auto [childBegin, childEnd] = parent.children;
-      ASSERT_LT(childBegin, childEnd);
-      ASSERT_GE(childBegin, 0);
-      ASSERT_LE(childEnd, ssize(children));
-
-      EXPECT_EQ(children[childBegin].text.begin, parent.text.begin);
-      EXPECT_EQ(children[childEnd - 1].text.end, parent.text.end);
-      for (int child = childBegin + 1; child < childEnd; child++) {
-        EXPECT_EQ(children[child - 1].text.end, children[child].text.begin);
-      }
-    }
-  }
 }
 
 static DiffState makeDiff(
@@ -215,176 +166,6 @@ TEST(DiffStateTest, ContiguousResidualDiff_CoalescesSeparatedChanges) {
   expectDiffs(planned, {{"a", "x"}, {"c", "y"}});
 }
 
-TEST(DiffTreeTest, BuildTree_ParagraphAndLineRanges) {
-  DiffTree::Tree tree({"one", "", "two"});
-  expectFormalRefinement(tree);
-
-  ASSERT_EQ(tree[DiffTree::Level::Root].size(), 1u);
-  EXPECT_EQ(tree.text, "one\n\ntwo");
-
-  const TreeNode& root = tree[DiffTree::Level::Root][0];
-  const auto [rootChildBegin, rootChildEnd] = root.children;
-  EXPECT_EQ(rootChildBegin, 0);
-  EXPECT_EQ(rootChildEnd, 2);
-
-  const auto& paragraphs = tree[DiffTree::Level::Paragraph];
-  ASSERT_EQ(paragraphs.size(), 2u);
-  EXPECT_EQ(treeSpan(tree, paragraphs[0]), "one\n\n");
-  EXPECT_EQ(treeSpan(tree, paragraphs[1]), "two");
-  const auto [firstParaChildBegin, firstParaChildEnd] = paragraphs[0].children;
-  const auto [secondParaChildBegin, secondParaChildEnd] = paragraphs[1].children;
-  EXPECT_EQ(firstParaChildBegin, 0);
-  EXPECT_EQ(firstParaChildEnd, 2);
-  EXPECT_EQ(secondParaChildBegin, 2);
-  EXPECT_EQ(secondParaChildEnd, 3);
-}
-
-TEST(DiffTreeTest, BuildTree_WhitespaceOnlyLineSeparatesParagraphs) {
-  DiffTree::Tree tree({"one", "  ", "two"});
-  expectFormalRefinement(tree);
-
-  const auto& paragraphs = tree[DiffTree::Level::Paragraph];
-  ASSERT_EQ(paragraphs.size(), 2u);
-  EXPECT_EQ(treeSpan(tree, paragraphs[0]), "one\n  \n");
-  EXPECT_EQ(treeSpan(tree, paragraphs[1]), "two");
-
-  const auto& bigWords = tree[DiffTree::Level::BigWord];
-  ASSERT_EQ(bigWords.size(), 3u);
-  EXPECT_EQ(treeSpan(tree, bigWords[0]), "one\n");
-  EXPECT_EQ(treeSpan(tree, bigWords[1]), "  \n");
-  EXPECT_EQ(treeSpan(tree, bigWords[2]), "two");
-
-  const auto& words = tree[DiffTree::Level::Word];
-  ASSERT_EQ(words.size(), 3u);
-  EXPECT_EQ(treeSpan(tree, words[0]), "one\n");
-  EXPECT_EQ(treeSpan(tree, words[1]), "  \n");
-  EXPECT_EQ(treeSpan(tree, words[2]), "two");
-}
-
-TEST(DiffTreeTest, BuildTree_EmptyBufferHasNoNodes) {
-  DiffTree::Tree tree({""});
-  expectFormalRefinement(tree);
-
-  EXPECT_EQ(tree.text, "");
-  EXPECT_EQ(tree[DiffTree::Level::Root].size(), 0u);
-  EXPECT_EQ(tree[DiffTree::Level::Paragraph].size(), 0u);
-  EXPECT_EQ(tree[DiffTree::Level::Line].size(), 0u);
-  EXPECT_EQ(tree[DiffTree::Level::BigWord].size(), 0u);
-  EXPECT_EQ(tree[DiffTree::Level::Word].size(), 0u);
-  EXPECT_EQ(tree[DiffTree::Level::Char].size(), 0u);
-}
-
-TEST(DiffTreeTest, BuildTree_FinalNewlineStaysInLastLine) {
-  DiffTree::Tree tree({"a", ""});
-  expectFormalRefinement(tree);
-
-  ASSERT_EQ(tree[DiffTree::Level::Paragraph].size(), 1u);
-  ASSERT_EQ(tree[DiffTree::Level::Line].size(), 1u);
-  EXPECT_EQ(tree.text, "a\n");
-  EXPECT_EQ(treeSpan(tree, tree[DiffTree::Level::Paragraph][0]), "a\n");
-  EXPECT_EQ(treeSpan(tree, tree[DiffTree::Level::Line][0]), "a\n");
-
-  ASSERT_EQ(tree[DiffTree::Level::BigWord].size(), 1u);
-  ASSERT_EQ(tree[DiffTree::Level::Word].size(), 1u);
-  EXPECT_EQ(treeSpan(tree, tree[DiffTree::Level::BigWord][0]), "a\n");
-  EXPECT_EQ(treeSpan(tree, tree[DiffTree::Level::Word][0]), "a\n");
-}
-
-TEST(DiffTreeTest, BuildTree_WordsAndBigWordsCoverBlankLineSeparators) {
-  DiffTree::Tree tree({"a", "bc", "", "d"});
-  expectFormalRefinement(tree);
-
-  const auto& bigWords = tree[DiffTree::Level::BigWord];
-  ASSERT_EQ(bigWords.size(), 4u);
-  EXPECT_EQ(treeSpan(tree, bigWords[0]), "a\n");
-  EXPECT_EQ(treeSpan(tree, bigWords[1]), "bc\n");
-  EXPECT_EQ(treeSpan(tree, bigWords[2]), "\n");
-  EXPECT_EQ(treeSpan(tree, bigWords[3]), "d");
-
-  const auto& words = tree[DiffTree::Level::Word];
-  ASSERT_EQ(words.size(), 4u);
-  EXPECT_EQ(treeSpan(tree, words[0]), "a\n");
-  EXPECT_EQ(treeSpan(tree, words[1]), "bc\n");
-  EXPECT_EQ(treeSpan(tree, words[2]), "\n");
-  EXPECT_EQ(treeSpan(tree, words[3]), "d");
-}
-
-TEST(DiffTreeTest, BuildTree_AttachesWhitespaceToPreviousUnits) {
-  DiffTree::Tree tree({"aa aa"});
-  expectFormalRefinement(tree);
-
-  const TreeNode& line = tree[DiffTree::Level::Line][0];
-  const auto& bigWords = tree[DiffTree::Level::BigWord];
-  const auto [bigWordBegin, bigWordEnd] = line.children;
-  ASSERT_EQ(bigWordEnd - bigWordBegin, 2);
-  EXPECT_EQ(treeSpan(tree, bigWords[bigWordBegin]), "aa ");
-  EXPECT_EQ(treeSpan(tree, bigWords[bigWordBegin + 1]), "aa");
-
-  const auto [wordBegin, wordEnd] = bigWords[bigWordBegin].children;
-  const TreeNode& firstWord =
-      tree[DiffTree::Level::Word][wordBegin];
-  EXPECT_EQ(treeSpan(tree, firstWord), "aa ");
-  EXPECT_EQ(wordEnd - wordBegin, 1);
-  const auto [charBegin, charEnd] = firstWord.children;
-  EXPECT_EQ(charEnd - charBegin, 3);
-}
-
-TEST(DiffTreeTest, BuildTree_AttachesLeadingWhitespaceToFirstWord) {
-  DiffTree::Tree tree({"  aa"});
-  expectFormalRefinement(tree);
-
-  const auto& bigWords = tree[DiffTree::Level::BigWord];
-  ASSERT_EQ(bigWords.size(), 1u);
-  EXPECT_EQ(treeSpan(tree, bigWords[0]), "  aa");
-
-  const auto& words = tree[DiffTree::Level::Word];
-  ASSERT_EQ(words.size(), 1u);
-  EXPECT_EQ(treeSpan(tree, words[0]), "  aa");
-}
-
-TEST(DiffTreeTest, BuildTree_AttachesMultipleWhitespaceToPreviousUnits) {
-  DiffTree::Tree tree({"aa  bb"});
-  expectFormalRefinement(tree);
-
-  const auto& bigWords = tree[DiffTree::Level::BigWord];
-  ASSERT_EQ(bigWords.size(), 2u);
-  EXPECT_EQ(treeSpan(tree, bigWords[0]), "aa  ");
-  EXPECT_EQ(treeSpan(tree, bigWords[1]), "bb");
-
-  const auto& words = tree[DiffTree::Level::Word];
-  ASSERT_EQ(words.size(), 2u);
-  EXPECT_EQ(treeSpan(tree, words[0]), "aa  ");
-  EXPECT_EQ(treeSpan(tree, words[1]), "bb");
-}
-
-TEST(DiffTreeTest, BuildTree_NewlineSeparatesWordUnits) {
-  DiffTree::Tree tree({"aa", "bb"});
-  expectFormalRefinement(tree);
-
-  const auto& bigWords = tree[DiffTree::Level::BigWord];
-  ASSERT_EQ(bigWords.size(), 2u);
-  EXPECT_EQ(treeSpan(tree, bigWords[0]), "aa\n");
-  EXPECT_EQ(treeSpan(tree, bigWords[1]), "bb");
-
-  const auto& words = tree[DiffTree::Level::Word];
-  ASSERT_EQ(words.size(), 2u);
-  EXPECT_EQ(treeSpan(tree, words[0]), "aa\n");
-  EXPECT_EQ(treeSpan(tree, words[1]), "bb");
-}
-
-TEST(DiffTreeTest, BuildTree_SplitsSmallWordsAndSymbolsInsideBigWord) {
-  DiffTree::Tree tree({"foo.bar"});
-  expectFormalRefinement(tree);
-
-  const TreeNode& bigWord = tree[DiffTree::Level::BigWord][0];
-  const auto& words = tree[DiffTree::Level::Word];
-  const auto [wordBegin, wordEnd] = bigWord.children;
-  ASSERT_EQ(wordEnd - wordBegin, 3);
-  EXPECT_EQ(treeSpan(tree, words[wordBegin]), "foo");
-  EXPECT_EQ(treeSpan(tree, words[wordBegin + 1]), ".");
-  EXPECT_EQ(treeSpan(tree, words[wordBegin + 2]), "bar");
-}
-
 TEST(VimDiffTest, RoundTrip_MixedInsertDeleteReplace) {
   expectVimDiffRoundTrip(
       Lines{"alpha beta", "  gamma", "", "tail"},
@@ -405,20 +186,6 @@ TEST(VimDiffTest, EmptyGoalUsesDeletePath) {
   expectDiffs(diffs, {{"abc", ""}});
   EXPECT_EQ(diffs[0].beginPos, CursorPos(0, 0));
   EXPECT_EQ(diffs[0].endPos, CursorPos(0, 3));
-}
-
-TEST(VimDiffTest, OpenPenaltyVariantsRoundTrip) {
-  Config config = Config::uniform();
-  Lines initial{"aaa bbb ccc"};
-  Lines goal{"xxx bbb yyy"};
-
-  auto lowPenalty = bestVimDiffs(
-      initial, goal, config, VimDiff::CostOptions{.diffOpenPenalty = 0.0});
-  EXPECT_EQ(MyersDiff::applyAllDiffState(lowPenalty, initial), goal);
-
-  auto highPenalty = bestVimDiffs(
-      initial, goal, config, VimDiff::CostOptions{.diffOpenPenalty = 100.0});
-  EXPECT_EQ(MyersDiff::applyAllDiffState(highPenalty, initial), goal);
 }
 
 // =============================================================================
