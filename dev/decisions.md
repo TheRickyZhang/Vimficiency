@@ -136,3 +136,9 @@ to deeper docs when needed.
 
 ## VimDiff counted-command cap is the search's own knob (2026-08-30)
 - The oracle caps counted chunks at every level — including `{k}dd`/`{k}dap`, previously unbounded — at `CostOptions::maxPrefixCount`, wired live from the same `maxPrefixCount` param the Nav/Transform searches obey; the shared default lives in `CountPrefixLimits::DEFAULT_MAX_PREFIX_COUNT`. One variable on purpose: the old private `CAP = 9` underpriced counts the search can emit (10..16) while pricing line counts (`{150}dd`) nothing downstream can produce.
+
+## VimDiff seals kept runs instead of collapsing them (2026-08-31)
+- A matched run the gate proves no optimal plan edits into is a separator, not a cell: every optimal path crosses it with one move, so the alignment splits into independent char-level blocks (`sealMatchedRuns` → `Block{aBegin,aEnd,bBegin,bEnd}`). This deleted the pruned↔raw coordinate layer (`PrunedUnits`, unit hashes, `prunedAt`) entirely.
+- Crossing a seal is `CROSS` transitions from the previous block's trailing matched diagonal to the next block's leading one, each priced by one raw sweep — so a region-to-region move costs exactly one `move` query over the whole gap, as before; no artificial split at margin boundaries.
+- No deletion crosses a seal (that would retype the core, which the gate excluded), so deletion sweeps are block-local and the planner is diff-bound. This closes the "exact vs diff-bound" tension without a cross-run oracle. Release `VimDiffPlan/BufferSize/100`: 292 → 14 ms.
+- Verified: plan-1 costs identical on all 3,325 corpus lines; the only K-best plans lost are those retyping an entire sealed core (dominated by construction).

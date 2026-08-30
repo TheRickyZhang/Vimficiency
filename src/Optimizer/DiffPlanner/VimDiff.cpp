@@ -23,9 +23,7 @@ namespace {
 
 constexpr double INF = numeric_limits<double>::max() / 4.0;
 
-// Flat buffer text plus the unit boundaries the tiling oracle prices line and
-// paragraph commands on. Both lists are ascending and terminated by text.size(),
-// so unit u is [starts[u], starts[u+1]). A paragraph ends after a blank line.
+// Unit u is [starts[u], starts[u+1]); both lists end with N.
 struct FlatText {
   string text;
   vector<int> lineStarts, paraStarts;
@@ -49,30 +47,19 @@ struct FlatText {
   }
 };
 
-// Chunk levels a span is tiled from, and the keystrokes of each level's uncounted
-// command: the bare motion, and the operator form.
 enum Level { CHAR, WORD, BIG_WORD, LINE, PARAGRAPH, LEVEL_COUNT };
 constexpr double MOVE_KEYS[LEVEL_COUNT] = {1, 1, 2, 1, 2};    // l, w, W, j, }
 constexpr double DELETE_KEYS[LEVEL_COUNT] = {1, 2, 3, 2, 3};  // x, dw, dW, dd, dap
-// To-boundary commands price a partial line flat, so cutting a line/paragraph
-// command mid-line costs a bounded amount: `D`/`$` to the line end, `d0` back to
-// the line start.
-constexpr double TO_LINE_END_KEYS = 2.0;    // D, $ (shifted)
-constexpr double TO_LINE_START_KEYS = 2.0;  // d0
+constexpr double TO_LINE_END_KEYS = 2.0;                      // D, $
+constexpr double TO_LINE_START_KEYS = 2.0;                    // d0
 
-// Cost of a count prefix: the digit keystrokes (scaled like the other keystrokes) plus
-// the shared cognitive penalty for the level's class, 0 at k<=1.
 template<CountClass C>
 double countPrefixCost(int k, double scale) {
   if (k <= 1) return 0.0;
   return (int)to_string(k).size() * scale + runtimeCountPenalty<C>({k, k});
 }
 
-// Span cost oracle for deletion/movement over the raw initial text, tiled from
-// counted char/word/bigword/line/paragraph commands plus the to-boundary
-// commands. Word/bigword chunks are span-local. Deletion chunks `{k}dd`/`{k}dap`
-// start on a unit start; movement chunks `{k}j`/`{k}}` start anywhere in their
-// first unit (column adjustment on landing is below the oracle's fidelity).
+// Cheapest counted-command tiling of raw initial spans.
 class TilingCost {
 public:
   enum class Kind { Delete, Move };
@@ -97,8 +84,7 @@ public:
     }
   }
 
-  // Upper bound on tiling the segment [x,y) of one line (the trailing newline is
-  // allowed) with char or bigword chunks — both always applicable there.
+  // Upper bound on tiling one line's segment [x,y).
   double coverBound(int x, int y) const {
     const int len = y - x;
     if (len <= 0) return 0.0;
@@ -112,17 +98,12 @@ public:
     return min(charC, bigC);
   }
 
-  // Upper bound on covering `units` units of one level as a chain of counted
-  // commands within the cap.
   double chainCost(Level level, int units) const {
     if (units <= 0) return 0.0;
     return ((units + cap_ - 1) / cap_) * chunk_[level].cost(min(units, cap_));
   }
 
-  // Extra cost any tiling pays to STOP exactly at `edge` instead of crossing it,
-  // by what could cross: a counted chunk (its split gap), {k}dd (split gap +
-  // cover the edge's partial line), {k}dap (split gap + a counted dd chain to
-  // the edge's line + cover), or a D/d0 piece (the cover alone, subsumed).
+  // Worst extra cost to end a tiling at `edge` instead of crossing it.
   double stopSlack(int edge) const {
     const double cover = coverBound(lineStartOf_[edge], edge);
     const int line = lineOf(edge);
@@ -134,9 +115,6 @@ public:
     return slack;
   }
 
-  // Mirror of stopSlack: extra cost to START exactly at `edge` — cover to the
-  // end of edge's line (D/$ + the newline char) before a clean line/paragraph
-  // continuation, or a within-line cover for a d0/$ piece crossing `edge`.
   double startSlack(int edge) const {
     const int line = lineOf(edge);
     const int nextStart = lineStarts_[min(line + 1, (int)lineStarts_.size() - 1)];
@@ -150,15 +128,12 @@ public:
     return slack;
   }
 
-  // Cheapest counted-command tiling of raw [begin,end); 0 when begin>=end.
   double query(int begin, int end) {
     double cost = 0.0;
     sweep(begin, end, [&](int ri, double c) { if (ri == end) cost = c; });
     return cost;
   }
 
-  // Single-source scalar pass from raw `begin`: `sink(ri, cost)` receives the
-  // cheapest tiling of [begin,ri) for every ri in (begin,end].
   template<class Sink>
   void sweep(int begin, int end, Sink&& sink) {
     static const double ZERO = 0.0;
@@ -167,10 +142,7 @@ public:
           [&](int ri, const double& cost) { sink(ri, cost); });
   }
 
-  // Sweep storage for value type V (scalar cost or candidate list), indexed by
-  // raw position except lineMin/paraMin (by unit). A run's start slot holds what
-  // reached the run start plus every source within the run: the span-local rule
-  // that a mid-run source prices the rest of the run as one command.
+  // Run-start slots also hold sources inside the run (span-local rule).
   template<class V>
   struct Scratch {
     vector<V> reach, wordStart, bigStart, wsStart, lineMin, paraMin;
@@ -192,29 +164,22 @@ public:
     void relax(V& acc, const V& base, double add) const { acc = min(acc, base + add); }
   };
 
-  // Multi-source tiling over raw [begin,end]: `src(ri)` is the value of starting
-  // at ri (ops.inf() where nothing starts); `sink(ri, e)` receives, for each ri
-  // in (begin,end], the cheapest tiling ending at ri — sources at ri itself
-  // excluded, so `e` always covers something. A sweep only reads slots it wrote
-  // or reset itself, so nothing is cleared between sweeps.
+  // Multi-source; only slots written or reset in this sweep are read.
   template<class Ops, class Src, class Sink>
   void sweep(const Ops& ops, Scratch<typename Ops::V>& s, int begin, int end, Src&& src,
              Sink&& sink) {
     using V = typename Ops::V;
     if (begin >= end) return;
     s.reach[begin] = src(begin);
-    // Running minima over the current line/paragraph's reached positions: where a
-    // from-anywhere command can start. Finalized per unit at the next unit start.
-    V lineMin = s.reach[begin], paraMin = s.reach[begin];
+    V lineMin = s.reach[begin], paraMin = s.reach[begin];  // where j/} may start
     int lineStart = lineStartOf_[begin];
-    // Runs cut by `begin` start chunks only at sources >= begin.
     if (isWord_[begin]) ops.reset(s.wordStart[wordStarts_[wordIdx_[begin]]]);
     if (isBig_[begin]) ops.reset(s.bigStart[bigStarts_[bigIdx_[begin]]]);
     if (isWs_[begin]) ops.reset(s.wsStart[wsRunStart_[begin]]);
 
     V e = ops.inf();
     for (int ri = begin + 1; ri <= end; ri++) {
-      const int last = ri - 1;  // last char of any chunk ending at ri
+      const int last = ri - 1;
       if (isWord_[last]) ops.relax(s.wordStart[wordStarts_[wordIdx_[last]]], src(last), 0.0);
       if (isBig_[last]) ops.relax(s.bigStart[bigStarts_[bigIdx_[last]]], src(last), 0.0);
       if (isWs_[last]) ops.relax(s.wsStart[wsRunStart_[last]], src(last), 0.0);
@@ -253,12 +218,9 @@ public:
   }
 
 private:
-  // One level's counted command: `{k}cmd` costs base + pen[k], pen 0 at k<=1.
-  // `gap` is the extra cost of splitting one {k}cmd in two at a unit boundary: a
-  // second base plus the worst count-penalty split gap (digits included in pen).
   struct Chunk {
     double base = 0.0;
-    double gap = 0.0;
+    double gap = 0.0;  // extra cost of splitting one {k}cmd in two
     vector<double> pen;
     double cost(int k) const { return base + pen[k]; }
   };
@@ -276,19 +238,18 @@ private:
   }
 
   int N_;
-  int cap_;  // shared counted-command cap (CostOptions::maxPrefixCount)
+  int cap_;  // CostOptions::maxPrefixCount
   Kind kind_;
   array<Chunk, LEVEL_COUNT> chunk_;
   double toLineEnd_, toLineStart_;
   vector<char> isWord_, isBig_, isWs_, isNewline_;
-  vector<int> lineStartOf_;              // position -> start of its line
-  vector<int> wsRunStart_;               // ws position -> start of its whitespace run
-  vector<int> wordStarts_, wordEnds_;    // ordered alnum/_ runs
-  vector<int> bigStarts_, bigEnds_;      // ordered non-blank runs
-  vector<int> wordIdx_, bigIdx_;         // word/big char -> index into the run lists
-  vector<int> lineStarts_, paraStarts_;  // from FlatText: ascending, terminated by N_
-  vector<int> lineIdx_, paraIdx_;        // line/para start position -> list index, else -1
-  Scratch<double> scalar_;               // reused by the scalar sweep
+  vector<int> lineStartOf_;
+  vector<int> wsRunStart_;
+  vector<int> wordStarts_, wordEnds_, bigStarts_, bigEnds_;
+  vector<int> wordIdx_, bigIdx_;
+  vector<int> lineStarts_, paraStarts_;
+  vector<int> lineIdx_, paraIdx_;
+  Scratch<double> scalar_;
 
   void buildBoundaries(const string& text) {
     isWord_.assign(N_, 0);
@@ -336,12 +297,7 @@ private:
                                        : countPrefixCost<Mov>(k, scale);
   }
 
-  // Counted word/bigword chunks ending at ri: find the run whose chunk ends at ri
-  // (ri-1 within/at-end of a run = de/partial, or ri-1 trailing whitespace = dw),
-  // then scan k=1..CAP runs back, starting from the run's start slot, or from the
-  // whitespace run before it. Starting from that leading space costs one extra
-  // count when the chunk also ends in trailing whitespace (`d{k+1}w`), but not in
-  // the de-shape (`d{k}e` from the space lands on the k-th run end).
+  // de-shape (ri-1 in a run) or dw-shape (ri-1 trailing ws).
   template<class Ops, class V>
   void relaxRuns(const Ops& ops, V& e, int begin, int ri, const Chunk& chunk,
                  const vector<char>& isClass, const vector<int>& idx, const vector<int>& starts,
@@ -360,7 +316,7 @@ private:
     }
     for (int k = 1; k <= cap_ && runIdx - k + 1 >= 0; k++) {
       const int run = runIdx - k + 1;
-      if (ends[run] <= begin) break;  // run fully before the start
+      if (ends[run] <= begin) break;
       const int runBegin = starts[run];
       ops.relax(e, runStart[runBegin], chunk.cost(k));
       if (runBegin > begin && isWs_[runBegin - 1] && k + endsInWs <= cap_)
@@ -368,9 +324,6 @@ private:
     }
   }
 
-  // Counted line/paragraph chunks ending at ri (ri must be a unit start or N_), k =
-  // number of units between. Deletes start on an earlier reached unit start; moves
-  // start anywhere in an earlier unit (its min reach value).
   template<class Ops, class V>
   void relaxUnits(const Ops& ops, V& e, int begin, int ri, const Chunk& chunk,
                   const vector<int>& idxAt, const vector<int>& starts, const vector<V>& reach,
@@ -389,94 +342,57 @@ private:
   }
 };
 
-// FNV-1a over a byte range; O(1) unit-match checks.
-uint64_t fnv1a(string_view s) {
-  uint64_t h = 1469598103934665603ull;
-  for (char c : s) {
-    h ^= (unsigned char)c;
-    h *= 1099511628211ull;
-  }
-  return h;
-}
+// Typing raw goal [begin,end) costs PS[end] - PS[begin] - cut[begin].
+struct Typing {
+  vector<double> PS, cut;
+  double insertOverhead;
 
-// ---- Stage 1: collapse matched runs ----------------------------------------
+  Typing(const FlatText& goal, const Config& config)
+      : PS(goal.text.size() + 1, 0.0), cut(goal.text.size() + 1, 0.0),
+        insertOverhead(getEffort("i", config) + getEffort("<Esc>", config)) {
+    const int M = (int)goal.text.size();
+    if (M == 0) return;
+    vector<RunningEffort> seg;
+    vector<double> segEffort(M);
+    seg.reserve(M);
+    for (int rj = 0; rj < M; rj++) {
+      KeyedSequence one;
+      one.append(string_view(goal.text).substr(rj, 1));
+      seg.emplace_back(one.keys, config);
+      segEffort[rj] = seg[rj].getEffort(config);
+    }
+    RunningEffort acc = seg[0];
+    PS[1] = segEffort[0];
+    for (int rj = 1; rj < M; rj++) PS[rj + 1] = acc.appendFrom(seg[rj], config);
+    for (int rj = 1; rj < M; rj++)
+      cut[rj] = RunningEffort::merge(seg[rj - 1], seg[rj]).getEffort(config) -
+                segEffort[rj - 1] - segEffort[rj];
+  }
 
-// The DP's coordinate system: `n`/`m` pruned units per side, each a raw span.
-// Changed regions and short matched runs stay char-level (one unit per char); the
-// interior of a provably-kept matched run is one unit on both sides.
-struct PrunedUnits {
-  int n = 0, m = 0;
-  vector<int> initialRaw, goalRaw;  // pruned index -> raw position; size n+1 / m+1
-  vector<int> prunedAt;             // raw initial position -> pruned index, else -1
-  vector<uint64_t> initialHash, goalHash;  // per unit
-  int prefixUnits = 0, suffixUnits = 0;  // matched units on the leading/trailing diagonal
-
-  // Initial unit i-1 matches goal unit j-1: equal length and content (hashed).
-  bool unitMatch(int i, int j) const {
-    return initialRaw[i] - initialRaw[i - 1] == goalRaw[j] - goalRaw[j - 1] &&
-           initialHash[i - 1] == goalHash[j - 1];
-  }
-  string_view initialText(const FlatText& initial, int begin, int end) const {
-    return string_view(initial.text).substr(initialRaw[begin], initialRaw[end] - initialRaw[begin]);
-  }
-  string_view goalText(const FlatText& goal, int begin, int end) const {
-    return string_view(goal.text).substr(goalRaw[begin], goalRaw[end] - goalRaw[begin]);
-  }
+  double ins(int begin, int end) const { return PS[end] - PS[begin] - cut[begin]; }
 };
 
-// The interior of each Myers-matched run the optimum provably keeps becomes one
-// unit, with char-level units kept at each edge where an optimal edit boundary
-// could still slide into the run. One question decides both, asked of the run's
-// core and then of each edge's prefixes: is retyping this shared text ever
-// cheaper than the merge bonus of deleting straight through it? The bonus is
-// bounded without knowing where the surrounding deletes begin or end — chop the
-// through-deletion at the two edges and repair the two cut commands
-// (TilingCost::stopSlack / startSlack) — so:
-//
-//   gate:   collapse the core iff  type(core) > move(core) + (entry+<Esc>) + both edge slacks
-//   margin: keep depth d while  ins(d edge chars) <= edge slack + move saving of d
-//
-// Retype grows ~one keystroke per char (minus at most one bigram seam,
-// `seamMax`) while the slack is fixed per edge, so the margin scan crosses
-// over quickly; the move saving is priced exactly by a sweep from the edge.
-PrunedUnits collapseMatchedRuns(const FlatText& initial, const FlatText& goal,
-                                const Lines& initialLines, const Lines& goalLines,
-                                const Config& config, const CostOptions& options) {
-  PrunedUnits p;
+// ---- Stage 1: seal matched runs --------------------------------------------
+
+// Raw spans of one alignment block. Consecutive blocks are separated by a sealed
+// run that no optimal plan edits into, so deletions never cross it.
+struct Block {
+  int aBegin, aEnd, bBegin, bEnd;
+  int n() const { return aEnd - aBegin; }
+  int m() const { return bEnd - bBegin; }
+};
+
+//   gate:   type(core) > move(core) + entry+<Esc> + stopSlack + startSlack
+//   margin: keep depth d while ins(d) <= edge slack + move saving(d)
+vector<Block> sealMatchedRuns(const FlatText& initial, const FlatText& goal, const Typing& typing,
+                              const Lines& initialLines, const Lines& goalLines,
+                              const Config& config, const CostOptions& options) {
   const int N = (int)initial.text.size();
   const int M = (int)goal.text.size();
-  p.initialRaw.push_back(0);
-  p.goalRaw.push_back(0);
-  auto addInitialUnit = [&](int riEnd) {
-    const int riBegin = p.initialRaw.back();
-    p.initialHash.push_back(fnv1a(string_view(initial.text).substr(riBegin, riEnd - riBegin)));
-    p.initialRaw.push_back(riEnd);
-    p.n++;
-  };
-  auto addGoalUnit = [&](int rjEnd) {
-    const int rjBegin = p.goalRaw.back();
-    p.goalHash.push_back(fnv1a(string_view(goal.text).substr(rjBegin, rjEnd - rjBegin)));
-    p.goalRaw.push_back(rjEnd);
-    p.m++;
-  };
-  auto addCharSpan = [&](int riBegin, int riEnd, int rjBegin, int rjEnd) {
-    for (int ri = riBegin + 1; ri <= riEnd; ri++) addInitialUnit(ri);
-    for (int rj = rjBegin + 1; rj <= rjEnd; rj++) addGoalUnit(rj);
-  };
-
   TilingCost move(initial, options.moveDeleteScale, options.maxPrefixCount, TilingCost::Kind::Move);
   TilingCost del(initial, options.moveDeleteScale, options.maxPrefixCount, TilingCost::Kind::Delete);
-  const double insertOverhead = getEffort("i", config) + getEffort("<Esc>", config);
 
-  auto charEffort = [&](int ri) {
-    KeyedSequence one;
-    one.append(string_view(initial.text).substr(ri, 1));
-    return RunningEffort(one.keys, config);
-  };
-  // Worst bigram correction a region seam can contribute: retyped run chars
-  // decompose as their own effort plus one seam cut against arbitrary adjacent
-  // inserted text, bounded over the chars that actually occur.
-  double seamMax = 0.0;
+  double seamMax = 0.0;  // largest bigram correction at a retype seam
   {
     string chars;
     for (const string* text : {&initial.text, &goal.text})
@@ -495,63 +411,50 @@ PrunedUnits collapseMatchedRuns(const FlatText& initial, const FlatText& goal,
         seamMax = max(seamMax, fabs(RunningEffort::merge(eff[x], eff[y]).getEffort(config) -
                                     effOne[x] - effOne[y]));
   }
-  // Deepest d whose retype could still pay: first the delete-merge saving
-  // (bounded per edge by stopSlack/startSlack), then the move saving. Left
-  // edge: the move saving is at most move(edge, edge+d), exact from one sweep.
-  // Right edge: it is at most move(end-d, end), bounded through one sweep at
-  // mid = end - dmax plus the cost of stopping that sweep's tiling at end-d.
-  // Not monotone in d (a deeper boundary can land on a cheaper structural
-  // position), so scan the full half.
-  auto leftMargin = [&](int begin, int dmax) {
-    if (begin == 0 || dmax <= 0) return 0;  // no region precedes the leading run
+  // Run chars are matched, so their retype cost is read off the goal prefix sums.
+  // Not monotone in d, so the whole half is scanned.
+  auto leftMargin = [&](int begin, int off, int dmax) {
+    if (begin == 0 || dmax <= 0) return 0;
     vector<double> mv(dmax + 1, 0.0);
     move.sweep(begin, begin + dmax, [&](int ri, double c) { mv[ri - begin] = c; });
     const double slack = del.stopSlack(begin) + seamMax;
     int margin = 0;
-    RunningEffort ins = charEffort(begin);
-    for (int d = 1; d <= dmax; d++) {
-      if (d > 1) ins.appendFrom(charEffort(begin + d - 1), config);
-      if (ins.getEffort(config) <= slack + mv[d]) margin = d;
-    }
+    for (int d = 1; d <= dmax; d++)
+      if (typing.ins(begin + off, begin + off + d) <= slack + mv[d]) margin = d;
     return margin;
   };
-  auto rightMargin = [&](int end, int dmax) {
-    if (end == (int)initial.text.size() || dmax <= 0) return 0;  // no region follows
+  auto rightMargin = [&](int end, int off, int dmax) {
+    if (end == N || dmax <= 0) return 0;
     vector<double> mv(dmax + 1, 0.0);
     move.sweep(end - dmax, end, [&](int ri, double c) { mv[ri - (end - dmax)] = c; });
     const double slack = del.startSlack(end) + seamMax;
     int margin = 0;
-    RunningEffort ins = charEffort(end - 1);
     for (int d = 1; d <= dmax; d++) {
-      if (d > 1) ins = RunningEffort::merge(charEffort(end - d), ins);
       const double mvSaving = mv[dmax] - mv[dmax - d] + move.stopSlack(end - d);
-      if (ins.getEffort(config) <= slack + mvSaving) margin = d;
+      if (typing.ins(end + off - d, end + off) <= slack + mvSaving) margin = d;
     }
     return margin;
   };
 
-  // Matched/changed regions via line-level Myers (gaps = matched runs).
+  vector<Block> blocks;
+  Block cur{0, 0, 0, 0};
   int initialAt = 0, goalAt = 0;
   auto matchedRun = [&](int riEnd, int rjEnd) {
     const int off = rjEnd - riEnd;
     const int dmax = (riEnd - initialAt) / 2;
-    const int coreBegin = initialAt + leftMargin(initialAt, dmax);
-    const int coreEnd = riEnd - rightMargin(riEnd, dmax);
-    bool collapsed = false;
+    const int coreBegin = initialAt + leftMargin(initialAt, off, dmax);
+    const int coreEnd = riEnd - rightMargin(riEnd, off, dmax);
+    bool sealed = false;
     if (coreBegin < coreEnd) {
-      KeyedSequence typed;
-      typed.append(string_view(initial.text).substr(coreBegin, coreEnd - coreBegin));
-      const double type = RunningEffort(typed.keys, config).getEffort(config);
-      collapsed = type > move.query(coreBegin, coreEnd) + insertOverhead +
-                             del.stopSlack(coreBegin) + del.startSlack(coreEnd) + 2 * seamMax;
+      sealed = typing.ins(coreBegin + off, coreEnd + off) >
+               move.query(coreBegin, coreEnd) + typing.insertOverhead +
+                   del.stopSlack(coreBegin) + del.startSlack(coreEnd) + 2 * seamMax;
     }
-    if (collapsed) {
-      addCharSpan(initialAt, coreBegin, goalAt, coreBegin + off);
-      addInitialUnit(coreEnd);
-      addGoalUnit(coreEnd + off);
-      addCharSpan(coreEnd, riEnd, coreEnd + off, rjEnd);
-    } else {
-      addCharSpan(initialAt, riEnd, goalAt, rjEnd);
+    if (sealed) {
+      cur.aEnd = coreBegin;
+      cur.bEnd = coreBegin + off;
+      if (cur.n() > 0 || cur.m() > 0) blocks.push_back(cur);
+      cur = Block{coreEnd, coreEnd, coreEnd + off, coreEnd + off};
     }
     initialAt = riEnd;
     goalAt = rjEnd;
@@ -559,108 +462,80 @@ PrunedUnits collapseMatchedRuns(const FlatText& initial, const FlatText& goal,
   for (const DiffState& diff : MyersDiff::calculate(initialLines, goalLines)) {
     const int diffInitialBegin = initial.lineStarts[diff.beginPos.line] + diff.beginPos.col;
     matchedRun(diffInitialBegin, goalAt + (diffInitialBegin - initialAt));
-    const int diffInitialEnd = initialAt + (int)diff.deletedText.size();
-    const int diffGoalEnd = goalAt + (int)diff.insertedText.size();
-    addCharSpan(initialAt, diffInitialEnd, goalAt, diffGoalEnd);
-    initialAt = diffInitialEnd;
-    goalAt = diffGoalEnd;
+    initialAt += (int)diff.deletedText.size();
+    goalAt += (int)diff.insertedText.size();
   }
   matchedRun(N, M);
-
-  p.prunedAt.assign((int)initial.text.size() + 1, -1);
-  for (int i = 0; i <= p.n; i++) p.prunedAt[p.initialRaw[i]] = i;
-  while (p.prefixUnits < min(p.n, p.m) && p.unitMatch(p.prefixUnits + 1, p.prefixUnits + 1))
-    p.prefixUnits++;
-  while (p.suffixUnits < min(p.n, p.m) &&
-         p.unitMatch(p.n - p.suffixUnits, p.m - p.suffixUnits))
-    p.suffixUnits++;
-  return p;
+  cur.aEnd = N;
+  cur.bEnd = M;
+  if (cur.n() > 0 || cur.m() > 0) blocks.push_back(cur);
+  return blocks;
 }
 
 // ---- Stage 2: transition costs ---------------------------------------------
 
-// DP edge costs in pruned coordinates. `move[pi][i]` prices crossing the initial
-// span [pi,i) as a counted-motion tiling of its raw text (exact across collapsed
-// interiors); `typed[j]` is the effort of typing goal unit j and `enter[j]` that
-// plus entering insert mode and the closing <Esc>. Deletions have no table: one
-// multi-source sweep per column prices them all inside the solve (relaxDeletes).
-struct TransitionCosts {
-  vector<vector<double>> move;  // [pi][i], pi <= i; 0 on the diagonal
-  vector<double> typed, enter;  // per goal unit
+struct BlockCosts {
+  int lead = 0, trail = 0;       // matched diagonal length at the block's start / end
+  vector<vector<double>> move;   // [pi][i]
+  vector<vector<double>> cross;  // [t][i]: from the previous block's (n-t, m-t) to (i,i)
+  vector<double> typed, enter;   // per goal unit
 };
 
-TransitionCosts calculateTransitionCosts(const FlatText& initial, const FlatText& goal,
-                                         const PrunedUnits& p, const Config& config,
-                                         const CostOptions& options) {
-  TransitionCosts costs;
-  costs.move.assign(p.n + 1, vector<double>(p.n + 1, 0.0));
-  const int N = (int)initial.text.size();
-  const int M = (int)goal.text.size();
-
-  // One sweep per pruned start prices every pruned end at once.
+vector<BlockCosts> calculateTransitionCosts(const FlatText& initial, const FlatText& goal,
+                                            const Typing& typing, const vector<Block>& blocks,
+                                            const CostOptions& options) {
   TilingCost move(initial, options.moveDeleteScale, options.maxPrefixCount, TilingCost::Kind::Move);
-  for (int pi = 0; pi < p.n; pi++) {
-    move.sweep(p.initialRaw[pi], N, [&](int ri, double cost) {
-      if (p.prunedAt[ri] >= 0) costs.move[pi][p.prunedAt[ri]] = cost;
-    });
-  }
+  auto matches = [&](int ra, int rb) { return initial.text[ra] == goal.text[rb]; };
 
-  // RunningEffort is a monoid with one-key boundary context, so typing effort
-  // decomposes exactly: PS[rj] is the prefix effort of typing goal[0:rj) and
-  // cut[rj] the bigram correction straddling rj; typing raw [begin,end) costs
-  // PS[end] - PS[begin] - cut[begin], the cut paid once on entry.
-  vector<double> PS(M + 1, 0.0), cut(M + 1, 0.0);
-  if (M > 0) {
-    vector<RunningEffort> seg;
-    vector<double> segEffort(M);
-    seg.reserve(M);
-    for (int rj = 0; rj < M; rj++) {
-      KeyedSequence one;
-      one.append(string_view(goal.text).substr(rj, 1));
-      seg.emplace_back(one.keys, config);
-      segEffort[rj] = seg[rj].getEffort(config);
+  vector<BlockCosts> all(blocks.size());
+  for (int k = 0; k < (int)blocks.size(); k++) {
+    const Block& b = blocks[k];
+    BlockCosts& c = all[k];
+    const int n = b.n(), m = b.m();
+    while (c.lead < min(n, m) && matches(b.aBegin + c.lead, b.bBegin + c.lead)) c.lead++;
+    while (c.trail < min(n, m) && matches(b.aEnd - 1 - c.trail, b.bEnd - 1 - c.trail)) c.trail++;
+
+    c.move.assign(n + 1, vector<double>(n + 1, 0.0));
+    for (int pi = 0; pi < n; pi++)
+      move.sweep(b.aBegin + pi, b.aEnd,
+                 [&](int ri, double cost) { c.move[pi][ri - b.aBegin] = cost; });
+
+    if (k > 0) {
+      const Block& prev = blocks[k - 1];
+      const int trail = all[k - 1].trail;
+      c.cross.assign(trail + 1, vector<double>(c.lead + 1, 0.0));
+      for (int t = 0; t <= trail; t++)
+        move.sweep(prev.aEnd - t, b.aBegin + c.lead, [&](int ri, double cost) {
+          if (ri >= b.aBegin) c.cross[t][ri - b.aBegin] = cost;
+        });
     }
-    RunningEffort acc = seg[0];
-    PS[1] = segEffort[0];
-    for (int rj = 1; rj < M; rj++) PS[rj + 1] = acc.appendFrom(seg[rj], config);
-    for (int rj = 1; rj < M; rj++)
-      cut[rj] = RunningEffort::merge(seg[rj - 1], seg[rj]).getEffort(config) -
-                segEffort[rj - 1] - segEffort[rj];
+
+    c.typed.resize(m);
+    c.enter.resize(m);
+    for (int j = 0; j < m; j++) {
+      const int rj = b.bBegin + j;
+      c.typed[j] = typing.PS[rj + 1] - typing.PS[rj];
+      c.enter[j] = typing.insertOverhead - typing.cut[rj] + c.typed[j];
+    }
   }
-  const double insertOverhead = getEffort("i", config) + getEffort("<Esc>", config);
-  costs.typed.resize(p.m);
-  costs.enter.resize(p.m);
-  for (int j = 0; j < p.m; j++) {
-    costs.typed[j] = PS[p.goalRaw[j + 1]] - PS[p.goalRaw[j]];
-    costs.enter[j] = insertOverhead - cut[p.goalRaw[j]] + costs.typed[j];
-  }
-  return costs;
+  return all;
 }
 
 // ---- Stage 3: the DP -------------------------------------------------------
 
-// Two tables per cell: `out` — normal mode, initial [0,i) consumed and goal
-// [0,j) produced — and `in` — insert mode, same coordinates. Nothing is charged
-// per region: a region is a maximal stretch of delete/type steps between two
-// moves, read off the winning path afterwards, so the state needs no memory of
-// where one began.
-//
-// Each cell keeps its `maxPlans` cheapest candidates keyed by the partition they
-// encode so far (XOR of marks at the cells where regions open and close). Equal
-// keys are the same plan prefix with identical futures, so only the cheaper is
-// kept, and the per-cell top-K is then the global top-K (additive nonnegative
-// costs). A candidate names its predecessor by cell and key.
-enum Step : int8_t { LEADING, MOVE, DELETE, ENTER, TYPE, EXIT };
+// out[i][j]: normal mode, initial [0,i) consumed, goal [0,j) produced; in[i][j]: insert mode.
+// A cell keeps `maxPlans` candidates, one per partition key (XOR of region open/close marks).
+enum Step : int8_t { LEADING, MOVE, CROSS, DELETE, ENTER, TYPE, EXIT };
 
 struct Cand {
   double cost;
-  uint64_t key;   // partition so far
-  Step step;      // how the cell was reached
-  int pi, pj;     // predecessor cell: `out` for MOVE/DELETE/ENTER, `in` for TYPE/EXIT
+  uint64_t key;
+  Step step;
+  int pi, pj;     // predecessor cell; in the previous block for CROSS
   uint64_t pkey;  // predecessor's key within that cell
-  bool open() const { return step == DELETE || step == EXIT; }  // `out`: region in progress
+  bool open() const { return step == DELETE || step == EXIT; }  // region in progress
 };
-using Cell = vector<Cand>;  // cost-ascending, one candidate per key
+using Cell = vector<Cand>;
 
 uint64_t mix64(uint64_t x) {
   x += 0x9E3779B97F4A7C15ull;
@@ -668,28 +543,25 @@ uint64_t mix64(uint64_t x) {
   x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
   return x ^ (x >> 31);
 }
-uint64_t mark(int i, int j, bool close) {
-  return mix64(((uint64_t)(uint32_t)i << 33) | ((uint64_t)(uint32_t)j << 1) | (close ? 1 : 0));
+uint64_t mark(int ra, int rb, bool close) {
+  return mix64(((uint64_t)(uint32_t)ra << 33) | ((uint64_t)(uint32_t)rb << 1) | (close ? 1 : 0));
 }
-// Key after starting an edit at (i,j) from `c`, or after ending one there.
-uint64_t openKey(const Cand& c, int i, int j) { return c.open() ? c.key : c.key ^ mark(i, j, false); }
-uint64_t closeKey(const Cand& c, int i, int j) { return c.open() ? c.key ^ mark(i, j, true) : c.key; }
+uint64_t openKey(const Cand& c, int ra, int rb) { return c.open() ? c.key : c.key ^ mark(ra, rb, false); }
+uint64_t closeKey(const Cand& c, int ra, int rb) { return c.open() ? c.key ^ mark(ra, rb, true) : c.key; }
 
 struct Tables {
   int maxPlans;
-  vector<vector<Cell>> out, in;  // [i][j]
+  vector<vector<Cell>> out, in;
 
   Tables(int n, int m, int maxPlans)
       : maxPlans(maxPlans), out(n + 1, vector<Cell>(m + 1)), in(n + 1, vector<Cell>(m + 1)) {}
 
-  // Insert `from` extended by one step.
   void relax(Cell& cell, const Cand& from, double add, Step step, int pi, int pj,
              uint64_t key) const {
     insert(cell, Cand{from.cost + add, key, step, pi, pj, from.key});
   }
 
-  // Bounded cost-ascending insert; one entry per key (the cheaper wins), equal
-  // costs keep generation order. O(maxPlans).
+  // Cost-ascending, one entry per key.
   void insert(Cell& cell, const Cand& c) const {
     for (auto it = cell.begin(); it != cell.end(); ++it) {
       if (it->key != c.key) continue;
@@ -705,14 +577,9 @@ struct Tables {
   }
 };
 
-// Every deletion of column j in one multi-source tiling sweep: each `out` cell
-// seeds a chunk sequence at its initial position, the sweep extends the cheapest
-// in-progress deletion chunk by chunk over raw positions (a deletion's cost does
-// not depend on where it started, so all seeds share one carried value), and
-// whatever it carries lands on each later pruned cell as a DELETE candidate.
-// O(N) per column, independent of n.
-void relaxDeletes(Tables& t, const PrunedUnits& p, TilingCost& del,
-                  TilingCost::Scratch<Cell>& scratch, vector<Cell>& seeds, int j) {
+// One multi-source sweep prices every deletion of column j within the block.
+void relaxDeletes(Tables& t, const Block& b, TilingCost& del, TilingCost::Scratch<Cell>& scratch,
+                  vector<Cell>& seeds, int j) {
   struct SweepOps {
     using V = Cell;
     const Tables& t;
@@ -729,124 +596,140 @@ void relaxDeletes(Tables& t, const PrunedUnits& p, TilingCost& del,
     }
   };
   int begin = -1;
-  for (int i = 0; i <= p.n; i++) {
+  for (int i = 0; i <= b.n(); i++) {
     seeds[i].clear();
     for (const Cand& c : t.out[i][j])
-      seeds[i].push_back({c.cost, openKey(c, i, j), DELETE, i, j, c.key});
-    if (begin < 0 && !seeds[i].empty()) begin = p.initialRaw[i];
+      seeds[i].push_back({c.cost, openKey(c, b.aBegin + i, b.bBegin + j), DELETE, i, j, c.key});
+    if (begin < 0 && !seeds[i].empty()) begin = b.aBegin + i;
   }
   if (begin < 0) return;
-  static const Cell EMPTY;
   del.sweep(
-      SweepOps{t}, scratch, begin, (int)p.prunedAt.size() - 1,
-      [&](int ri) -> const Cell& { return p.prunedAt[ri] >= 0 ? seeds[p.prunedAt[ri]] : EMPTY; },
+      SweepOps{t}, scratch, begin, b.aEnd, [&](int ri) -> const Cell& { return seeds[ri - b.aBegin]; },
       [&](int ri, const Cell& e) {
-        if (p.prunedAt[ri] < 0) return;
-        for (const Cand& c : e) t.insert(t.out[p.prunedAt[ri]][j], c);
+        for (const Cand& c : e) t.insert(t.out[ri - b.aBegin][j], c);
       });
 }
 
-// Column-major; within a column `in` depends only on column j-1 and `out` on
-// smaller i, so one pass in (j, i) order sees every predecessor complete;
-// deletions arrive from the per-column sweep after the cell pass.
-Tables solveVimDiff(const PrunedUnits& p, const TransitionCosts& costs, TilingCost& del,
-                    int maxPlans) {
-  Tables t(p.n, p.m, maxPlans);
+vector<Tables> solveVimDiff(const vector<Block>& blocks, const vector<BlockCosts>& costs,
+                            const FlatText& initial, const FlatText& goal, TilingCost& del,
+                            int maxPlans) {
   TilingCost::Scratch<Cell> scratch = del.makeScratch<Cell>({});
-  vector<Cell> seeds(p.n + 1);
-  for (int j = 0; j <= p.m; j++) {
-    for (int i = 0; i <= p.n; i++) {
-      Cell& in = t.in[i][j];
-      Cell& out = t.out[i][j];
-      if (j > 0) {
-        const int pj = j - 1;
-        for (const Cand& c : t.in[i][pj]) t.relax(in, c, costs.typed[pj], TYPE, i, pj, c.key);
-        for (const Cand& c : t.out[i][pj])
-          t.relax(in, c, costs.enter[pj], ENTER, i, pj, openKey(c, i, pj));
+  auto matches = [&](int ra, int rb) { return initial.text[ra] == goal.text[rb]; };
+  vector<Tables> tables;
+  for (int k = 0; k < (int)blocks.size(); k++) {
+    const Block& b = blocks[k];
+    const BlockCosts& c = costs[k];
+    Tables t(b.n(), b.m(), maxPlans);
+    vector<Cell> seeds(b.n() + 1);
+    for (int j = 0; j <= b.m(); j++) {
+      for (int i = 0; i <= b.n(); i++) {
+        Cell& in = t.in[i][j];
+        Cell& out = t.out[i][j];
+        const int ra = b.aBegin + i, rb = b.bBegin + j;
+        if (j > 0) {
+          const int pj = j - 1;
+          for (const Cand& x : t.in[i][pj]) t.relax(in, x, c.typed[pj], TYPE, i, pj, x.key);
+          for (const Cand& x : t.out[i][pj])
+            t.relax(in, x, c.enter[pj], ENTER, i, pj, openKey(x, ra, rb - 1));
+        }
+        if (i == j && i <= c.lead) {
+          if (k == 0) {
+            out.push_back({0.0, 0, LEADING, -1, -1, 0});
+          } else {
+            const Tables& pt = tables[k - 1];
+            const Block& pb = blocks[k - 1];
+            for (int tr = 0; tr < (int)c.cross.size(); tr++) {
+              const int pi = pb.n() - tr, pj = pb.m() - tr;
+              for (const Cand& x : pt.out[pi][pj])
+                t.relax(out, x, c.cross[tr][i], CROSS, pi, pj,
+                        closeKey(x, pb.aBegin + pi, pb.bBegin + pj));
+            }
+          }
+        }
+        for (int pi = i - 1, pj = j - 1; pi >= 0 && pj >= 0 && matches(ra - 1 - (i - 1 - pi), rb - 1 - (j - 1 - pj));
+             pi--, pj--)
+          for (const Cand& x : t.out[pi][pj])
+            t.relax(out, x, c.move[pi][i], MOVE, pi, pj, closeKey(x, b.aBegin + pi, b.bBegin + pj));
+        for (const Cand& x : in) t.relax(out, x, 0.0, EXIT, i, j, x.key);
       }
-      if (i == j && i <= p.prefixUnits) out.push_back({0.0, 0, LEADING, -1, -1, 0});
-      for (int pi = i - 1, pj = j - 1; pi >= 0 && pj >= 0 && p.unitMatch(pi + 1, pj + 1);
-           pi--, pj--)
-        for (const Cand& c : t.out[pi][pj])
-          t.relax(out, c, costs.move[pi][i], MOVE, pi, pj, closeKey(c, pi, pj));
-      for (const Cand& c : in) t.relax(out, c, 0.0, EXIT, i, j, c.key);
+      relaxDeletes(t, b, del, scratch, seeds, j);
     }
-    relaxDeletes(t, p, del, scratch, seeds, j);
+    tables.push_back(std::move(t));
   }
-  return t;
+  return tables;
 }
 
 // ---- Stage 4: plans --------------------------------------------------------
 
-struct Region {  // pruned spans: initial [iBegin,iEnd) -> goal [jBegin,jEnd)
-  int iBegin, iEnd, jBegin, jEnd;
+struct Region {  // raw spans: initial [aBegin,aEnd) -> goal [bBegin,bEnd)
+  int aBegin, aEnd, bBegin, bEnd;
   bool operator==(const Region&) const = default;
 };
 
-struct PrunedPlan {
+struct RawPlan {
   vector<Region> regions;
   double cost = 0.0;
 };
 
 const Cand& predecessor(const Tables& t, const Cand& c) {
-  const bool predOut = c.step == MOVE || c.step == DELETE || c.step == ENTER;
+  const bool predOut = c.step != TYPE && c.step != EXIT;
   for (const Cand& p : predOut ? t.out[c.pi][c.pj] : t.in[c.pi][c.pj])
     if (p.key == c.pkey) return p;
   CHECK(false, "VimDiff: predecessor candidate missing");
   return c;
 }
 
-// Regions along the path ending in `out` candidate `c` at (i,j): a region spans
-// from the cell it opened at (first delete/type step off a closed candidate) to
-// the cell it closed at (the start of the next move, or the end).
-vector<Region> walk(const Tables& t, int i, int j, const Cand* c) {
+// A region spans from its first delete/type step to the next move (or the end).
+vector<Region> walk(const vector<Tables>& tables, const vector<Block>& blocks, int k, int i, int j,
+                    const Cand* c) {
   vector<Region> regions;
-  int ci = i, cj = j;  // cell the current region closed at
+  int ca = blocks[k].aBegin + i, cb = blocks[k].bBegin + j;
   while (c->step != LEADING) {
-    const Cand& pred = predecessor(t, *c);
-    if (c->step == MOVE) {
+    const int pk = c->step == CROSS ? k - 1 : k;
+    const Cand& pred = predecessor(tables[pk], *c);
+    const int pa = blocks[pk].aBegin + c->pi, pb = blocks[pk].bBegin + c->pj;
+    if (c->step == MOVE || c->step == CROSS) {
       if (pred.open()) {
-        ci = c->pi;
-        cj = c->pj;
+        ca = pa;
+        cb = pb;
       }
     } else if ((c->step == DELETE || c->step == ENTER) && !pred.open()) {
-      regions.push_back({c->pi, ci, c->pj, cj});
+      regions.push_back({pa, ca, pb, cb});
     }
     c = &pred;
+    k = pk;
   }
   reverse(regions.begin(), regions.end());
   return regions;
 }
 
-// Top-K plans: every `out` candidate on the free trailing diagonal, walked in cost
-// order, keeping the `maxPlans` cheapest distinct partitions. An identical-replace
-// region (deleted text == inserted text) is strictly dominated by keeping that
-// text, so it never appears in the optimum — but the K-best enumeration still
-// reaches such partitions, and the transform layer rejects identity edits, so
-// they are filtered here.
-vector<PrunedPlan> reconstructPlans(const Tables& t, const PrunedUnits& p,
-                                    const FlatText& initial, const FlatText& goal) {
+// Identical-replace regions are dropped: never optimal, rejected downstream.
+vector<RawPlan> reconstructPlans(const vector<Tables>& tables, const vector<Block>& blocks,
+                                 int trail, const FlatText& initial, const FlatText& goal) {
   struct Top {
     double cost;
     int i, j;
     const Cand* c;
   };
+  const int last = (int)blocks.size() - 1;
+  const Block& b = blocks[last];
   vector<Top> tops;
-  for (int k = p.suffixUnits; k >= 0; k--)
-    for (const Cand& c : t.out[p.n - k][p.m - k])
-      if (c.step != LEADING) tops.push_back({c.cost, p.n - k, p.m - k, &c});
+  for (int t = trail; t >= 0; t--)
+    for (const Cand& c : tables[last].out[b.n() - t][b.m() - t])
+      if (c.step != LEADING) tops.push_back({c.cost, b.n() - t, b.m() - t, &c});
   stable_sort(tops.begin(), tops.end(),
               [](const Top& lhs, const Top& rhs) { return lhs.cost < rhs.cost; });
 
-  vector<PrunedPlan> plans;
+  vector<RawPlan> plans;
   for (const Top& top : tops) {
-    if ((int)plans.size() == t.maxPlans) break;
-    vector<Region> regions = walk(t, top.i, top.j, top.c);
+    if ((int)plans.size() == tables[last].maxPlans) break;
+    vector<Region> regions = walk(tables, blocks, last, top.i, top.j, top.c);
     const bool degenerate = any_of(regions.begin(), regions.end(), [&](const Region& r) {
-      return p.initialText(initial, r.iBegin, r.iEnd) == p.goalText(goal, r.jBegin, r.jEnd);
+      return string_view(initial.text).substr(r.aBegin, r.aEnd - r.aBegin) ==
+             string_view(goal.text).substr(r.bBegin, r.bEnd - r.bBegin);
     });
     const bool seen = any_of(plans.begin(), plans.end(),
-                             [&](const PrunedPlan& plan) { return plan.regions == regions; });
+                             [&](const RawPlan& plan) { return plan.regions == regions; });
     if (!degenerate && !seen) plans.push_back({std::move(regions), top.cost});
   }
   return plans;
@@ -854,36 +737,36 @@ vector<PrunedPlan> reconstructPlans(const Tables& t, const PrunedUnits& p,
 
 // ---- Pipeline --------------------------------------------------------------
 
-// Hard bound for the dense tables. Future sparse maps should lower n/m before
-// this check rather than raising it.
 constexpr long long MAX_PLANNER_CELLS = 100'000'000;
 
 struct Planned {
   FlatText initial, goal;
-  PrunedUnits pruned;
-  TransitionCosts costs;
-  vector<PrunedPlan> plans;  // empty when initial already equals goal
+  Typing typing;
+  vector<RawPlan> plans;
 };
 
 Planned plan(const Lines& initialLines, const Lines& goalLines, const Config& config,
              const CostOptions& options) {
-  Planned p{FlatText(initialLines), FlatText(goalLines)};
+  Planned p{FlatText(initialLines), FlatText(goalLines), Typing(FlatText(goalLines), config)};
   if (p.initial.text == p.goal.text) return p;
-  p.pruned = collapseMatchedRuns(p.initial, p.goal, initialLines, goalLines, config, options);
-  const long long rows = p.pruned.n + 1, cols = p.pruned.m + 1;
-  CHECK(max(rows * cols, rows * rows) <= MAX_PLANNER_CELLS,
-        "VimDiff diff too large for the planner DP");
-  p.costs = calculateTransitionCosts(p.initial, p.goal, p.pruned, config, options);
+  const vector<Block> blocks =
+      sealMatchedRuns(p.initial, p.goal, p.typing, initialLines, goalLines, config, options);
+  long long cells = 0;
+  for (const Block& b : blocks) cells += (long long)(b.n() + 1) * (b.m() + 1);
+  CHECK(cells <= MAX_PLANNER_CELLS, "VimDiff diff too large for the planner DP");
+  const vector<BlockCosts> costs =
+      calculateTransitionCosts(p.initial, p.goal, p.typing, blocks, options);
   TilingCost del(p.initial, options.moveDeleteScale, options.maxPrefixCount, TilingCost::Kind::Delete);
-  const Tables tables = solveVimDiff(p.pruned, p.costs, del, max(1, options.maxPlans));
-  p.plans = reconstructPlans(tables, p.pruned, p.initial, p.goal);
+  const vector<Tables> tables =
+      solveVimDiff(blocks, costs, p.initial, p.goal, del, max(1, options.maxPlans));
+  p.plans = reconstructPlans(tables, blocks, costs.back().trail, p.initial, p.goal);
   return p;
 }
 
 DiffState diffFromRegion(const Lines& initialLines, const Planned& p, const Region& r) {
-  string deletedText(p.pruned.initialText(p.initial, r.iBegin, r.iEnd));
-  string insertedText(p.pruned.goalText(p.goal, r.jBegin, r.jEnd));
-  CursorPos begin = DiffText::flatIndexToPosition(p.pruned.initialRaw[r.iBegin], p.initial.text);
+  string deletedText = p.initial.text.substr(r.aBegin, r.aEnd - r.aBegin);
+  string insertedText = p.goal.text.substr(r.bBegin, r.bEnd - r.bBegin);
+  CursorPos begin = DiffText::flatIndexToPosition(r.aBegin, p.initial.text);
   CursorPos end = DiffText::advancePositionByText(begin, deletedText);
   return DiffState(begin, end, std::move(deletedText), std::move(insertedText),
                    TransformBoundary(initialLines, begin, end));
@@ -899,10 +782,10 @@ vector<Plan> calculate(
   const Planned p = plan(initialLines, goalLines, config, options);
   vector<Plan> plans;
   plans.reserve(p.plans.size());
-  for (const PrunedPlan& pp : p.plans) {
+  for (const RawPlan& rp : p.plans) {
     Plan result;
-    result.cost = pp.cost;
-    for (const Region& r : pp.regions) result.diffs.push_back(diffFromRegion(initialLines, p, r));
+    result.cost = rp.cost;
+    for (const Region& r : rp.regions) result.diffs.push_back(diffFromRegion(initialLines, p, r));
     plans.push_back(std::move(result));
   }
   return plans;
@@ -914,26 +797,21 @@ vector<CostBreakdown> calculateBreakdown(
     const Config& config,
     CostOptions options) {
   const Planned p = plan(initialLines, goalLines, config, options);
-  TilingCost delOracle(p.initial, options.moveDeleteScale, options.maxPrefixCount, TilingCost::Kind::Delete);
+  TilingCost del(p.initial, options.moveDeleteScale, options.maxPrefixCount, TilingCost::Kind::Delete);
+  TilingCost move(p.initial, options.moveDeleteScale, options.maxPrefixCount, TilingCost::Kind::Move);
   vector<CostBreakdown> breakdowns;
   breakdowns.reserve(p.plans.size());
-  for (const PrunedPlan& pp : p.plans) {
+  for (const RawPlan& rp : p.plans) {
     CostBreakdown bd;
-    int prevEnd = -1;  // pruned initial index of the previous region's end
-    for (const Region& r : pp.regions) {
-      const double del =
-          delOracle.query(p.pruned.initialRaw[r.iBegin], p.pruned.initialRaw[r.iEnd]);
-      double ins = 0.0;
-      if (r.jBegin < r.jEnd) {
-        ins = p.costs.enter[r.jBegin];
-        for (int j = r.jBegin + 1; j < r.jEnd; j++) ins += p.costs.typed[j];
-      }
-      // Inter-region movement: one motion from the previous region's end to this
-      // region's begin; the first region is free.
-      const double mv = prevEnd < 0 ? 0.0 : p.costs.move[prevEnd][r.iBegin];
-      prevEnd = r.iEnd;
-      bd.total += del + ins + mv;
-      bd.regions.push_back(RegionBreakdown{diffFromRegion(initialLines, p, r), del, ins, mv});
+    int prevEnd = -1;
+    for (const Region& r : rp.regions) {
+      const double delCost = del.query(r.aBegin, r.aEnd);
+      const double ins =
+          r.bBegin < r.bEnd ? p.typing.insertOverhead + p.typing.ins(r.bBegin, r.bEnd) : 0.0;
+      const double mv = prevEnd < 0 ? 0.0 : move.query(prevEnd, r.aBegin);
+      prevEnd = r.aEnd;
+      bd.total += delCost + ins + mv;
+      bd.regions.push_back(RegionBreakdown{diffFromRegion(initialLines, p, r), delCost, ins, mv});
     }
     breakdowns.push_back(std::move(bd));
   }

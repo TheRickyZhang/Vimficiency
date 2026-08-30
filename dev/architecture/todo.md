@@ -156,8 +156,8 @@ cells per axis, ≈ diff size, `E` = planned edits, `P` = pops, `B` = branching 
 
 | stage | cost | note |
 |---|---|---|
-| VimDiff search | `O(n·m)` | pruned cells; bounded move/type/enter/exit relaxations per cell |
-| VimDiff sweeps | `O((n+m)·N·cap)` | move-table sweeps per pruned start + one deletion sweep per goal column |
+| VimDiff search | `O(Σ n_k·m_k)` | char cells per block; bounded move/type/enter/exit relaxations per cell |
+| VimDiff sweeps | `O(Σ (n_k+m_k)·N_k·cap)` | block-local move-table and deletion sweeps; diff-bound since seals stop them |
 | Composition construction | `O(E · P_t · B_t)` | `E` Transform A* runs; dominates the `O(E·N)` buffer rebuild and `O(E·L²)` text-object scan |
 | Composition search | `O(P_c · P_n · B_n)` | **nested**: each pop can fire up to ~9 NavOptimizer A* runs (8 ranked start positions + the diff-range search) |
 
