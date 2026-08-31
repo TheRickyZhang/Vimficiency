@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <array>
+#include <cstdint>
 #include <limits>
+#include <mdspan>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -523,19 +525,51 @@ vector<BlockCosts> calculateTransitionCosts(const FlatText& initial, const FlatT
 
 // ---- Stage 3: the DP -------------------------------------------------------
 
-// out[i][j]: normal mode, initial [0,i) consumed, goal [0,j) produced; in[i][j]: insert mode.
-// A cell keeps `maxPlans` candidates, one per partition key (XOR of region open/close marks).
+// out[i, j]: normal mode, initial [0,i) consumed, goal [0,j) produced; in[i, j]: insert mode.
+// A cell keeps up to `maxPlans` candidates, one per partition key. Everything is
+// templated on the slot capacity K so the single-plan instantiation carries no
+// keys at all: with one candidate per cell there is nothing to tell apart.
 enum Step : int8_t { LEADING, MOVE, CROSS, DELETE, ENTER, TYPE, EXIT };
 
+// Partition fingerprint: XOR of mixed marks at every cell a region opened or
+// closed at, so every path with the same regions shares a key and a cell's K
+// slots hold K distinct partitions. `pkey` names the predecessor's entry within
+// its cell.
+template<int K> struct Keys { uint32_t key = 0, pkey = 0; };
+template<> struct Keys<1> {};
+
+template<int K>
 struct Cand {
   double cost;
-  uint64_t key;
+  uint16_t pi, pj;  // predecessor cell; in the previous block for CROSS
   Step step;
-  int pi, pj;     // predecessor cell; in the previous block for CROSS
-  uint64_t pkey;  // predecessor's key within that cell
+  [[no_unique_address]] Keys<K> keys;
+
   bool open() const { return step == DELETE || step == EXIT; }  // region in progress
 };
-using Cell = vector<Cand>;
+static_assert(sizeof(Cand<1>) == 16);
+static_assert(sizeof(Cand<MAX_PLANS_CAP>) == 24);
+
+// Cost-ascending candidates, one per key.
+template<int K>
+struct Cell {
+  array<Cand<K>, K> c;
+  uint8_t n = 0;
+  const Cand<K>* begin() const { return c.data(); }
+  const Cand<K>* end() const { return c.data() + n; }
+  bool empty() const { return n == 0; }
+  void clear() { n = 0; }
+};
+// The candidate itself; INF cost means empty.
+template<>
+struct Cell<1> {
+  Cand<1> c{INF, 0, 0, LEADING, {}};
+  const Cand<1>* begin() const { return &c; }
+  const Cand<1>* end() const { return &c + (c.cost < INF ? 1 : 0); }
+  bool empty() const { return c.cost >= INF; }
+  void clear() { c.cost = INF; }
+};
+static_assert(sizeof(Cell<1>) == 16);
 
 uint64_t mix64(uint64_t x) {
   x += 0x9E3779B97F4A7C15ull;
@@ -543,53 +577,82 @@ uint64_t mix64(uint64_t x) {
   x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
   return x ^ (x >> 31);
 }
-uint64_t mark(int ra, int rb, bool close) {
-  return mix64(((uint64_t)(uint32_t)ra << 33) | ((uint64_t)(uint32_t)rb << 1) | (close ? 1 : 0));
+uint32_t mark(int ra, int rb, bool close) {
+  return (uint32_t)mix64(((uint64_t)(uint32_t)ra << 33) | ((uint64_t)(uint32_t)rb << 1) |
+                         (close ? 1 : 0));
 }
-uint64_t openKey(const Cand& c, int ra, int rb) { return c.open() ? c.key : c.key ^ mark(ra, rb, false); }
-uint64_t closeKey(const Cand& c, int ra, int rb) { return c.open() ? c.key ^ mark(ra, rb, true) : c.key; }
+// Keys of the candidate derived from `c` by a step that opens a region at
+// (ra, rb), closes one there, or stays inside one. Nothing for K == 1.
+template<int K>
+Keys<K> openKeys(const Cand<K>& c, int ra, int rb) {
+  if constexpr (K == 1) return {};
+  else return {c.open() ? c.keys.key : c.keys.key ^ mark(ra, rb, false), c.keys.key};
+}
+template<int K>
+Keys<K> closeKeys(const Cand<K>& c, int ra, int rb) {
+  if constexpr (K == 1) return {};
+  else return {c.open() ? c.keys.key ^ mark(ra, rb, true) : c.keys.key, c.keys.key};
+}
+template<int K>
+Keys<K> sameKeys(const Cand<K>& c) {
+  if constexpr (K == 1) return {};
+  else return {c.keys.key, c.keys.key};
+}
 
+template<int K>
 struct Tables {
-  int maxPlans;
-  vector<vector<Cell>> out, in;
+  // layout_left keeps i contiguous, matching the `for j { for i }` sweep order.
+  using Grid = mdspan<Cell<K>, dextents<int, 2>, layout_left>;
+  int maxPlans;  // runtime cap <= K on entries per cell
+  vector<Cell<K>> outStore, inStore;
+  Grid out, in;
 
   Tables(int n, int m, int maxPlans)
-      : maxPlans(maxPlans), out(n + 1, vector<Cell>(m + 1)), in(n + 1, vector<Cell>(m + 1)) {}
+      : maxPlans(maxPlans), outStore((n + 1) * (m + 1)), inStore((n + 1) * (m + 1)),
+        out(outStore.data(), n + 1, m + 1), in(inStore.data(), n + 1, m + 1) {}
+  Tables(Tables&&) = default;
+  Tables(const Tables&) = delete;
 
-  void relax(Cell& cell, const Cand& from, double add, Step step, int pi, int pj,
-             uint64_t key) const {
-    insert(cell, Cand{from.cost + add, key, step, pi, pj, from.key});
+  void relax(Cell<K>& cell, const Cand<K>& from, double add, Step step, uint16_t pi, uint16_t pj,
+             Keys<K> keys) const {
+    insert(cell, Cand<K>{from.cost + add, pi, pj, step, keys});
   }
 
-  // Cost-ascending, one entry per key.
-  void insert(Cell& cell, const Cand& c) const {
-    for (auto it = cell.begin(); it != cell.end(); ++it) {
-      if (it->key != c.key) continue;
-      if (it->cost <= c.cost) return;
-      cell.erase(it);
-      break;
+  void insert(Cell<K>& cell, const Cand<K>& c) const {
+    if constexpr (K == 1) {
+      if (c.cost < cell.c.cost) cell.c = c;
+    } else {
+      for (int x = 0; x < cell.n; x++) {
+        if (cell.c[x].keys.key != c.keys.key) continue;
+        if (cell.c[x].cost <= c.cost) return;
+        for (int y = x + 1; y < cell.n; y++) cell.c[y - 1] = cell.c[y];
+        cell.n--;
+        break;
+      }
+      if (cell.n == maxPlans && c.cost >= cell.c[cell.n - 1].cost) return;
+      int pos = 0;
+      while (pos < cell.n && cell.c[pos].cost <= c.cost) pos++;
+      if (cell.n < maxPlans) cell.n++;
+      for (int y = cell.n - 1; y > pos; y--) cell.c[y] = cell.c[y - 1];
+      cell.c[pos] = c;
     }
-    if ((int)cell.size() == maxPlans && c.cost >= cell.back().cost) return;
-    cell.insert(upper_bound(cell.begin(), cell.end(), c,
-                            [](const Cand& lhs, const Cand& rhs) { return lhs.cost < rhs.cost; }),
-                c);
-    if ((int)cell.size() > maxPlans) cell.pop_back();
   }
 };
 
 // One multi-source sweep prices every deletion of column j within the block.
-void relaxDeletes(Tables& t, const Block& b, TilingCost& del, TilingCost::Scratch<Cell>& scratch,
-                  vector<Cell>& seeds, int j) {
+template<int K>
+void relaxDeletes(Tables<K>& t, const Block& b, TilingCost& del,
+                  TilingCost::Scratch<Cell<K>>& scratch, vector<Cell<K>>& seeds, int j) {
   struct SweepOps {
-    using V = Cell;
-    const Tables& t;
+    using V = Cell<K>;
+    const Tables<K>& t;
     const V& inf() const {
-      static const V EMPTY;
+      static const V EMPTY{};
       return EMPTY;
     }
     void reset(V& v) const { v.clear(); }
     void relax(V& acc, const V& base, double add) const {
-      for (Cand c : base) {
+      for (Cand<K> c : base) {
         c.cost += add;
         t.insert(acc, c);
       }
@@ -598,59 +661,61 @@ void relaxDeletes(Tables& t, const Block& b, TilingCost& del, TilingCost::Scratc
   int begin = -1;
   for (int i = 0; i <= b.n(); i++) {
     seeds[i].clear();
-    for (const Cand& c : t.out[i][j])
-      seeds[i].push_back({c.cost, openKey(c, b.aBegin + i, b.bBegin + j), DELETE, i, j, c.key});
+    for (const Cand<K>& c : t.out[i, j])
+      t.relax(seeds[i], c, 0.0, DELETE, i, j, openKeys(c, b.aBegin + i, b.bBegin + j));
     if (begin < 0 && !seeds[i].empty()) begin = b.aBegin + i;
   }
   if (begin < 0) return;
   del.sweep(
-      SweepOps{t}, scratch, begin, b.aEnd, [&](int ri) -> const Cell& { return seeds[ri - b.aBegin]; },
-      [&](int ri, const Cell& e) {
-        for (const Cand& c : e) t.insert(t.out[ri - b.aBegin][j], c);
+      SweepOps{t}, scratch, begin, b.aEnd,
+      [&](int ri) -> const Cell<K>& { return seeds[ri - b.aBegin]; },
+      [&](int ri, const Cell<K>& e) {
+        for (const Cand<K>& c : e) t.insert(t.out[ri - b.aBegin, j], c);
       });
 }
 
-vector<Tables> solveVimDiff(const vector<Block>& blocks, const vector<BlockCosts>& costs,
-                            const FlatText& initial, const FlatText& goal, TilingCost& del,
-                            int maxPlans) {
-  TilingCost::Scratch<Cell> scratch = del.makeScratch<Cell>({});
+template<int K>
+vector<Tables<K>> solveVimDiff(const vector<Block>& blocks, const vector<BlockCosts>& costs,
+                               const FlatText& initial, const FlatText& goal, TilingCost& del,
+                               int maxPlans) {
+  TilingCost::Scratch<Cell<K>> scratch = del.makeScratch<Cell<K>>({});
   auto matches = [&](int ra, int rb) { return initial.text[ra] == goal.text[rb]; };
-  vector<Tables> tables;
+  vector<Tables<K>> tables;
   for (int k = 0; k < (int)blocks.size(); k++) {
     const Block& b = blocks[k];
     const BlockCosts& c = costs[k];
-    Tables t(b.n(), b.m(), maxPlans);
-    vector<Cell> seeds(b.n() + 1);
+    Tables<K> t(b.n(), b.m(), maxPlans);
+    vector<Cell<K>> seeds(b.n() + 1);
     for (int j = 0; j <= b.m(); j++) {
       for (int i = 0; i <= b.n(); i++) {
-        Cell& in = t.in[i][j];
-        Cell& out = t.out[i][j];
+        Cell<K>& in = t.in[i, j];
+        Cell<K>& out = t.out[i, j];
         const int ra = b.aBegin + i, rb = b.bBegin + j;
         if (j > 0) {
           const int pj = j - 1;
-          for (const Cand& x : t.in[i][pj]) t.relax(in, x, c.typed[pj], TYPE, i, pj, x.key);
-          for (const Cand& x : t.out[i][pj])
-            t.relax(in, x, c.enter[pj], ENTER, i, pj, openKey(x, ra, rb - 1));
+          for (const Cand<K>& x : t.in[i, pj]) t.relax(in, x, c.typed[pj], TYPE, i, pj, sameKeys(x));
+          for (const Cand<K>& x : t.out[i, pj])
+            t.relax(in, x, c.enter[pj], ENTER, i, pj, openKeys(x, ra, rb - 1));
         }
         if (i == j && i <= c.lead) {
           if (k == 0) {
-            out.push_back({0.0, 0, LEADING, -1, -1, 0});
+            t.insert(out, Cand<K>{0.0, 0, 0, LEADING, {}});
           } else {
-            const Tables& pt = tables[k - 1];
+            const Tables<K>& pt = tables[k - 1];
             const Block& pb = blocks[k - 1];
             for (int tr = 0; tr < (int)c.cross.size(); tr++) {
               const int pi = pb.n() - tr, pj = pb.m() - tr;
-              for (const Cand& x : pt.out[pi][pj])
+              for (const Cand<K>& x : pt.out[pi, pj])
                 t.relax(out, x, c.cross[tr][i], CROSS, pi, pj,
-                        closeKey(x, pb.aBegin + pi, pb.bBegin + pj));
+                        closeKeys(x, pb.aBegin + pi, pb.bBegin + pj));
             }
           }
         }
         for (int pi = i - 1, pj = j - 1; pi >= 0 && pj >= 0 && matches(ra - 1 - (i - 1 - pi), rb - 1 - (j - 1 - pj));
              pi--, pj--)
-          for (const Cand& x : t.out[pi][pj])
-            t.relax(out, x, c.move[pi][i], MOVE, pi, pj, closeKey(x, b.aBegin + pi, b.bBegin + pj));
-        for (const Cand& x : in) t.relax(out, x, 0.0, EXIT, i, j, x.key);
+          for (const Cand<K>& x : t.out[pi, pj])
+            t.relax(out, x, c.move[pi][i], MOVE, pi, pj, closeKeys(x, b.aBegin + pi, b.bBegin + pj));
+        for (const Cand<K>& x : in) t.relax(out, x, 0.0, EXIT, i, j, sameKeys(x));
       }
       relaxDeletes(t, b, del, scratch, seeds, j);
     }
@@ -671,22 +736,29 @@ struct RawPlan {
   double cost = 0.0;
 };
 
-const Cand& predecessor(const Tables& t, const Cand& c) {
+template<int K>
+const Cand<K>& predecessor(const Tables<K>& t, const Cand<K>& c) {
   const bool predOut = c.step != TYPE && c.step != EXIT;
-  for (const Cand& p : predOut ? t.out[c.pi][c.pj] : t.in[c.pi][c.pj])
-    if (p.key == c.pkey) return p;
-  CHECK(false, "VimDiff: predecessor candidate missing");
-  return c;
+  const Cell<K>& cell = predOut ? t.out[c.pi, c.pj] : t.in[c.pi, c.pj];
+  if constexpr (K == 1) {
+    return cell.c;
+  } else {
+    for (const Cand<K>& p : cell)
+      if (p.keys.key == c.keys.pkey) return p;
+    CHECK(false, "VimDiff: predecessor candidate missing");
+    return c;
+  }
 }
 
 // A region spans from its first delete/type step to the next move (or the end).
-vector<Region> walk(const vector<Tables>& tables, const vector<Block>& blocks, int k, int i, int j,
-                    const Cand* c) {
+template<int K>
+vector<Region> walk(const vector<Tables<K>>& tables, const vector<Block>& blocks, int k, int i,
+                    int j, const Cand<K>* c) {
   vector<Region> regions;
   int ca = blocks[k].aBegin + i, cb = blocks[k].bBegin + j;
   while (c->step != LEADING) {
     const int pk = c->step == CROSS ? k - 1 : k;
-    const Cand& pred = predecessor(tables[pk], *c);
+    const Cand<K>& pred = predecessor(tables[pk], *c);
     const int pa = blocks[pk].aBegin + c->pi, pb = blocks[pk].bBegin + c->pj;
     if (c->step == MOVE || c->step == CROSS) {
       if (pred.open()) {
@@ -704,18 +776,19 @@ vector<Region> walk(const vector<Tables>& tables, const vector<Block>& blocks, i
 }
 
 // Identical-replace regions are dropped: never optimal, rejected downstream.
-vector<RawPlan> reconstructPlans(const vector<Tables>& tables, const vector<Block>& blocks,
+template<int K>
+vector<RawPlan> reconstructPlans(const vector<Tables<K>>& tables, const vector<Block>& blocks,
                                  int trail, const FlatText& initial, const FlatText& goal) {
   struct Top {
     double cost;
     int i, j;
-    const Cand* c;
+    const Cand<K>* c;
   };
   const int last = (int)blocks.size() - 1;
   const Block& b = blocks[last];
   vector<Top> tops;
   for (int t = trail; t >= 0; t--)
-    for (const Cand& c : tables[last].out[b.n() - t][b.m() - t])
+    for (const Cand<K>& c : tables[last].out[b.n() - t, b.m() - t])
       if (c.step != LEADING) tops.push_back({c.cost, b.n() - t, b.m() - t, &c});
   stable_sort(tops.begin(), tops.end(),
               [](const Top& lhs, const Top& rhs) { return lhs.cost < rhs.cost; });
@@ -737,29 +810,63 @@ vector<RawPlan> reconstructPlans(const vector<Tables>& tables, const vector<Bloc
 
 // ---- Pipeline --------------------------------------------------------------
 
-constexpr long long MAX_PLANNER_CELLS = 100'000'000;
-
 struct Planned {
   FlatText initial, goal;
   Typing typing;
   vector<RawPlan> plans;
 };
 
+// One region per block. Always a valid plan — blocks are exactly the spans
+// between sealed identical runs — but never weighed against merging or
+// splitting them, so it is only the over-budget fallback.
+RawPlan sealedPartition(const Planned& p, const vector<Block>& blocks, TilingCost& del,
+                        TilingCost& move) {
+  RawPlan plan;
+  int prevEnd = -1;
+  for (const Block& b : blocks) {
+    const Region r{b.aBegin, b.aEnd, b.bBegin, b.bEnd};
+    plan.cost += del.query(r.aBegin, r.aEnd);
+    if (r.bBegin < r.bEnd) plan.cost += p.typing.insertOverhead + p.typing.ins(r.bBegin, r.bEnd);
+    if (prevEnd >= 0) plan.cost += move.query(prevEnd, r.aBegin);
+    prevEnd = r.aEnd;
+    plan.regions.push_back(r);
+  }
+  return plan;
+}
+
+template<int K>
+vector<RawPlan> dpPlans(const Planned& p, const vector<Block>& blocks, TilingCost& del,
+                        const CostOptions& options) {
+  const vector<BlockCosts> costs =
+      calculateTransitionCosts(p.initial, p.goal, p.typing, blocks, options);
+  const vector<Tables<K>> tables =
+      solveVimDiff<K>(blocks, costs, p.initial, p.goal, del, max(1, options.maxPlans));
+  return reconstructPlans(tables, blocks, costs.back().trail, p.initial, p.goal);
+}
+
 Planned plan(const Lines& initialLines, const Lines& goalLines, const Config& config,
              const CostOptions& options) {
+  CHECK(options.maxPlans <= MAX_PLANS_CAP, "VimDiff: maxPlans above MAX_PLANS_CAP");
   Planned p{FlatText(initialLines), FlatText(goalLines), Typing(FlatText(goalLines), config)};
   if (p.initial.text == p.goal.text) return p;
   const vector<Block> blocks =
       sealMatchedRuns(p.initial, p.goal, p.typing, initialLines, goalLines, config, options);
-  long long cells = 0;
-  for (const Block& b : blocks) cells += (long long)(b.n() + 1) * (b.m() + 1);
-  CHECK(cells <= MAX_PLANNER_CELLS, "VimDiff diff too large for the planner DP");
-  const vector<BlockCosts> costs =
-      calculateTransitionCosts(p.initial, p.goal, p.typing, blocks, options);
   TilingCost del(p.initial, options.moveDeleteScale, options.maxPrefixCount, TilingCost::Kind::Delete);
-  const vector<Tables> tables =
-      solveVimDiff(blocks, costs, p.initial, p.goal, del, max(1, options.maxPlans));
-  p.plans = reconstructPlans(tables, blocks, costs.back().trail, p.initial, p.goal);
+  const bool multi = options.maxPlans > 1;
+  const long long cellBytes = multi ? sizeof(Cell<MAX_PLANS_CAP>) : sizeof(Cell<1>);
+  long long cells = 0;
+  bool tooWide = false;  // Cand::pi/pj
+  for (const Block& b : blocks) {
+    cells += (long long)(b.n() + 1) * (b.m() + 1);
+    tooWide |= b.n() > numeric_limits<uint16_t>::max() || b.m() > numeric_limits<uint16_t>::max();
+  }
+  if (tooWide || cells * cellBytes > options.maxPlannerCells * (long long)sizeof(Cell<1>)) {
+    TilingCost move(p.initial, options.moveDeleteScale, options.maxPrefixCount, TilingCost::Kind::Move);
+    p.plans.push_back(sealedPartition(p, blocks, del, move));
+    return p;
+  }
+  p.plans = multi ? dpPlans<MAX_PLANS_CAP>(p, blocks, del, options)
+                  : dpPlans<1>(p, blocks, del, options);
   return p;
 }
 

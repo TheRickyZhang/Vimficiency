@@ -150,7 +150,7 @@ is documented and the user fix is to migrate the mapping.
 `ffi/core.lua` loads `libvimficiency.so` via LuaJIT FFI. Domain wrappers expose:
 
 ```lua
-ffi_optimizer.analyze(lines, ...) → VF.Optimizer.Result[], debug_str
+ffi_optimizer.analyze(lines, ...) → VF.Optimizer.Result[], user_cost, debug_str, VF.Diff.Region[]
 ffi_config.configure(user_config)  -- Push config to C++
 ffi_sequence.tokenize_sequence(seq) → VF.Sequence.Token[]  -- {text, kind} tokens
 ffi_sequence.tokenize_movements(seq) → VF.Sequence.Token[]   -- all kind="motion"

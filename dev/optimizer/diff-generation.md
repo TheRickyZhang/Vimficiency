@@ -181,7 +181,12 @@ futures, so this loses nothing. The final top-K additionally compares region
 lists, which also folds the one key-level artifact (a region closed by a move
 into the trailing run vs. left open at its end). Cost is `O(maxPlans)` over the
 single-plan search via a bounded insert per candidate. Reconstruction walks
-predecessors by cell + key. `calculate` returns `vector<Plan>` (production
+predecessors by cell + key. The DP is templated on slot capacity `K`: the
+single-plan instantiation (`maxPlans = 1`, every production caller) has no
+keys at all — one candidate per cell leaves nothing to tell apart, so
+`insert` is one compare and no marks are hashed — while `maxPlans > 1`
+dispatches to `K = MAX_PLANS_CAP` with 32-bit keys (unique only within a
+cell, so that width is ample). `calculate` returns `vector<Plan>` (production
 takes `front()`); `calculateBreakdown` returns one breakdown per plan, the
 diagnostic surface behind `tests/Approval/VimDiffApprovalTest.cpp`.
 
@@ -196,6 +201,20 @@ does not depend on where it started. Each seal adds one `CROSS` sweep per
 trailing-diagonal start, `O(margin·core)`. Since `Σ N_k` is the changed text
 plus margins plus unsealed short runs, the planner is diff-bound:
 `~O(Σ_k (n_k + m_k)·N_k·cap + n_k·m_k + Σ_seals margin·core)`.
+
+The tables are flat `layout_left` mdspans of `(n+1)·(m+1)` cells for both
+`out` and `in` (`i` contiguous, matching the `for j { for i }` sweep). A
+single-plan cell is its one 16-byte candidate (`cost`, `uint16_t` predecessor
+cell, step); a `K`-plan cell is `K` 24-byte candidates plus a count. So
+`CostOptions::maxPlannerCells` (default `MAX_PLANNER_CELLS`, counted in
+single-plan cells; multi-plan runs are charged by relative cell size) bounds
+memory as well as time, and a block wider than 65535 on either side is out
+of range for the predecessor indices. In either case `calculate` skips the
+DP and returns the sealed partition — one region per unmatched block. That is
+always a valid plan (blocks are exactly the spans
+between sealed identical runs) but is not weighed against merging or
+splitting them, so downstream search sees a coarse partition rather than an
+abort.
 
 Why a sweep and not a per-cell running min: `moveCost`/`delCost` violate the
 quadrangle (Monge) inequality extensively (`insCost` satisfies it), so the

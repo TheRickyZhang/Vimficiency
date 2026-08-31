@@ -5,34 +5,64 @@ local M = {}
 local lib = core.lib
 
 local DEBUG_MARKER = "----------------DEBUG----------------"
+local SEP = core.EVENT_FIELD_SEP
+
+-- Decoder for `payload::encodeDiffRegions` (LuaExports/Common.h).
+---@param line string
+---@return VF.Diff.Region
+local function parse_diff_region(line)
+  local f = vim.split(line, SEP, { plain = true })
+  if #f ~= 8 then error("malformed diff region line: " .. line) end
+  return {
+    init = { begin_row = tonumber(f[1]), begin_col = tonumber(f[2]),
+             end_row = tonumber(f[3]), end_col = tonumber(f[4]) },
+    goal = { begin_row = tonumber(f[5]), begin_col = tonumber(f[6]),
+             end_row = tonumber(f[7]), end_col = tonumber(f[8]) },
+  }
+end
 
 ---@param result_str string
----@return VF.Optimizer.Result[] results, number user_cost
-local function parse_analyze_results(result_str)
-  local results = {}
-  local user_cost = 0
-  local line_num = 0
+---@return VF.Diff.Region[]
+local function parse_diff_regions(result_str)
+  local regions = {}
   for line in result_str:gmatch("[^\n]+") do
-    if line:find(DEBUG_MARKER, 1, true) then
-      break
-    end
-    line_num = line_num + 1
-    if line_num == 1 then
-      local cost_str = line:match("user_cost:%s*(%S+)")
-      if cost_str then
-        user_cost = tonumber(cost_str) or 0
-      end
-    else
+    regions[#regions + 1] = parse_diff_region(line)
+  end
+  return regions
+end
+
+M._parse_diff_regions = parse_diff_regions
+
+-- Count-framed: `size: N user_cost: X`, N result lines, `diffs: M`, M region
+-- lines, then an optional DEBUG trailer that is only looked for between
+-- sections (dev/lua/ffi-separators.md § Convention 3).
+---@param result_str string
+---@return VF.Optimizer.Result[] results, number user_cost, VF.Diff.Region[] diffs
+local function parse_analyze_results(result_str)
+  local results, diffs = {}, {}
+  local user_cost = 0
+  local header_seen = false
+  local pending_results, pending_diffs = 0, 0
+  for line in result_str:gmatch("[^\n]+") do
+    if not header_seen then
+      header_seen = true
+      pending_results = tonumber(line:match("size:%s*(%d+)")) or 0
+      user_cost = tonumber(line:match("user_cost:%s*(%S+)")) or 0
+    elseif pending_results > 0 then
+      pending_results = pending_results - 1
       local seq, cost_str = line:match("^(.*)\x1F(%S+)$")
-      if seq then
-        table.insert(results, {
-          seq = seq,
-          cost = tonumber(cost_str) or 0,
-        })
-      end
+      if not seq then error("malformed analyze result line: " .. line) end
+      results[#results + 1] = { seq = seq, cost = tonumber(cost_str) or 0 }
+    elseif pending_diffs > 0 then
+      pending_diffs = pending_diffs - 1
+      diffs[#diffs + 1] = parse_diff_region(line)
+    elseif line:find(DEBUG_MARKER, 1, true) then
+      break
+    else
+      pending_diffs = tonumber(line:match("^diffs:%s*(%d+)")) or 0
     end
   end
-  return results, user_cost
+  return results, user_cost, diffs
 end
 
 M._parse_analyze_results = parse_analyze_results
@@ -111,7 +141,7 @@ end
 ---@param scroll_amount integer
 ---@param RESULTS_CALCULATED integer
 ---@param optimizer_overrides? string
----@return VF.Optimizer.Result[] results, number user_cost, string debug
+---@return VF.Optimizer.Result[] results, number user_cost, string debug, VF.Diff.Region[] diffs
 function M.analyze(
   initial_lines, goal_lines,
   boundary_first_col, boundary_last_col,
@@ -145,14 +175,15 @@ function M.analyze(
     error(result_str)
   end
 
-  local results, user_cost = parse_analyze_results(result_str)
-  return results, user_cost, dbg
+  local results, user_cost, diffs = parse_analyze_results(result_str)
+  return results, user_cost, dbg, diffs
 end
 
 ---@class VF.Optimizer.AnalyzeResult
 ---@field results VF.Optimizer.Result[]
 ---@field user_cost number
 ---@field dbg string
+---@field diffs VF.Diff.Region[]   # The planner's regions the search ran against; empty for pure navigation
 
 --- Kicks off `analyze` on a C++ worker thread and returns a job id immediately.
 --- Same arguments as `M.analyze` plus `deadline_ms` (0 = run to natural caps).
@@ -204,8 +235,13 @@ function M.analyze_poll(job_id)
   if result_str:sub(1, 6) == "ERROR:" then
     error(result_str)
   end
-  local results, user_cost = parse_analyze_results(result_str)
-  return { results = results, user_cost = user_cost, dbg = extract_debug(result_str) }
+  local results, user_cost, diffs = parse_analyze_results(result_str)
+  return {
+    results = results,
+    user_cost = user_cost,
+    dbg = extract_debug(result_str),
+    diffs = diffs,
+  }
 end
 
 ---@param job_id integer
@@ -214,33 +250,10 @@ function M.analyze_cancel(job_id)
   return lib.vf_analyze_cancel(job_id) == 1
 end
 
-local SEP = core.EVENT_FIELD_SEP
-
----@param result_str string
----@return VF.Diff.Region[]
-local function parse_diff_regions(result_str)
-  local regions = {}
-  for line in result_str:gmatch("[^\n]+") do
-    local f = vim.split(line, SEP, { plain = true })
-    if #f == 8 then
-      regions[#regions + 1] = {
-        init = { begin_row = tonumber(f[1]), begin_col = tonumber(f[2]),
-                 end_row = tonumber(f[3]), end_col = tonumber(f[4]) },
-        goal = { begin_row = tonumber(f[5]), begin_col = tonumber(f[6]),
-                 end_row = tonumber(f[7]), end_col = tonumber(f[8]) },
-      }
-    end
-  end
-  return regions
-end
-
-M._parse_diff_regions = parse_diff_regions
-
---- Character-level diff regions between two buffers, as the optimizer computes
---- them. Each region carries the initial-side (deleted) and goal-side
---- (inserted) half-open spans for column highlighting. `diff_algorithm`
---- defaults to the configured composition value so the view's breakdown
---- matches what the optimizer used.
+--- Standalone planner run for a result that lacks stored diffs (files saved
+--- before the analyze payload carried them). Live sessions get their regions
+--- from `analyze`/`analyze_poll` instead — those are the partition the search
+--- actually ran against, whereas this uses default planner cost options.
 ---@param initial_lines string[]
 ---@param goal_lines string[]
 ---@param diff_algorithm integer|nil

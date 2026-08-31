@@ -15,6 +15,8 @@
 #include <string_view>
 #include <vector>
 
+struct DiffState;
+
 // Cross-cutting declarations and inline helpers shared by every LuaExports/*.cpp.
 // Out-of-line definitions for `payload::*` live in Payload.cpp; for `logic::*`
 // in Logic.cpp. FFI export bodies live in *Exports.cpp.
@@ -150,6 +152,16 @@ Result<std::vector<std::string>> decodeLengthPrefixedStrings(std::string_view en
 Result<Lines> decodeLineArray(std::string_view encoded);
 Result<std::vector<RecallRecordMeta>> decodeRecallRecordMeta(std::string_view encoded);
 Result<std::vector<KeyTrackingEvent>> decodeKeyTrackingEvents(std::string_view encoded);
+
+// One record per diff, EVENT_FIELD_SEP between fields, '\n' after each record:
+//   init_begin_row, init_begin_col, init_end_row, init_end_col,
+//   goal_begin_row, goal_begin_col, goal_end_row, goal_end_col
+// 0-indexed, half-open [begin, end); an empty init span is a pure insertion,
+// an empty goal span a pure deletion. Both spans share begin (the common
+// prefix is identical in both buffers) but are serialized explicitly so each
+// pane is consumed independently. Lua decoder: `parse_diff_region` in
+// ffi/optimizer.lua.
+std::string encodeDiffRegions(const std::vector<DiffState>& diffs);
 
 }  // namespace payload
 

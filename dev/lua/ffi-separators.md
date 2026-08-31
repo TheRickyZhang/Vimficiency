@@ -88,16 +88,26 @@ Format: one record per line, `\n`-terminated.
 
 Used only for the analyze-results payload:
 `src/LuaExports/AnalyzeExports.cpp` and its Lua consumer in
-`ffi.lua` (`parse_analyze_results`).
+`ffi/optimizer.lua` (`parse_analyze_results`).
 
 Per-line structure:
 ```
 size: <N> user_cost: <X.XXX>\n                            (header)
-<raw_seq_bytes>\x1f<cost>\n                               (body, repeated)
+<raw_seq_bytes>\x1f<cost>\n                               (N result lines)
+diffs: <M>\n                                              (section header)
+<8 x \x1f-separated ints>\n                               (M region lines)
 [ ----------------DEBUG----------------  ... ]            (optional trailer)
 ```
 
-The header is label-prefix parsed (`user_cost:%s*(%S+)`), which is
+Both sections are count-framed: the parser reads exactly `N` result
+lines and `M` region lines, so a body line can never be mistaken for a
+section header, and the DEBUG trailer is only looked for between
+sections. Region lines are `payload::encodeDiffRegions`
+(`LuaExports/Common.h`) — the planner's own regions, so views highlight
+the partition the search actually ran against. `vf_compute_diffs`
+emits the same region lines with no headers.
+
+The headers are label-prefix parsed (`user_cost:%s*(%S+)`), which is
 robust even against trailing whitespace. The body line uses
 `kEventFieldSep` (0x1f) between the raw sequence bytes and the numeric
 cost — **this used to be a literal space**, which silently corrupted

@@ -48,6 +48,36 @@ test("ffi._parse_analyze_results: stops at the DEBUG separator", function()
   assert_eq(results[1].seq, "abc")
 end)
 
+test("ffi._parse_analyze_results: reads the count-framed diffs section", function()
+  local US = "\x1F"
+  local payload = table.concat({
+    "size: 1 user_cost: 2.000",
+    "diffs: 0" .. US .. "1.500",   -- header-shaped seq; the count keeps it a result
+    "diffs: 2",
+    table.concat({ "0", "4", "0", "7", "0", "4", "0", "7" }, US),
+    table.concat({ "1", "0", "1", "0", "1", "0", "2", "3" }, US),
+    "----------------DEBUG----------------",
+    table.concat({ "9", "9", "9", "9", "9", "9", "9", "9" }, US),  -- trailer noise, not a region
+  }, "\n")
+
+  local results, user_cost, diffs = ffi_lib._parse_analyze_results(payload)
+  assert_eq(user_cost, 2.0)
+  assert_eq(#results, 1)
+  assert_eq(results[1].seq, "diffs: 0")
+  assert_eq(#diffs, 2, "exactly the announced regions are read")
+  assert_eq(diffs[1].init.begin_col, 4)
+  assert_eq(diffs[1].goal.end_col, 7)
+  assert_eq(diffs[2].goal.end_row, 2)
+end)
+
+test("ffi._parse_analyze_results: zero results still carries user_cost and diffs", function()
+  local results, user_cost, diffs = ffi_lib._parse_analyze_results(
+    "size: 0 user_cost: 5.250\ndiffs: 0\n")
+  assert_eq(#results, 0)
+  assert_eq(user_cost, 5.25)
+  assert_eq(#diffs, 0)
+end)
+
 local function find_result(results, seq)
   for _, result in ipairs(results) do
     if result.seq == seq then
@@ -139,7 +169,7 @@ test("ffi.analyze: preserves substitute payload and cost for exact 2->3 scenario
     "}",
   }
 
-  local results, user_cost = ffi_lib.analyze(
+  local results, user_cost, _, diffs = ffi_lib.analyze(
     initial_lines, goal_lines,
     0, 0,
     false, false,
@@ -151,6 +181,14 @@ test("ffi.analyze: preserves substitute payload and cost for exact 2->3 scenario
   )
 
   assert_true(user_cost > 0, "user cost should parse as a positive number")
+
+  -- The planner's region for a one-character replacement is forced: `2` at
+  -- (2,14) becomes `3`, both spans [14, 15) on row 2.
+  assert_eq(#diffs, 1, "one planned region; got " .. vim.inspect(diffs))
+  assert_eq(diffs[1].init.begin_row, 2); assert_eq(diffs[1].init.begin_col, 14)
+  assert_eq(diffs[1].init.end_row, 2);   assert_eq(diffs[1].init.end_col, 15)
+  assert_eq(diffs[1].goal.begin_row, 2); assert_eq(diffs[1].goal.begin_col, 14)
+  assert_eq(diffs[1].goal.end_row, 2);   assert_eq(diffs[1].goal.end_col, 15)
 
   -- The nav prefix is whatever the search currently prefers; only the edit
   -- tail and its payload are the FFI contract under test.
@@ -178,7 +216,7 @@ test("ffi.analyze_start_async: worker result matches sync analyze", function()
   local goal_lines    = { "for(int i = 3; i < n; i++) {" }
   local last_col = #initial_lines[1] - 1
 
-  local sync_results, sync_user_cost = ffi_lib.analyze(
+  local sync_results, sync_user_cost, _, sync_diffs = ffi_lib.analyze(
     initial_lines, goal_lines,
     0, last_col,
     false, false,
@@ -211,6 +249,9 @@ test("ffi.analyze_start_async: worker result matches sync analyze", function()
 
   assert_eq(payload.user_cost, sync_user_cost, "user_cost must match the sync path")
   assert_eq(#payload.results, #sync_results, "result count must match the sync path")
+  assert_true(#sync_diffs > 0, "a text change must plan at least one region")
+  assert_true(vim.deep_equal(payload.diffs, sync_diffs),
+    "worker diffs must match the sync path; got " .. vim.inspect(payload.diffs))
 
   local function to_map(results)
     local m = {}

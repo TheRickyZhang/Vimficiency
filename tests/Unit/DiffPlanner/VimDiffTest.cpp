@@ -35,6 +35,29 @@ void expectRoundTrip(const string& initial, const string& goal) {
       << "round-trip failed for \"" << initial << "\" -> \"" << goal << "\"";
 }
 
+// Over the DP cell budget the planner falls back to the sealed partition: one
+// region per unmatched block, still reproducing the goal. A 200-char word
+// seals (one `W` vs 200 keystrokes) with margins bounded by half the run.
+TEST(VimDiffTest, OverCellBudgetFallsBackToSealedPartition) {
+  Config config = Config::uniform();
+  const string run(200, 'x');
+  Lines initial = toLines("AAAAAAAAAA" + run + "BBBBBBBBBB");
+  Lines goal = toLines("CCCCCCCCCC" + run + "DDDDDDDDDD");
+  const int mid = 10 + (int)run.size() / 2;
+
+  vector<VimDiff::Plan> plans = VimDiff::calculate(
+      initial, goal, config, VimDiff::CostOptions{.maxPlannerCells = 16});
+  ASSERT_EQ(plans.size(), 1u);
+  const vector<DiffState>& diffs = plans.front().diffs;
+  ASSERT_EQ(diffs.size(), 2u);
+  EXPECT_EQ(diffs[0].beginPos, CursorPos(0, 0));
+  EXPECT_LE(diffs[0].endPos.col, mid);
+  EXPECT_GE(diffs[1].beginPos.col, mid);
+  EXPECT_EQ(diffs[1].endPos.col, (int)initial.flatten().size());
+  EXPECT_EQ(MyersDiff::applyAllDiffState(diffs, initial).flatten(), goal.flatten());
+  EXPECT_GT(plans.front().cost, 0.0);
+}
+
 TEST(VimDiffTest, RoundTripsHandcrafted) {
   expectRoundTrip("abc", "abc");
   expectRoundTrip("abc", "abXc");

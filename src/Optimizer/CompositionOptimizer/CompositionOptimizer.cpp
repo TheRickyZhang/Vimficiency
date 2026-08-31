@@ -675,9 +675,11 @@ CompositionResult CompositionOptimizer::optimize(
   }
   if (ctx.aborted) return {};
 
+  // Only the search is declined; the plan still travels (stored session diffs
+  // and the explore view read it).
   if (ctx.totalEdits() > 16) {
     debug("Cannot support more than 16 edits");
-    return {};
+    return buildCompositionResult({}, initialLines, goalPos, ctx);
   }
 
   NoTrace trace;
@@ -718,7 +720,7 @@ CompositionTraceResult CompositionOptimizer::optimizeWithEditSpans(
 
   if (ctx.totalEdits() > 16) {
     debug("Cannot support more than 16 edits");
-    return {};
+    return {buildCompositionResult({}, initialLines, goalPos, ctx), {}};
   }
 
   EditSpanTrace trace;

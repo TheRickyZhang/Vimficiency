@@ -111,9 +111,10 @@ Produced by `vim.json.encode(result, { indent = true })` on a
 `finish_reason` ∈ `{"manual", "watch_idle", "suggest_idle", "suggest_keys",
 "suggest_cost"}`.
 
-`diffs` is the optimizer's own character-level diff (half-open spans per side,
-0-indexed), used by the viewer to highlight changed columns; `disk.validate`
-only checks its top-level type since it is recomputable from `lines`/`goal_lines`
+`diffs` is the planner's own partition (half-open spans per side, 0-indexed),
+carried in the analyze payload so it is exactly the regions the search ran
+against; the viewer uses it to highlight changed columns. `disk.validate` only
+checks its top-level type since it is recomputable from `lines`/`goal_lines`
 (the viewer recomputes via `ffi.compute_diffs` when absent on older files).
 `prefix`/`suffix` are reserved boundary context — always empty at the
 whole-buffer level (see [boundary-logic.md](../core/boundary-logic.md));
