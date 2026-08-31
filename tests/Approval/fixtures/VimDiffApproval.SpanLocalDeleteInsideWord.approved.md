@@ -20,20 +20,20 @@ bbbbbbb
 ```
 `2 / 0 / 0`
 
-### Plan 2: cost 5
+### Plan 2: cost 4
 
 ```
 abbbbbbb
 ->
 a
 ```
-`2 / 3 / 0`
+`2 / 2 / 0`
 
-### Plan 3: cost 5
+### Plan 3: cost 4
 
 ```
 bbbbbbba
 ->
 a
 ```
-`2 / 3 / 0`
+`2 / 2 / 0`

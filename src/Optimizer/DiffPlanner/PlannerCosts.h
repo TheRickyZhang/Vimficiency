@@ -225,7 +225,7 @@ private:
 // Typing raw goal [begin,end) costs PS[end] - PS[begin] - cut[begin].
 struct Typing {
   std::vector<double> PS, cut;
-  double insertOverhead;
+  double entry, esc;  // the `i` and `<Esc>` keystrokes
 
   Typing(const FlatText& goal, const Config& config);
 

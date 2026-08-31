@@ -149,7 +149,7 @@ void TilingCost::buildBoundaries(const string& text) {
 
 Typing::Typing(const FlatText& goal, const Config& config)
     : PS(goal.text.size() + 1, 0.0), cut(goal.text.size() + 1, 0.0),
-      insertOverhead(getEffort("i", config) + getEffort("<Esc>", config)) {
+      entry(getEffort("i", config)), esc(getEffort("<Esc>", config)) {
   const int M = (int)goal.text.size();
   if (M == 0) return;
   vector<RunningEffort> seg;

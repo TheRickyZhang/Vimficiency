@@ -38,7 +38,7 @@ struct BlockCosts {
   int lead = 0, trail = 0;       // matched diagonal length at the block's start / end
   vector<vector<double>> move;   // [pi][i]
   vector<vector<double>> cross;  // [t][i]: from the previous block's (n-t, m-t) to (i,i)
-  vector<double> typed, enter;   // per goal unit
+  vector<double> typed, enter, change;  // per goal unit; change = enter without the entry key
 };
 
 vector<BlockCosts> calculateTransitionCosts(const FlatText& initial, const FlatText& goal,
@@ -72,10 +72,12 @@ vector<BlockCosts> calculateTransitionCosts(const FlatText& initial, const FlatT
 
     c.typed.resize(m);
     c.enter.resize(m);
+    c.change.resize(m);
     for (int j = 0; j < m; j++) {
       const int rj = b.bBegin + j;
       c.typed[j] = typing.PS[rj + 1] - typing.PS[rj];
-      c.enter[j] = typing.insertOverhead - typing.cut[rj] + c.typed[j];
+      c.change[j] = typing.esc - typing.cut[rj] + c.typed[j];
+      c.enter[j] = typing.entry + c.change[j];
     }
   }
   return all;
@@ -87,7 +89,10 @@ vector<BlockCosts> calculateTransitionCosts(const FlatText& initial, const FlatT
 // A cell keeps up to `maxPlans` candidates, one per partition key. Everything is
 // templated on the slot capacity K so the single-plan instantiation carries no
 // keys at all: with one candidate per cell there is nothing to tell apart.
-enum Step : int8_t { LEADING, MOVE, CROSS, DELETE, ENTER, TYPE, EXIT };
+// CHANGE is a deletion that lands straight in insert mode — the `c` form — and
+// so skips the entry key. It is an edge, not a state: nothing can sit between
+// a delete and the insert it merges with.
+enum Step : int8_t { LEADING, MOVE, CROSS, DELETE, CHANGE, ENTER, TYPE, EXIT };
 
 // Partition fingerprint: XOR of mixed marks at every cell a region opened or
 // closed at, so every path with the same regions shares a key and a cell's K
@@ -191,8 +196,9 @@ struct Tables {
 };
 
 // One multi-source sweep prices every deletion of column j within the block.
+// Each arrival lands in out[i, j] and, as a CHANGE, in in[i, j+1].
 template<int K>
-void relaxDeletes(Tables<K>& t, const Block& b, TilingCost& del,
+void relaxDeletes(Tables<K>& t, const Block& b, const BlockCosts& costs, TilingCost& del,
                   TilingCost::Scratch<Cell<K>>& scratch, vector<Cell<K>>& seeds, int j) {
   struct SweepOps {
     using V = Cell<K>;
@@ -221,7 +227,14 @@ void relaxDeletes(Tables<K>& t, const Block& b, TilingCost& del,
       SweepOps{t}, scratch, begin, b.aEnd,
       [&](int ri) -> const Cell<K>& { return seeds[ri - b.aBegin]; },
       [&](int ri, const Cell<K>& e) {
-        for (const Cand<K>& c : e) t.insert(t.out[ri - b.aBegin, j], c);
+        const int i = ri - b.aBegin;
+        for (const Cand<K>& c : e) t.insert(t.out[i, j], c);
+        if (j == b.m()) return;
+        for (Cand<K> c : e) {
+          c.cost += costs.change[j];
+          c.step = CHANGE;
+          t.insert(t.in[i, j + 1], c);
+        }
       });
 }
 
@@ -268,7 +281,7 @@ vector<Tables<K>> solveVimDiff(const vector<Block>& blocks, const vector<BlockCo
             t.relax(out, x, c.move[pi][i], MOVE, pi, pj, closeKeys(x, b.aBegin + pi, b.bBegin + pj));
         for (const Cand<K>& x : in) t.relax(out, x, 0.0, EXIT, i, j, sameKeys(x));
       }
-      relaxDeletes(t, b, del, scratch, seeds, j);
+      relaxDeletes(t, b, c, del, scratch, seeds, j);
     }
     tables.push_back(std::move(t));
   }
@@ -286,6 +299,13 @@ struct RawPlan {
   vector<Region> regions;
   double cost = 0.0;
 };
+
+// Typed effort plus <Esc>, plus the entry key only when no deletion precedes
+// the typing (a deletion's change form absorbs it).
+double insertCost(const Typing& typing, const Region& r) {
+  if (r.bBegin >= r.bEnd) return 0.0;
+  return (r.aBegin < r.aEnd ? 0.0 : typing.entry) + typing.esc + typing.ins(r.bBegin, r.bEnd);
+}
 
 template<int K>
 const Cand<K>& predecessor(const Tables<K>& t, const Cand<K>& c) {
@@ -316,7 +336,7 @@ vector<Region> walk(const vector<Tables<K>>& tables, const vector<Block>& blocks
         ca = pa;
         cb = pb;
       }
-    } else if ((c->step == DELETE || c->step == ENTER) && !pred.open()) {
+    } else if ((c->step == DELETE || c->step == CHANGE || c->step == ENTER) && !pred.open()) {
       regions.push_back({pa, ca, pb, cb});
     }
     c = &pred;
@@ -376,8 +396,7 @@ RawPlan sealedPartition(const Planned& p, const vector<Block>& blocks, TilingCos
   int prevEnd = -1;
   for (const Block& b : blocks) {
     const Region r{b.aBegin, b.aEnd, b.bBegin, b.bEnd};
-    plan.cost += del.query(r.aBegin, r.aEnd);
-    if (r.bBegin < r.bEnd) plan.cost += p.typing.insertOverhead + p.typing.ins(r.bBegin, r.bEnd);
+    plan.cost += del.query(r.aBegin, r.aEnd) + insertCost(p.typing, r);
     if (prevEnd >= 0) plan.cost += move.query(prevEnd, r.aBegin);
     prevEnd = r.aEnd;
     plan.regions.push_back(r);
@@ -464,8 +483,7 @@ vector<CostBreakdown> calculateBreakdown(
     int prevEnd = -1;
     for (const Region& r : rp.regions) {
       const double delCost = del.query(r.aBegin, r.aEnd);
-      const double ins =
-          r.bBegin < r.bEnd ? p.typing.insertOverhead + p.typing.ins(r.bBegin, r.bEnd) : 0.0;
+      const double ins = insertCost(p.typing, r);
       const double mv = prevEnd < 0 ? 0.0 : move.query(prevEnd, r.aBegin);
       prevEnd = r.aEnd;
       bd.total += delCost + ins + mv;

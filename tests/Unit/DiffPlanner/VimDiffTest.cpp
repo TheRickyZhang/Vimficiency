@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "Effort/RunningEffort.h"
 #include "Keyboard/Config.h"
 #include "Optimizer/DiffPlanner/VimDiff.h"
 #include "Optimizer/DiffPlanner/DiffState.h"
@@ -268,6 +269,25 @@ TEST(VimDiffTest, BreakdownTotalsMatchPlanCosts) {
       }
     }
   }
+}
+
+// A replace region's insert phase skips the entry key — the deletion's change
+// form enters insert mode itself. A pure insertion still pays it.
+TEST(VimDiffTest, ChangeEdgeWaivesEntryKeyAfterDelete) {
+  Config config = Config::qwerty();
+  const double entry = getEffort("i", config), esc = getEffort("<Esc>", config);
+
+  vector<VimDiff::CostBreakdown> replace =
+      VimDiff::calculateBreakdown(toLines("hello"), toLines("jello"), config);
+  ASSERT_EQ(replace.front().regions.size(), 1u);
+  EXPECT_EQ(replace.front().regions[0].diff.deletedText, "h");
+  EXPECT_DOUBLE_EQ(replace.front().regions[0].ins, esc + getEffort("j", config));
+
+  vector<VimDiff::CostBreakdown> insertion =
+      VimDiff::calculateBreakdown(toLines("abc"), toLines("abXc"), config);
+  ASSERT_EQ(insertion.front().regions.size(), 1u);
+  EXPECT_TRUE(insertion.front().regions[0].diff.deletedText.empty());
+  EXPECT_DOUBLE_EQ(insertion.front().regions[0].ins, entry + esc + getEffort("X", config));
 }
 
 }  // namespace

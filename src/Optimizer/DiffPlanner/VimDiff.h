@@ -44,8 +44,9 @@ std::vector<Plan> calculate(
     CostOptions options = {});
 
 // Per-region cost the planner weighed. `ins` is the insert phase: typed effort
-// plus the insert-mode entry key and the ending <Esc> (0 when nothing is
-// typed). `move` is the counted-motion traversal from the previous region's
+// plus the ending <Esc>, plus the entry key only for a pure insertion — a
+// deletion's change form absorbs it (0 when nothing is typed). `move` is the
+// counted-motion traversal from the previous region's
 // initial end to this region's initial begin (0 for the first).
 // Because VimDiff has no merge/refine pass, `total` equals the DP optimum
 // exactly. Diagnostic surface — `calculate` does not use it.

@@ -16,29 +16,29 @@ function f() {
 
 _Edit costs: delete / insert / move_
 
-### Plan 1: cost 14
+### Plan 1: cost 13
 
 ```
 i++
 ->
 return 17
 ```
-`3 / 11 / 0`
+`3 / 10 / 0`
 
-### Plan 2: cost 14
+### Plan 2: cost 13
 
 ```
 i++;
 ->
 return 17;
 ```
-`2 / 12 / 0`
+`2 / 11 / 0`
 
-### Plan 3: cost 15
+### Plan 3: cost 14
 
 ```
-  i++
+ i++
 ->
-  return 17
+ return 17
 ```
-`2 / 13 / 0`
+`3 / 11 / 0`

@@ -16,71 +16,71 @@ return tot;
 
 _Edit costs: delete / insert / move_
 
-### Plan 1: cost 27
+### Plan 1: cost 24
 
 ```
 cn
 ->
 to
 ```
-`2 / 4 / 0`
+`2 / 3 / 0`
 
 ```
 cnt = cn
 ->
 tot = to
 ```
-`2 / 10 / 1`
+`2 / 9 / 1`
 
 ```
 cn
 ->
 to
 ```
-`2 / 4 / 2`
+`2 / 3 / 2`
 
-### Plan 2: cost 28
-
-```
-cn
-->
-to
-```
-`2 / 4 / 0`
-
-```
-cnt = cn
-->
-tot = to
-```
-`2 / 10 / 1`
-
-```
- cn
-->
- to
-```
-`2 / 5 / 2`
-
-### Plan 3: cost 28
+### Plan 2: cost 25
 
 ```
 cn
 ->
 to
 ```
-`2 / 4 / 0`
+`2 / 3 / 0`
 
 ```
 cnt = cnt
 ->
 tot = tot
 ```
-`2 / 11 / 1`
+`2 / 10 / 1`
 
 ```
 cn
 ->
 to
 ```
-`2 / 4 / 2`
+`2 / 3 / 2`
+
+### Plan 3: cost 25
+
+```
+cnt
+->
+tot
+```
+`2 / 4 / 0`
+
+```
+cnt = cn
+->
+tot = to
+```
+`2 / 9 / 1`
+
+```
+cn
+->
+to
+```
+`2 / 3 / 2`

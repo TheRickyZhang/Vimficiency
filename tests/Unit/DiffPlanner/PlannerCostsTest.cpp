@@ -78,7 +78,8 @@ TEST(PlannerCostsTest, TypingPrefixSumsMatchWholeSequenceEffort) {
   const string goal = "hello world";
   Typing typing(FlatText(Lines{goal}), config);
   EXPECT_DOUBLE_EQ(typing.ins(0, (int)goal.size()), getEffort(goal, config));
-  EXPECT_DOUBLE_EQ(typing.insertOverhead, getEffort("i", config) + getEffort("<Esc>", config));
+  EXPECT_DOUBLE_EQ(typing.entry, getEffort("i", config));
+  EXPECT_DOUBLE_EQ(typing.esc, getEffort("<Esc>", config));
   EXPECT_DOUBLE_EQ(typing.ins(3, 3), 0.0);
 }
 

@@ -44,3 +44,12 @@ web/dashboard/node_modules/
 web/dashboard/dist/
 web/dashboard/public/*/data.json
 web/dashboard/public/*/explore.json
+
+# Manim animations (anim/): sources and traces are tracked; the venv, render
+# cache, and rendered videos are not. Videos are embedded in the README via
+# GitHub user-attachments, not from the repo.
+anim/.venv/
+anim/**/manim-env/
+anim/.cache/
+anim/out/
+__pycache__/

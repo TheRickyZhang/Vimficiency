@@ -75,8 +75,11 @@ vector<Block> sealMatchedRuns(const FlatText& initial, const FlatText& goal, con
     const int coreEnd = riEnd - rightMargin(riEnd, off, dmax);
     bool sealed = false;
     if (coreBegin < coreEnd) {
+      // The full entry+<Esc> round trip stays the worst case despite the change
+      // merge: the text right of the core may be a pure insertion, which
+      // nothing merges with.
       sealed = typing.ins(coreBegin + off, coreEnd + off) >
-               move.query(coreBegin, coreEnd) + typing.insertOverhead +
+               move.query(coreBegin, coreEnd) + typing.entry + typing.esc +
                    del.stopSlack(coreBegin) + del.startSlack(coreEnd) + 2 * seamMax;
     }
     if (sealed) {

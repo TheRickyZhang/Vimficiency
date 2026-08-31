@@ -275,6 +275,7 @@ target_link_libraries(vimfy_debug
   PRIVATE
     test_utils
     GTest::gtest_main
+    nlohmann_json::nlohmann_json
 )
 
 # Standalone CLI; keep separate from vimfy_debug because it owns main().

@@ -1,0 +1,3301 @@
+{
+  "example": {
+    "goal": "int main() {\n  int x = 0;\n  int n = 10;\n  for(int i = 0; i < n; i++) {\n    int a = bar(i);\n    int b = baz(a);\n    int c = qux(b);\n    int d = quux(c);\n    int e = corge(d);\n    x -= foo(a + b + c + d + e);\n  }\n}",
+    "initial": "int main() {\n  int x = 0;\n  for(int i = 0; i < 10; i++) {\n    int a = bar(i);\n    int b = baz(a);\n    int c = qux(b);\n    int d = quux(c);\n    int e = corge(d);\n    x += a + b + c + d + e;\n  }\n}"
+  },
+  "blocks": [
+    {
+      "aBegin": 0,
+      "aEnd": 76,
+      "bBegin": 0,
+      "bEnd": 89,
+      "lead": 28,
+      "trail": 27
+    },
+    {
+      "aBegin": 138,
+      "aEnd": 194,
+      "bBegin": 151,
+      "bEnd": 212,
+      "lead": 29,
+      "trail": 7
+    }
+  ],
+  "plans": [
+    {
+      "cost": 52.6,
+      "regions": [
+        {
+          "aBegin": 28,
+          "aEnd": 28,
+          "bBegin": 28,
+          "bEnd": 42,
+          "del": 0.0,
+          "deleted": "",
+          "ins": 16.0,
+          "inserted": "int n = 10;\n  ",
+          "move": 0.0
+        },
+        {
+          "aBegin": 47,
+          "aEnd": 49,
+          "bBegin": 61,
+          "bEnd": 62,
+          "del": 2.0,
+          "deleted": "10",
+          "ins": 2.0,
+          "inserted": "n",
+          "move": 6.85
+        },
+        {
+          "aBegin": 167,
+          "aEnd": 168,
+          "bBegin": 180,
+          "bEnd": 181,
+          "del": 1.0,
+          "deleted": "+",
+          "ins": 2.0,
+          "inserted": "-",
+          "move": 6.25
+        },
+        {
+          "aBegin": 169,
+          "aEnd": 170,
+          "bBegin": 182,
+          "bEnd": 187,
+          "del": 1.0,
+          "deleted": " ",
+          "ins": 6.0,
+          "inserted": " foo(",
+          "move": 1.0
+        },
+        {
+          "aBegin": 187,
+          "aEnd": 187,
+          "bBegin": 204,
+          "bEnd": 205,
+          "del": 0.0,
+          "deleted": "",
+          "ins": 3.0,
+          "inserted": ")",
+          "move": 5.5
+        }
+      ]
+    },
+    {
+      "cost": 52.6,
+      "regions": [
+        {
+          "aBegin": 28,
+          "aEnd": 28,
+          "bBegin": 28,
+          "bEnd": 42,
+          "del": 0.0,
+          "deleted": "",
+          "ins": 16.0,
+          "inserted": "int n = 10;\n  ",
+          "move": 0.0
+        },
+        {
+          "aBegin": 47,
+          "aEnd": 49,
+          "bBegin": 61,
+          "bEnd": 62,
+          "del": 2.0,
+          "deleted": "10",
+          "ins": 2.0,
+          "inserted": "n",
+          "move": 6.85
+        },
+        {
+          "aBegin": 167,
+          "aEnd": 170,
+          "bBegin": 180,
+          "bEnd": 187,
+          "del": 3.0,
+          "deleted": "+= ",
+          "ins": 8.0,
+          "inserted": "-= foo(",
+          "move": 6.25
+        },
+        {
+          "aBegin": 187,
+          "aEnd": 187,
+          "bBegin": 204,
+          "bEnd": 205,
+          "del": 0.0,
+          "deleted": "",
+          "ins": 3.0,
+          "inserted": ")",
+          "move": 5.5
+        }
+      ]
+    },
+    {
+      "cost": 52.6,
+      "regions": [
+        {
+          "aBegin": 28,
+          "aEnd": 28,
+          "bBegin": 28,
+          "bEnd": 42,
+          "del": 0.0,
+          "deleted": "",
+          "ins": 16.0,
+          "inserted": "int n = 10;\n  ",
+          "move": 0.0
+        },
+        {
+          "aBegin": 47,
+          "aEnd": 49,
+          "bBegin": 61,
+          "bEnd": 62,
+          "del": 2.0,
+          "deleted": "10",
+          "ins": 2.0,
+          "inserted": "n",
+          "move": 6.85
+        },
+        {
+          "aBegin": 167,
+          "aEnd": 168,
+          "bBegin": 180,
+          "bEnd": 181,
+          "del": 1.0,
+          "deleted": "+",
+          "ins": 2.0,
+          "inserted": "-",
+          "move": 6.25
+        },
+        {
+          "aBegin": 170,
+          "aEnd": 170,
+          "bBegin": 183,
+          "bEnd": 187,
+          "del": 0.0,
+          "deleted": "",
+          "ins": 6.0,
+          "inserted": "foo(",
+          "move": 2.0
+        },
+        {
+          "aBegin": 187,
+          "aEnd": 187,
+          "bBegin": 204,
+          "bEnd": 205,
+          "del": 0.0,
+          "deleted": "",
+          "ins": 3.0,
+          "inserted": ")",
+          "move": 5.5
+        }
+      ]
+    },
+    {
+      "cost": 52.95,
+      "regions": [
+        {
+          "aBegin": 27,
+          "aEnd": 27,
+          "bBegin": 27,
+          "bEnd": 41,
+          "del": 0.0,
+          "deleted": "",
+          "ins": 16.0,
+          "inserted": " int n = 10;\n ",
+          "move": 0.0
+        },
+        {
+          "aBegin": 47,
+          "aEnd": 49,
+          "bBegin": 61,
+          "bEnd": 62,
+          "del": 2.0,
+          "deleted": "10",
+          "ins": 2.0,
+          "inserted": "n",
+          "move": 7.2
+        },
+        {
+          "aBegin": 167,
+          "aEnd": 168,
+          "bBegin": 180,
+          "bEnd": 181,
+          "del": 1.0,
+          "deleted": "+",
+          "ins": 2.0,
+          "inserted": "-",
+          "move": 6.25
+        },
+        {
+          "aBegin": 169,
+          "aEnd": 170,
+          "bBegin": 182,
+          "bEnd": 187,
+          "del": 1.0,
+          "deleted": " ",
+          "ins": 6.0,
+          "inserted": " foo(",
+          "move": 1.0
+        },
+        {
+          "aBegin": 187,
+          "aEnd": 187,
+          "bBegin": 204,
+          "bEnd": 205,
+          "del": 0.0,
+          "deleted": "",
+          "ins": 3.0,
+          "inserted": ")",
+          "move": 5.5
+        }
+      ]
+    }
+  ],
+  "insetWin": {
+    "i0": 24,
+    "i1": 34,
+    "j0": 26,
+    "j1": 42
+  },
+  "insetOut": [
+    [
+      {
+        "cost": 4.0,
+        "pi": 24,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 5.0,
+        "pi": 24,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 6.0,
+        "pi": 24,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 7.0,
+        "pi": 24,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 8.0,
+        "pi": 24,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 9.0,
+        "pi": 24,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 10.0,
+        "pi": 24,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 11.0,
+        "pi": 24,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 12.0,
+        "pi": 24,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 13.0,
+        "pi": 24,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 14.0,
+        "pi": 24,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 15.0,
+        "pi": 24,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 16.0,
+        "pi": 24,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 17.0,
+        "pi": 24,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 18.0,
+        "pi": 24,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 19.0,
+        "pi": 24,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 20.0,
+        "pi": 24,
+        "pj": 42,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      }
+    ],
+    [
+      {
+        "cost": 3.0,
+        "pi": 25,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 4.0,
+        "pi": 25,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 5.0,
+        "pi": 25,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 6.0,
+        "pi": 25,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 7.0,
+        "pi": 25,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 8.0,
+        "pi": 25,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 9.0,
+        "pi": 25,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 10.0,
+        "pi": 25,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 11.0,
+        "pi": 25,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 12.0,
+        "pi": 25,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 13.0,
+        "pi": 25,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 14.0,
+        "pi": 25,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 15.0,
+        "pi": 25,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 16.0,
+        "pi": 25,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 17.0,
+        "pi": 25,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 18.0,
+        "pi": 25,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 19.0,
+        "pi": 25,
+        "pj": 42,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      }
+    ],
+    [
+      {
+        "cost": 0.0,
+        "pi": 0,
+        "pj": 0,
+        "pk": 0,
+        "ptable": "out",
+        "step": "LEADING"
+      },
+      {
+        "cost": 3.0,
+        "pi": 26,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 4.0,
+        "pi": 26,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 5.0,
+        "pi": 26,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 6.0,
+        "pi": 26,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 7.0,
+        "pi": 26,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 8.0,
+        "pi": 26,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 9.0,
+        "pi": 26,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 10.0,
+        "pi": 26,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 11.0,
+        "pi": 26,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 12.0,
+        "pi": 26,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 13.0,
+        "pi": 26,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 14.0,
+        "pi": 26,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 15.0,
+        "pi": 26,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 16.0,
+        "pi": 26,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 17.0,
+        "pi": 26,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 18.0,
+        "pi": 26,
+        "pj": 42,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      }
+    ],
+    [
+      {
+        "cost": 1.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 0.0,
+        "pi": 0,
+        "pj": 0,
+        "pk": 0,
+        "ptable": "out",
+        "step": "LEADING"
+      },
+      {
+        "cost": 3.0,
+        "pi": 27,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 4.0,
+        "pi": 27,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 5.0,
+        "pi": 27,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 6.0,
+        "pi": 27,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 7.0,
+        "pi": 27,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 8.0,
+        "pi": 27,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 9.0,
+        "pi": 27,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 10.0,
+        "pi": 27,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 11.0,
+        "pi": 27,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 12.0,
+        "pi": 27,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 13.0,
+        "pi": 27,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 14.0,
+        "pi": 27,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 15.0,
+        "pi": 27,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 16.0,
+        "pi": 27,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 17.0,
+        "pi": 27,
+        "pj": 42,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      }
+    ],
+    [
+      {
+        "cost": 2.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 1.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 0.0,
+        "pi": 0,
+        "pj": 0,
+        "pk": 0,
+        "ptable": "out",
+        "step": "LEADING"
+      },
+      {
+        "cost": 3.0,
+        "pi": 28,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 4.0,
+        "pi": 28,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 5.0,
+        "pi": 28,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 6.0,
+        "pi": 28,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 7.0,
+        "pi": 28,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 8.0,
+        "pi": 28,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 9.0,
+        "pi": 28,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 10.0,
+        "pi": 28,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 11.0,
+        "pi": 28,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 12.0,
+        "pi": 28,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 13.0,
+        "pi": 28,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 14.0,
+        "pi": 28,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 15.0,
+        "pi": 28,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 16.0,
+        "pi": 28,
+        "pj": 42,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      }
+    ],
+    [
+      {
+        "cost": 2.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 2.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 1.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 29,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 4.0,
+        "pi": 29,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 5.0,
+        "pi": 29,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 6.0,
+        "pi": 29,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 7.0,
+        "pi": 29,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 8.0,
+        "pi": 29,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 9.0,
+        "pi": 29,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 10.0,
+        "pi": 29,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 11.0,
+        "pi": 29,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 12.0,
+        "pi": 29,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 13.0,
+        "pi": 29,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 14.0,
+        "pi": 29,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 15.0,
+        "pi": 29,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 16.0,
+        "pi": 29,
+        "pj": 42,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      }
+    ],
+    [
+      {
+        "cost": 2.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 2.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 2.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 30,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 5.0,
+        "pi": 30,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 6.0,
+        "pi": 30,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 7.0,
+        "pi": 30,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 8.0,
+        "pi": 30,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 9.0,
+        "pi": 30,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 10.0,
+        "pi": 30,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 11.0,
+        "pi": 30,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 12.0,
+        "pi": 30,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 13.0,
+        "pi": 30,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 14.0,
+        "pi": 30,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 15.0,
+        "pi": 30,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 16.0,
+        "pi": 30,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 17.0,
+        "pi": 30,
+        "pj": 42,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      }
+    ],
+    [
+      {
+        "cost": 2.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 2.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 2.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 31,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 5.0,
+        "pi": 31,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 6.0,
+        "pi": 31,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 7.0,
+        "pi": 31,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 8.0,
+        "pi": 31,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 9.0,
+        "pi": 31,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 10.0,
+        "pi": 31,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 11.0,
+        "pi": 31,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 12.0,
+        "pi": 31,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 13.0,
+        "pi": 31,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 14.0,
+        "pi": 31,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 15.0,
+        "pi": 31,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 16.0,
+        "pi": 31,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 17.0,
+        "pi": 31,
+        "pj": 42,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      }
+    ],
+    [
+      {
+        "cost": 2.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 32,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 6.0,
+        "pi": 32,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 7.0,
+        "pi": 32,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 8.0,
+        "pi": 32,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 9.0,
+        "pi": 32,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 10.0,
+        "pi": 32,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 11.0,
+        "pi": 32,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 12.0,
+        "pi": 32,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 13.0,
+        "pi": 32,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 14.0,
+        "pi": 32,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 15.0,
+        "pi": 32,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 16.0,
+        "pi": 32,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 17.0,
+        "pi": 32,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 18.0,
+        "pi": 32,
+        "pj": 42,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      }
+    ],
+    [
+      {
+        "cost": 2.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 32,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "MOVE"
+      },
+      {
+        "cost": 6.0,
+        "pi": 33,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 7.0,
+        "pi": 33,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 8.0,
+        "pi": 33,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 9.0,
+        "pi": 33,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 10.0,
+        "pi": 33,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 11.0,
+        "pi": 33,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 12.0,
+        "pi": 33,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 13.0,
+        "pi": 33,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 14.0,
+        "pi": 33,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 15.0,
+        "pi": 33,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 16.0,
+        "pi": 33,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 17.0,
+        "pi": 33,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 18.0,
+        "pi": 33,
+        "pj": 42,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      }
+    ],
+    [
+      {
+        "cost": 2.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "DELETE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 34,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 4.0,
+        "pi": 32,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "MOVE"
+      },
+      {
+        "cost": 7.0,
+        "pi": 34,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 8.0,
+        "pi": 34,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 9.0,
+        "pi": 33,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "out",
+        "step": "MOVE"
+      },
+      {
+        "cost": 10.0,
+        "pi": 34,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 11.0,
+        "pi": 34,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 12.0,
+        "pi": 34,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 13.0,
+        "pi": 34,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 14.0,
+        "pi": 34,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 15.0,
+        "pi": 34,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 16.0,
+        "pi": 34,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 17.0,
+        "pi": 34,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      },
+      {
+        "cost": 18.0,
+        "pi": 34,
+        "pj": 42,
+        "pk": 0,
+        "ptable": "in",
+        "step": "EXIT"
+      }
+    ]
+  ],
+  "insetIn": [
+    [
+      {
+        "cost": 4.0,
+        "pi": 24,
+        "pj": 25,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 24,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 6.0,
+        "pi": 24,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 7.0,
+        "pi": 24,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 8.0,
+        "pi": 24,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 9.0,
+        "pi": 24,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 10.0,
+        "pi": 24,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 11.0,
+        "pi": 24,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 12.0,
+        "pi": 24,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 13.0,
+        "pi": 24,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 14.0,
+        "pi": 24,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 15.0,
+        "pi": 24,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 16.0,
+        "pi": 24,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 17.0,
+        "pi": 24,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 18.0,
+        "pi": 24,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 19.0,
+        "pi": 24,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 20.0,
+        "pi": 24,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      }
+    ],
+    [
+      {
+        "cost": 3.0,
+        "pi": 25,
+        "pj": 25,
+        "pk": 0,
+        "ptable": "out",
+        "step": "ENTER"
+      },
+      {
+        "cost": 4.0,
+        "pi": 25,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 25,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 6.0,
+        "pi": 25,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 7.0,
+        "pi": 25,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 8.0,
+        "pi": 25,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 9.0,
+        "pi": 25,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 10.0,
+        "pi": 25,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 11.0,
+        "pi": 25,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 12.0,
+        "pi": 25,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 13.0,
+        "pi": 25,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 14.0,
+        "pi": 25,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 15.0,
+        "pi": 25,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 16.0,
+        "pi": 25,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 17.0,
+        "pi": 25,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 18.0,
+        "pi": 25,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 19.0,
+        "pi": 25,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      }
+    ],
+    [
+      {
+        "cost": 3.0,
+        "pi": 25,
+        "pj": 25,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "ENTER"
+      },
+      {
+        "cost": 4.0,
+        "pi": 26,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 26,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 6.0,
+        "pi": 26,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 7.0,
+        "pi": 26,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 8.0,
+        "pi": 26,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 9.0,
+        "pi": 26,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 10.0,
+        "pi": 26,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 11.0,
+        "pi": 26,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 12.0,
+        "pi": 26,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 13.0,
+        "pi": 26,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 14.0,
+        "pi": 26,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 15.0,
+        "pi": 26,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 16.0,
+        "pi": 26,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 17.0,
+        "pi": 26,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 18.0,
+        "pi": 26,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      }
+    ],
+    [
+      {
+        "cost": 4.0,
+        "pi": 25,
+        "pj": 25,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "ENTER"
+      },
+      {
+        "cost": 4.0,
+        "pi": 27,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 27,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 6.0,
+        "pi": 27,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 7.0,
+        "pi": 27,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 8.0,
+        "pi": 27,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 9.0,
+        "pi": 27,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 10.0,
+        "pi": 27,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 11.0,
+        "pi": 27,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 12.0,
+        "pi": 27,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 13.0,
+        "pi": 27,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 14.0,
+        "pi": 27,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 15.0,
+        "pi": 27,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 16.0,
+        "pi": 27,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 17.0,
+        "pi": 27,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      }
+    ],
+    [
+      {
+        "cost": 5.0,
+        "pi": 25,
+        "pj": 25,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "ENTER"
+      },
+      {
+        "cost": 4.0,
+        "pi": 28,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 28,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 6.0,
+        "pi": 28,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 7.0,
+        "pi": 28,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 8.0,
+        "pi": 28,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 9.0,
+        "pi": 28,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 10.0,
+        "pi": 28,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 11.0,
+        "pi": 28,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 12.0,
+        "pi": 28,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 13.0,
+        "pi": 28,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 14.0,
+        "pi": 28,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 15.0,
+        "pi": 28,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 16.0,
+        "pi": 28,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      }
+    ],
+    [
+      {
+        "cost": 5.0,
+        "pi": 25,
+        "pj": 25,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 3.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 29,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 29,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 6.0,
+        "pi": 29,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 7.0,
+        "pi": 29,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 8.0,
+        "pi": 29,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 9.0,
+        "pi": 29,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 10.0,
+        "pi": 29,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 11.0,
+        "pi": 29,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 12.0,
+        "pi": 29,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 13.0,
+        "pi": 29,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 14.0,
+        "pi": 29,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 15.0,
+        "pi": 29,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 16.0,
+        "pi": 29,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      }
+    ],
+    [
+      {
+        "cost": 5.0,
+        "pi": 25,
+        "pj": 25,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 30,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 6.0,
+        "pi": 30,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 7.0,
+        "pi": 30,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 8.0,
+        "pi": 30,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 9.0,
+        "pi": 30,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 10.0,
+        "pi": 30,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 11.0,
+        "pi": 30,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 12.0,
+        "pi": 30,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 13.0,
+        "pi": 30,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 14.0,
+        "pi": 30,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 15.0,
+        "pi": 30,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 16.0,
+        "pi": 30,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 17.0,
+        "pi": 30,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      }
+    ],
+    [
+      {
+        "cost": 5.0,
+        "pi": 25,
+        "pj": 25,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 31,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 6.0,
+        "pi": 31,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 7.0,
+        "pi": 31,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 8.0,
+        "pi": 31,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 9.0,
+        "pi": 31,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 10.0,
+        "pi": 31,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 11.0,
+        "pi": 31,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 12.0,
+        "pi": 31,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 13.0,
+        "pi": 31,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 14.0,
+        "pi": 31,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 15.0,
+        "pi": 31,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 16.0,
+        "pi": 31,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 17.0,
+        "pi": 31,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      }
+    ],
+    [
+      {
+        "cost": 5.0,
+        "pi": 25,
+        "pj": 25,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 6.0,
+        "pi": 32,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 7.0,
+        "pi": 32,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 8.0,
+        "pi": 32,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 9.0,
+        "pi": 32,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 10.0,
+        "pi": 32,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 11.0,
+        "pi": 32,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 12.0,
+        "pi": 32,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 13.0,
+        "pi": 32,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 14.0,
+        "pi": 32,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 15.0,
+        "pi": 32,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 16.0,
+        "pi": 32,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 17.0,
+        "pi": 32,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 18.0,
+        "pi": 32,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      }
+    ],
+    [
+      {
+        "cost": 5.0,
+        "pi": 25,
+        "pj": 25,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 6.0,
+        "pi": 33,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 7.0,
+        "pi": 33,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 8.0,
+        "pi": 33,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 9.0,
+        "pi": 33,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 10.0,
+        "pi": 33,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 11.0,
+        "pi": 33,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 12.0,
+        "pi": 33,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 13.0,
+        "pi": 33,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 14.0,
+        "pi": 33,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 15.0,
+        "pi": 33,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 16.0,
+        "pi": 33,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 17.0,
+        "pi": 33,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 18.0,
+        "pi": 33,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      }
+    ],
+    [
+      {
+        "cost": 5.0,
+        "pi": 25,
+        "pj": 25,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 4.0,
+        "pi": 26,
+        "pj": 26,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 27,
+        "pj": 27,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 5.0,
+        "pi": 28,
+        "pj": 28,
+        "pk": 0,
+        "ptable": "out",
+        "step": "CHANGE"
+      },
+      {
+        "cost": 6.0,
+        "pi": 34,
+        "pj": 29,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 7.0,
+        "pi": 34,
+        "pj": 30,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 8.0,
+        "pi": 34,
+        "pj": 31,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 9.0,
+        "pi": 34,
+        "pj": 32,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 10.0,
+        "pi": 34,
+        "pj": 33,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 11.0,
+        "pi": 34,
+        "pj": 34,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 12.0,
+        "pi": 34,
+        "pj": 35,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 13.0,
+        "pi": 34,
+        "pj": 36,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 14.0,
+        "pi": 34,
+        "pj": 37,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 15.0,
+        "pi": 34,
+        "pj": 38,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 16.0,
+        "pi": 34,
+        "pj": 39,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 17.0,
+        "pi": 34,
+        "pj": 40,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      },
+      {
+        "cost": 18.0,
+        "pi": 34,
+        "pj": 41,
+        "pk": 0,
+        "ptable": "in",
+        "step": "TYPE"
+      }
+    ]
+  ]
+}

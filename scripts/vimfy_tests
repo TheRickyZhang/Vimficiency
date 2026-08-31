@@ -98,11 +98,11 @@ approve_received_files() {
   local file
 
   shopt -s nullglob
-  received_files=("$fixtures_dir"/*.received.txt)
+  received_files=("$fixtures_dir"/*.received.txt "$fixtures_dir"/*.received.md)
   shopt -u nullglob
 
   if [[ ${#received_files[@]} -eq 0 ]]; then
-    echo "error: no approval .received.txt files found" >&2
+    echo "error: no approval .received.{txt,md} files found" >&2
     return 1
   fi
 
