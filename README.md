@@ -214,6 +214,8 @@ The partition fixes *what* changes; the search finds the cheapest keystrokes tha
 
 **Cost model.** Keys map onto a configurable keyboard and are priced per key plus bigram adjustments: same finger, same key, hand alternation, inward/outward rolls. Every term has a one-key window, so effort is a monoid — merging two sequences is $O(1)$, and the planner's prefix-sum typing cost is exact.
 
+https://github.com/user-attachments/assets/737cf2df-1d26-47b9-b947-d5159b5b586b
+
 **Three searches.**
 
 ```
