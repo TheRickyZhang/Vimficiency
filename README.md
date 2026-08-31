@@ -127,7 +127,7 @@ Pure edit distance always prefers the first. Moving between regions and re-enter
 **Objective.** Write both buffers as kept runs interleaved with edits, $A = K_0 D_1 K_1 \cdots D_t K_t$ and $B = K_0 I_1 K_1 \cdots I_t K_t$, and minimize
 
 ```math
-\sum_{k=1}^{t} \operatorname{del}(D_k) \;+\; \sum_{k=1}^{t} \operatorname{ins}(I_k) \;+\; \sum_{k=1}^{t-1} \operatorname{move}(K_k)
+\sum_{k=1}^{t} \mathrm{del}(D_k) \;+\; \sum_{k=1}^{t} \mathrm{ins}(I_k) \;+\; \sum_{k=1}^{t-1} \mathrm{move}(K_k)
 ```
 
 $K_0$ and $K_t$ are free: every optimal plan starts at the first differing character and ends at the last, so reaching them from the cursor costs the same for every plan.

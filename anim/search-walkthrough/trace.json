@@ -1,0 +1,2083 @@
+{
+ "alternatives": [
+  {
+   "branchIndex": 0,
+   "branchNode": 0,
+   "branchSuffix": {
+    "pretty": "ejjiint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>",
+    "raw": "ejjiint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>"
+   },
+   "cost": 46.0,
+   "kind": "insert",
+   "mergeNode": 1,
+   "segments": [
+    {
+     "pretty": "ejjiint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>",
+     "raw": "ejjiint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>"
+    },
+    {
+     "pretty": "f1",
+     "raw": "f1"
+    },
+    {
+     "pretty": "cen<Esc>",
+     "raw": "cen<Esc>"
+    },
+    {
+     "pretty": "0jE5j",
+     "raw": "0jE5j"
+    },
+    {
+     "pretty": "r-",
+     "raw": "r-"
+    },
+    {
+     "pretty": "f<Space>",
+     "raw": "f<Space>"
+    },
+    {
+     "pretty": "s<Space>foo(<Esc>",
+     "raw": "s<Space>foo(<Esc>"
+    },
+    {
+     "pretty": "$i)<Esc>",
+     "raw": "$i)<Esc>"
+    }
+   ],
+   "seq": {
+    "pretty": "ejjiint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5jr-f<Space>s<Space>foo(<Esc>$i)<Esc>",
+    "raw": "ejjiint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5jr-f<Space>s<Space>foo(<Esc>$i)<Esc>"
+   }
+  },
+  {
+   "branchIndex": 4,
+   "branchNode": 5,
+   "branchSuffix": {
+    "pretty": "s-<Esc>",
+    "raw": "s-<Esc>"
+   },
+   "cost": 46.0,
+   "kind": "edit",
+   "mergeNode": 6,
+   "segments": [
+    {
+     "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>",
+     "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>"
+    },
+    {
+     "pretty": "f1",
+     "raw": "f1"
+    },
+    {
+     "pretty": "cen<Esc>",
+     "raw": "cen<Esc>"
+    },
+    {
+     "pretty": "0jE5j",
+     "raw": "0jE5j"
+    },
+    {
+     "pretty": "s-<Esc>",
+     "raw": "s-<Esc>"
+    },
+    {
+     "pretty": "f<Space>",
+     "raw": "f<Space>"
+    },
+    {
+     "pretty": "s<Space>foo(<Esc>",
+     "raw": "s<Space>foo(<Esc>"
+    },
+    {
+     "pretty": "$i)<Esc>",
+     "raw": "$i)<Esc>"
+    }
+   ],
+   "seq": {
+    "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5js-<Esc>f<Space>s<Space>foo(<Esc>$i)<Esc>",
+    "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5js-<Esc>f<Space>s<Space>foo(<Esc>$i)<Esc>"
+   }
+  },
+  {
+   "branchIndex": 2,
+   "branchNode": 3,
+   "branchSuffix": {
+    "pretty": "Xciwn<Esc>",
+    "raw": "Xciwn<Esc>"
+   },
+   "cost": 48.0,
+   "kind": "edit",
+   "mergeNode": 4,
+   "segments": [
+    {
+     "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>",
+     "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>"
+    },
+    {
+     "pretty": "f0;",
+     "raw": "f0;"
+    },
+    {
+     "pretty": "Xciwn<Esc>",
+     "raw": "Xciwn<Esc>"
+    },
+    {
+     "pretty": "0jE5j",
+     "raw": "0jE5j"
+    },
+    {
+     "pretty": "r-",
+     "raw": "r-"
+    },
+    {
+     "pretty": "f<Space>",
+     "raw": "f<Space>"
+    },
+    {
+     "pretty": "s<Space>foo(<Esc>",
+     "raw": "s<Space>foo(<Esc>"
+    },
+    {
+     "pretty": "$i)<Esc>",
+     "raw": "$i)<Esc>"
+    }
+   ],
+   "seq": {
+    "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f0;Xciwn<Esc>0jE5jr-f<Space>s<Space>foo(<Esc>$i)<Esc>",
+    "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f0;Xciwn<Esc>0jE5jr-f<Space>s<Space>foo(<Esc>$i)<Esc>"
+   }
+  }
+ ],
+ "fenceposts": [
+  [
+   "int main() {",
+   "  int x = 0;",
+   "  for(int i = 0; i < 10; i++) {",
+   "    int a = bar(i);",
+   "    int b = baz(a);",
+   "    int c = qux(b);",
+   "    int d = quux(c);",
+   "    int e = corge(d);",
+   "    x += a + b + c + d + e;",
+   "  }",
+   "}"
+  ],
+  [
+   "int main() {",
+   "  int x = 0;",
+   "  int n = 10;",
+   "  for(int i = 0; i < 10; i++) {",
+   "    int a = bar(i);",
+   "    int b = baz(a);",
+   "    int c = qux(b);",
+   "    int d = quux(c);",
+   "    int e = corge(d);",
+   "    x += a + b + c + d + e;",
+   "  }",
+   "}"
+  ],
+  [
+   "int main() {",
+   "  int x = 0;",
+   "  int n = 10;",
+   "  for(int i = 0; i < n; i++) {",
+   "    int a = bar(i);",
+   "    int b = baz(a);",
+   "    int c = qux(b);",
+   "    int d = quux(c);",
+   "    int e = corge(d);",
+   "    x += a + b + c + d + e;",
+   "  }",
+   "}"
+  ],
+  [
+   "int main() {",
+   "  int x = 0;",
+   "  int n = 10;",
+   "  for(int i = 0; i < n; i++) {",
+   "    int a = bar(i);",
+   "    int b = baz(a);",
+   "    int c = qux(b);",
+   "    int d = quux(c);",
+   "    int e = corge(d);",
+   "    x -= a + b + c + d + e;",
+   "  }",
+   "}"
+  ],
+  [
+   "int main() {",
+   "  int x = 0;",
+   "  int n = 10;",
+   "  for(int i = 0; i < n; i++) {",
+   "    int a = bar(i);",
+   "    int b = baz(a);",
+   "    int c = qux(b);",
+   "    int d = quux(c);",
+   "    int e = corge(d);",
+   "    x -= foo(a + b + c + d + e;",
+   "  }",
+   "}"
+  ],
+  [
+   "int main() {",
+   "  int x = 0;",
+   "  int n = 10;",
+   "  for(int i = 0; i < n; i++) {",
+   "    int a = bar(i);",
+   "    int b = baz(a);",
+   "    int c = qux(b);",
+   "    int d = quux(c);",
+   "    int e = corge(d);",
+   "    x -= foo(a + b + c + d + e);",
+   "  }",
+   "}"
+  ]
+ ],
+ "goal": [
+  "int main() {",
+  "  int x = 0;",
+  "  int n = 10;",
+  "  for(int i = 0; i < n; i++) {",
+  "    int a = bar(i);",
+  "    int b = baz(a);",
+  "    int c = qux(b);",
+  "    int d = quux(c);",
+  "    int e = corge(d);",
+  "    x -= foo(a + b + c + d + e);",
+  "  }",
+  "}"
+ ],
+ "goalPos": [
+  9,
+  30
+ ],
+ "initial": [
+  "int main() {",
+  "  int x = 0;",
+  "  for(int i = 0; i < 10; i++) {",
+  "    int a = bar(i);",
+  "    int b = baz(a);",
+  "    int c = qux(b);",
+  "    int d = quux(c);",
+  "    int e = corge(d);",
+  "    x += a + b + c + d + e;",
+  "  }",
+  "}"
+ ],
+ "initialPos": [
+  0,
+  0
+ ],
+ "navCalls": [
+  {
+   "beginLine": 0,
+   "fromNode": 0,
+   "goalFirst": [
+    2,
+    0
+   ],
+   "goalLast": [
+    2,
+    30
+   ],
+   "lines": [
+    "int main() {",
+    "  int x = 0;",
+    "  for(int i = 0; i < 10; i++) {",
+    "    int a = bar(i);"
+   ],
+   "nodes": 3,
+   "pops": [
+    {
+     "g": 0.0,
+     "pos": [
+      0,
+      0
+     ],
+     "seq": {
+      "pretty": "",
+      "raw": ""
+     }
+    },
+    {
+     "g": 1.0,
+     "pos": [
+      1,
+      0
+     ],
+     "seq": {
+      "pretty": "j",
+      "raw": "j"
+     }
+    }
+   ],
+   "purpose": "insert:I",
+   "results": [
+    {
+     "cost": 2.0,
+     "landing": [
+      2,
+      0
+     ],
+     "seq": {
+      "pretty": "jj",
+      "raw": "jj"
+     }
+    }
+   ],
+   "start": [
+    0,
+    0
+   ]
+  },
+  {
+   "beginLine": 0,
+   "fromNode": 0,
+   "goalFirst": [
+    2,
+    2
+   ],
+   "goalLast": [
+    2,
+    2
+   ],
+   "lines": [
+    "int main() {",
+    "  int x = 0;",
+    "  for(int i = 0; i < 10; i++) {",
+    "    int a = bar(i);"
+   ],
+   "nodes": 6,
+   "pops": [
+    {
+     "g": 0.0,
+     "pos": [
+      0,
+      0
+     ],
+     "seq": {
+      "pretty": "",
+      "raw": ""
+     }
+    },
+    {
+     "g": 1.0,
+     "pos": [
+      0,
+      2
+     ],
+     "seq": {
+      "pretty": "e",
+      "raw": "e"
+     }
+    },
+    {
+     "g": 1.0,
+     "pos": [
+      0,
+      2
+     ],
+     "seq": {
+      "pretty": "E",
+      "raw": "E"
+     }
+    },
+    {
+     "g": 2.0,
+     "pos": [
+      1,
+      2
+     ],
+     "seq": {
+      "pretty": "ej",
+      "raw": "ej"
+     }
+    },
+    {
+     "g": 2.0,
+     "pos": [
+      1,
+      2
+     ],
+     "seq": {
+      "pretty": "Ej",
+      "raw": "Ej"
+     }
+    }
+   ],
+   "purpose": "insert:i",
+   "results": [
+    {
+     "cost": 3.0,
+     "landing": [
+      2,
+      2
+     ],
+     "seq": {
+      "pretty": "ejj",
+      "raw": "ejj"
+     }
+    }
+   ],
+   "start": [
+    0,
+    0
+   ]
+  },
+  {
+   "beginLine": 2,
+   "fromNode": 1,
+   "goalFirst": [
+    1,
+    21
+   ],
+   "goalLast": [
+    1,
+    22
+   ],
+   "lines": [
+    "  int n = 10;",
+    "  for(int i = 0; i < 10; i++) {",
+    "    int a = bar(i);"
+   ],
+   "nodes": 3,
+   "pops": [
+    {
+     "g": 0.0,
+     "pos": [
+      1,
+      1
+     ],
+     "seq": {
+      "pretty": "",
+      "raw": ""
+     }
+    }
+   ],
+   "purpose": "inter-edit",
+   "results": [
+    {
+     "cost": 3.0,
+     "landing": [
+      1,
+      22
+     ],
+     "seq": {
+      "pretty": "f0;",
+      "raw": "f0;"
+     }
+    },
+    {
+     "cost": 2.0,
+     "landing": [
+      1,
+      21
+     ],
+     "seq": {
+      "pretty": "f1",
+      "raw": "f1"
+     }
+    }
+   ],
+   "start": [
+    1,
+    1
+   ]
+  },
+  {
+   "beginLine": 2,
+   "fromNode": 4,
+   "goalFirst": [
+    7,
+    6
+   ],
+   "goalLast": [
+    7,
+    6
+   ],
+   "lines": [
+    "  int n = 10;",
+    "  for(int i = 0; i < n; i++) {",
+    "    int a = bar(i);",
+    "    int b = baz(a);",
+    "    int c = qux(b);",
+    "    int d = quux(c);",
+    "    int e = corge(d);",
+    "    x += a + b + c + d + e;",
+    "  }"
+   ],
+   "nodes": 48,
+   "pops": [
+    {
+     "g": 0.0,
+     "pos": [
+      1,
+      21
+     ],
+     "seq": {
+      "pretty": "",
+      "raw": ""
+     }
+    },
+    {
+     "g": 1.0,
+     "pos": [
+      1,
+      2
+     ],
+     "seq": {
+      "pretty": "^",
+      "raw": "^"
+     }
+    },
+    {
+     "g": 2.0,
+     "pos": [
+      1,
+      5
+     ],
+     "seq": {
+      "pretty": "^w",
+      "raw": "^w"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      1,
+      6
+     ],
+     "seq": {
+      "pretty": "^wl",
+      "raw": "^wl"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      1,
+      6
+     ],
+     "seq": {
+      "pretty": "^ww",
+      "raw": "^ww"
+     }
+    },
+    {
+     "g": 2.0,
+     "pos": [
+      1,
+      4
+     ],
+     "seq": {
+      "pretty": "^e",
+      "raw": "^e"
+     }
+    },
+    {
+     "g": 2.0,
+     "pos": [
+      1,
+      8
+     ],
+     "seq": {
+      "pretty": "^E",
+      "raw": "^E"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      1,
+      6
+     ],
+     "seq": {
+      "pretty": "^Eb",
+      "raw": "^Eb"
+     }
+    },
+    {
+     "g": 1.0,
+     "pos": [
+      1,
+      0
+     ],
+     "seq": {
+      "pretty": "0",
+      "raw": "0"
+     }
+    },
+    {
+     "g": 2.0,
+     "pos": [
+      1,
+      4
+     ],
+     "seq": {
+      "pretty": "0e",
+      "raw": "0e"
+     }
+    },
+    {
+     "g": 2.0,
+     "pos": [
+      1,
+      8
+     ],
+     "seq": {
+      "pretty": "0E",
+      "raw": "0E"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      1,
+      6
+     ],
+     "seq": {
+      "pretty": "0Eb",
+      "raw": "0Eb"
+     }
+    },
+    {
+     "g": 2.0,
+     "pos": [
+      1,
+      3
+     ],
+     "seq": {
+      "pretty": "^l",
+      "raw": "^l"
+     }
+    },
+    {
+     "g": 4.0,
+     "pos": [
+      2,
+      6
+     ],
+     "seq": {
+      "pretty": "^wlj",
+      "raw": "^wlj"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      5
+     ],
+     "seq": {
+      "pretty": "^wj",
+      "raw": "^wj"
+     }
+    },
+    {
+     "g": 4.0,
+     "pos": [
+      2,
+      6
+     ],
+     "seq": {
+      "pretty": "^Ebj",
+      "raw": "^Ebj"
+     }
+    },
+    {
+     "g": 2.0,
+     "pos": [
+      2,
+      2
+     ],
+     "seq": {
+      "pretty": "^j",
+      "raw": "^j"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      6
+     ],
+     "seq": {
+      "pretty": "^je",
+      "raw": "^je"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      6
+     ],
+     "seq": {
+      "pretty": "^jE",
+      "raw": "^jE"
+     }
+    },
+    {
+     "g": 4.0,
+     "pos": [
+      3,
+      6
+     ],
+     "seq": {
+      "pretty": "^jej",
+      "raw": "^jej"
+     }
+    },
+    {
+     "g": 4.0,
+     "pos": [
+      3,
+      6
+     ],
+     "seq": {
+      "pretty": "^jEj",
+      "raw": "^jEj"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      1,
+      7
+     ],
+     "seq": {
+      "pretty": "0Eh",
+      "raw": "0Eh"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      1,
+      7
+     ],
+     "seq": {
+      "pretty": "^Eh",
+      "raw": "^Eh"
+     }
+    },
+    {
+     "g": 2.0,
+     "pos": [
+      1,
+      10
+     ],
+     "seq": {
+      "pretty": "^W",
+      "raw": "^W"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      1,
+      6
+     ],
+     "seq": {
+      "pretty": "^Wb",
+      "raw": "^Wb"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      4
+     ],
+     "seq": {
+      "pretty": "0ej",
+      "raw": "0ej"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      8
+     ],
+     "seq": {
+      "pretty": "0Ej",
+      "raw": "0Ej"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      8
+     ],
+     "seq": {
+      "pretty": "^Ej",
+      "raw": "^Ej"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      4
+     ],
+     "seq": {
+      "pretty": "^jW",
+      "raw": "^jW"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      4
+     ],
+     "seq": {
+      "pretty": "^j^",
+      "raw": "^j^"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      4
+     ],
+     "seq": {
+      "pretty": "^jw",
+      "raw": "^jw"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      4
+     ],
+     "seq": {
+      "pretty": "^ej",
+      "raw": "^ej"
+     }
+    },
+    {
+     "g": 2.0,
+     "pos": [
+      2,
+      0
+     ],
+     "seq": {
+      "pretty": "0j",
+      "raw": "0j"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      6
+     ],
+     "seq": {
+      "pretty": "0je",
+      "raw": "0je"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      6
+     ],
+     "seq": {
+      "pretty": "0jE",
+      "raw": "0jE"
+     }
+    },
+    {
+     "g": 4.0,
+     "pos": [
+      3,
+      6
+     ],
+     "seq": {
+      "pretty": "0jej",
+      "raw": "0jej"
+     }
+    },
+    {
+     "g": 4.0,
+     "pos": [
+      3,
+      6
+     ],
+     "seq": {
+      "pretty": "0jEj",
+      "raw": "0jEj"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      4
+     ],
+     "seq": {
+      "pretty": "0j^",
+      "raw": "0j^"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      4
+     ],
+     "seq": {
+      "pretty": "0jw",
+      "raw": "0jw"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      4
+     ],
+     "seq": {
+      "pretty": "0jW",
+      "raw": "0jW"
+     }
+    },
+    {
+     "g": 2.0,
+     "pos": [
+      1,
+      1
+     ],
+     "seq": {
+      "pretty": "0l",
+      "raw": "0l"
+     }
+    },
+    {
+     "g": 5.0,
+     "pos": [
+      4,
+      6
+     ],
+     "seq": {
+      "pretty": "0jejj",
+      "raw": "0jejj"
+     }
+    },
+    {
+     "g": 5.0,
+     "pos": [
+      4,
+      6
+     ],
+     "seq": {
+      "pretty": "^jEjj",
+      "raw": "^jEjj"
+     }
+    },
+    {
+     "g": 5.0,
+     "pos": [
+      4,
+      6
+     ],
+     "seq": {
+      "pretty": "^jejj",
+      "raw": "^jejj"
+     }
+    },
+    {
+     "g": 5.0,
+     "pos": [
+      4,
+      6
+     ],
+     "seq": {
+      "pretty": "0jEjj",
+      "raw": "0jEjj"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      3
+     ],
+     "seq": {
+      "pretty": "^jl",
+      "raw": "^jl"
+     }
+    },
+    {
+     "g": 3.0,
+     "pos": [
+      2,
+      3
+     ],
+     "seq": {
+      "pretty": "^lj",
+      "raw": "^lj"
+     }
+    }
+   ],
+   "purpose": "inter-edit",
+   "results": [
+    {
+     "cost": 7.0,
+     "landing": [
+      7,
+      6
+     ],
+     "seq": {
+      "pretty": "0jE5j",
+      "raw": "0jE5j"
+     }
+    }
+   ],
+   "start": [
+    1,
+    21
+   ]
+  },
+  {
+   "beginLine": 8,
+   "fromNode": 6,
+   "goalFirst": [
+    1,
+    8
+   ],
+   "goalLast": [
+    1,
+    8
+   ],
+   "lines": [
+    "    int e = corge(d);",
+    "    x -= a + b + c + d + e;",
+    "  }"
+   ],
+   "nodes": 4,
+   "pops": [
+    {
+     "g": 0.0,
+     "pos": [
+      1,
+      6
+     ],
+     "seq": {
+      "pretty": "",
+      "raw": ""
+     }
+    },
+    {
+     "g": 1.0,
+     "pos": [
+      1,
+      7
+     ],
+     "seq": {
+      "pretty": "l",
+      "raw": "l"
+     }
+    },
+    {
+     "g": 1.0,
+     "pos": [
+      1,
+      9
+     ],
+     "seq": {
+      "pretty": "w",
+      "raw": "w"
+     }
+    }
+   ],
+   "purpose": "inter-edit",
+   "results": [
+    {
+     "cost": 2.0,
+     "landing": [
+      1,
+      8
+     ],
+     "seq": {
+      "pretty": "f<Space>",
+      "raw": "f<Space>"
+     }
+    }
+   ],
+   "start": [
+    1,
+    6
+   ]
+  },
+  {
+   "beginLine": 8,
+   "fromNode": 8,
+   "goalFirst": [
+    1,
+    30
+   ],
+   "goalLast": [
+    1,
+    30
+   ],
+   "lines": [
+    "    int e = corge(d);",
+    "    x -= foo(a + b + c + d + e;",
+    "  }"
+   ],
+   "nodes": 2,
+   "pops": [
+    {
+     "g": 0.0,
+     "pos": [
+      1,
+      12
+     ],
+     "seq": {
+      "pretty": "",
+      "raw": ""
+     }
+    }
+   ],
+   "purpose": "insert:i",
+   "results": [
+    {
+     "cost": 1.0,
+     "landing": [
+      1,
+      30
+     ],
+     "seq": {
+      "pretty": "$",
+      "raw": "$"
+     }
+    }
+   ],
+   "start": [
+    1,
+    12
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "children": [
+    {
+     "e": 1,
+     "editOffset": 2,
+     "f": 41.47213595499958,
+     "g": 19.0,
+     "kind": "insert",
+     "navCall": 0,
+     "nodeId": 1,
+     "pos": [
+      3,
+      1
+     ],
+     "status": "enqueued",
+     "suffix": {
+      "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>",
+      "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>"
+     },
+     "terminal": false
+    },
+    {
+     "e": 1,
+     "editOffset": 3,
+     "f": 42.47213595499958,
+     "g": 20.0,
+     "kind": "insert",
+     "navCall": 1,
+     "pos": [
+      3,
+      1
+     ],
+     "status": "dominated",
+     "suffix": {
+      "pretty": "ejjiint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>",
+      "raw": "ejjiint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>"
+     },
+     "terminal": false
+    }
+   ],
+   "e": 0,
+   "f": 37.82842712474619,
+   "g": 0.0,
+   "id": 0,
+   "parent": -1,
+   "pos": [
+    0,
+    0
+   ],
+   "seq": {
+    "pretty": "",
+    "raw": ""
+   },
+   "viaKind": "seed",
+   "viaSuffix": {
+    "pretty": "",
+    "raw": ""
+   }
+  },
+  {
+   "children": [
+    {
+     "e": 1,
+     "f": 40.0,
+     "g": 22.0,
+     "kind": "nav",
+     "navCall": 2,
+     "nodeId": 3,
+     "pos": [
+      3,
+      22
+     ],
+     "status": "enqueued",
+     "suffix": {
+      "pretty": "f0;",
+      "raw": "f0;"
+     },
+     "terminal": false
+    },
+    {
+     "e": 1,
+     "f": 39.0,
+     "g": 21.0,
+     "kind": "nav",
+     "navCall": 2,
+     "nodeId": 2,
+     "pos": [
+      3,
+      21
+     ],
+     "status": "enqueued",
+     "suffix": {
+      "pretty": "f1",
+      "raw": "f1"
+     },
+     "terminal": false
+    }
+   ],
+   "e": 1,
+   "f": 41.47213595499958,
+   "g": 19.0,
+   "id": 1,
+   "parent": 0,
+   "pos": [
+    3,
+    1
+   ],
+   "seq": {
+    "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>",
+    "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>"
+   },
+   "viaKind": "insert",
+   "viaSuffix": {
+    "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>",
+    "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>"
+   }
+  },
+  {
+   "children": [
+    {
+     "e": 2,
+     "f": 43.32247308899059,
+     "g": 25.0,
+     "kind": "edit",
+     "menuCost": 4.0,
+     "nodeId": 4,
+     "pos": [
+      3,
+      21
+     ],
+     "status": "enqueued",
+     "suffix": {
+      "pretty": "cen<Esc>",
+      "raw": "cen<Esc>"
+     },
+     "terminal": false
+    }
+   ],
+   "e": 1,
+   "f": 39.0,
+   "g": 21.0,
+   "id": 2,
+   "parent": 1,
+   "pos": [
+    3,
+    21
+   ],
+   "seq": {
+    "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1",
+    "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1"
+   },
+   "viaKind": "nav",
+   "viaSuffix": {
+    "pretty": "f1",
+    "raw": "f1"
+   }
+  },
+  {
+   "children": [
+    {
+     "e": 2,
+     "f": 46.32247308899059,
+     "g": 28.0,
+     "kind": "edit",
+     "menuCost": 6.0,
+     "pos": [
+      3,
+      21
+     ],
+     "status": "dominated",
+     "suffix": {
+      "pretty": "Xciwn<Esc>",
+      "raw": "Xciwn<Esc>"
+     },
+     "terminal": false
+    }
+   ],
+   "e": 1,
+   "f": 40.0,
+   "g": 22.0,
+   "id": 3,
+   "parent": 1,
+   "pos": [
+    3,
+    22
+   ],
+   "seq": {
+    "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f0;",
+    "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f0;"
+   },
+   "viaKind": "nav",
+   "viaSuffix": {
+    "pretty": "f0;",
+    "raw": "f0;"
+   }
+  },
+  {
+   "children": [
+    {
+     "e": 2,
+     "f": 42.0,
+     "g": 30.0,
+     "kind": "nav",
+     "navCall": 3,
+     "nodeId": 5,
+     "pos": [
+      9,
+      6
+     ],
+     "status": "enqueued",
+     "suffix": {
+      "pretty": "0jE5j",
+      "raw": "0jE5j"
+     },
+     "terminal": false
+    }
+   ],
+   "e": 2,
+   "f": 43.32247308899059,
+   "g": 25.0,
+   "id": 4,
+   "parent": 2,
+   "pos": [
+    3,
+    21
+   ],
+   "seq": {
+    "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>",
+    "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>"
+   },
+   "viaKind": "edit",
+   "viaSuffix": {
+    "pretty": "cen<Esc>",
+    "raw": "cen<Esc>"
+   }
+  },
+  {
+   "children": [
+    {
+     "e": 3,
+     "f": 43.41421356237309,
+     "g": 32.0,
+     "kind": "edit",
+     "menuCost": 2.0,
+     "nodeId": 6,
+     "pos": [
+      9,
+      6
+     ],
+     "status": "enqueued",
+     "suffix": {
+      "pretty": "r-",
+      "raw": "r-"
+     },
+     "terminal": false
+    },
+    {
+     "e": 3,
+     "f": 44.41421356237309,
+     "g": 33.0,
+     "kind": "edit",
+     "menuCost": 3.0,
+     "pos": [
+      9,
+      6
+     ],
+     "status": "dominated",
+     "suffix": {
+      "pretty": "s-<Esc>",
+      "raw": "s-<Esc>"
+     },
+     "terminal": false
+    }
+   ],
+   "e": 2,
+   "f": 42.0,
+   "g": 30.0,
+   "id": 5,
+   "parent": 4,
+   "pos": [
+    9,
+    6
+   ],
+   "seq": {
+    "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5j",
+    "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5j"
+   },
+   "viaKind": "nav",
+   "viaSuffix": {
+    "pretty": "0jE5j",
+    "raw": "0jE5j"
+   }
+  },
+  {
+   "children": [
+    {
+     "e": 3,
+     "f": 44.0,
+     "g": 34.0,
+     "kind": "nav",
+     "navCall": 4,
+     "nodeId": 7,
+     "pos": [
+      9,
+      8
+     ],
+     "status": "enqueued",
+     "suffix": {
+      "pretty": "f<Space>",
+      "raw": "f<Space>"
+     },
+     "terminal": false
+    }
+   ],
+   "e": 3,
+   "f": 43.41421356237309,
+   "g": 32.0,
+   "id": 6,
+   "parent": 5,
+   "pos": [
+    9,
+    6
+   ],
+   "seq": {
+    "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5jr-",
+    "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5jr-"
+   },
+   "viaKind": "edit",
+   "viaSuffix": {
+    "pretty": "r-",
+    "raw": "r-"
+   }
+  },
+  {
+   "children": [
+    {
+     "e": 4,
+     "f": 48.242640687119284,
+     "g": 41.0,
+     "kind": "edit",
+     "menuCost": 7.0,
+     "nodeId": 8,
+     "pos": [
+      9,
+      12
+     ],
+     "status": "enqueued",
+     "suffix": {
+      "pretty": "s<Space>foo(<Esc>",
+      "raw": "s<Space>foo(<Esc>"
+     },
+     "terminal": false
+    }
+   ],
+   "e": 3,
+   "f": 44.0,
+   "g": 34.0,
+   "id": 7,
+   "parent": 6,
+   "pos": [
+    9,
+    8
+   ],
+   "seq": {
+    "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5jr-f<Space>",
+    "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5jr-f<Space>"
+   },
+   "viaKind": "nav",
+   "viaSuffix": {
+    "pretty": "f<Space>",
+    "raw": "f<Space>"
+   }
+  },
+  {
+   "children": [
+    {
+     "e": 5,
+     "editOffset": 1,
+     "f": 45.0,
+     "g": 45.0,
+     "kind": "insert",
+     "navCall": 5,
+     "pos": [
+      9,
+      30
+     ],
+     "status": "enqueued",
+     "suffix": {
+      "pretty": "$i)<Esc>",
+      "raw": "$i)<Esc>"
+     },
+     "terminal": true
+    }
+   ],
+   "e": 4,
+   "f": 48.242640687119284,
+   "g": 41.0,
+   "id": 8,
+   "parent": 7,
+   "pos": [
+    9,
+    12
+   ],
+   "seq": {
+    "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5jr-f<Space>s<Space>foo(<Esc>",
+    "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5jr-f<Space>s<Space>foo(<Esc>"
+   },
+   "viaKind": "edit",
+   "viaSuffix": {
+    "pretty": "s<Space>foo(<Esc>",
+    "raw": "s<Space>foo(<Esc>"
+   }
+  }
+ ],
+ "plan": [
+  {
+   "begin": [
+    2,
+    2
+   ],
+   "del": "",
+   "end": [
+    2,
+    2
+   ],
+   "idx": 0,
+   "ins": "int n = 10;\n  ",
+   "pureInsertion": true
+  },
+  {
+   "begin": [
+    3,
+    21
+   ],
+   "del": "10",
+   "end": [
+    3,
+    23
+   ],
+   "idx": 1,
+   "ins": "n",
+   "pureInsertion": false
+  },
+  {
+   "begin": [
+    9,
+    6
+   ],
+   "del": "+",
+   "end": [
+    9,
+    7
+   ],
+   "idx": 2,
+   "ins": "-",
+   "pureInsertion": false
+  },
+  {
+   "begin": [
+    9,
+    8
+   ],
+   "del": " ",
+   "end": [
+    9,
+    9
+   ],
+   "idx": 3,
+   "ins": " foo(",
+   "pureInsertion": false
+  },
+  {
+   "begin": [
+    9,
+    30
+   ],
+   "del": "",
+   "end": [
+    9,
+    30
+   ],
+   "idx": 4,
+   "ins": ")",
+   "pureInsertion": true
+  }
+ ],
+ "resultSegments": [
+  {
+   "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>",
+   "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>"
+  },
+  {
+   "pretty": "f1",
+   "raw": "f1"
+  },
+  {
+   "pretty": "cen<Esc>",
+   "raw": "cen<Esc>"
+  },
+  {
+   "pretty": "0jE5j",
+   "raw": "0jE5j"
+  },
+  {
+   "pretty": "r-",
+   "raw": "r-"
+  },
+  {
+   "pretty": "f<Space>",
+   "raw": "f<Space>"
+  },
+  {
+   "pretty": "s<Space>foo(<Esc>",
+   "raw": "s<Space>foo(<Esc>"
+  },
+  {
+   "pretty": "$i)<Esc>",
+   "raw": "$i)<Esc>"
+  }
+ ],
+ "results": [
+  {
+   "cost": 45.0,
+   "seq": {
+    "pretty": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5jr-f<Space>s<Space>foo(<Esc>$i)<Esc>",
+    "raw": "jjIint<Space>n<Space>=<Space>10;<CR><BS><Space><Space><Esc>f1cen<Esc>0jE5jr-f<Space>s<Space>foo(<Esc>$i)<Esc>"
+   }
+  }
+ ],
+ "stats": {
+  "editNodes": 9,
+  "navNodes": 66,
+  "nodes": 10,
+  "pops": 10
+ },
+ "suffixEditCosts": [
+  35.0,
+  18.0,
+  12.0,
+  10.0,
+  3.0,
+  0.0
+ ],
+ "transformZooms": [
+  {
+   "editIdx": 1,
+   "effectiveLines": [
+    "  for(int i = 0; i < 10; i++) {"
+   ],
+   "goalPos": [
+    3,
+    21
+   ],
+   "leftColOffset": 21,
+   "pops": [
+    {
+     "cursor": [
+      0,
+      21
+     ],
+     "g": 0.0,
+     "lines": [
+      "  for(int i = 0; i < 10; i++) {"
+     ],
+     "mode": "n",
+     "pos": [
+      0,
+      21
+     ],
+     "reachedGoal": false,
+     "seq": {
+      "pretty": "",
+      "raw": ""
+     },
+     "start": [
+      0,
+      21
+     ]
+    },
+    {
+     "cursor": [
+      0,
+      21
+     ],
+     "g": 1.0,
+     "lines": [
+      "  for(int i = 0; i < 0; i++) {"
+     ],
+     "mode": "n",
+     "pos": [
+      0,
+      21
+     ],
+     "reachedGoal": false,
+     "seq": {
+      "pretty": "x",
+      "raw": "x"
+     },
+     "start": [
+      0,
+      21
+     ]
+    },
+    {
+     "cursor": [
+      0,
+      22
+     ],
+     "g": 0.0,
+     "lines": [
+      "  for(int i = 0; i < 10; i++) {"
+     ],
+     "mode": "n",
+     "pos": [
+      0,
+      22
+     ],
+     "reachedGoal": false,
+     "seq": {
+      "pretty": "",
+      "raw": ""
+     },
+     "start": [
+      0,
+      22
+     ]
+    },
+    {
+     "cursor": [
+      0,
+      21
+     ],
+     "g": 1.0,
+     "lines": [
+      "  for(int i = 0; i < 0; i++) {"
+     ],
+     "mode": "n",
+     "pos": [
+      0,
+      21
+     ],
+     "reachedGoal": false,
+     "seq": {
+      "pretty": "X",
+      "raw": "X"
+     },
+     "start": [
+      0,
+      22
+     ]
+    },
+    {
+     "cursor": [
+      0,
+      21
+     ],
+     "g": 4.0,
+     "lines": [
+      "  for(int i = 0; i < n; i++) {"
+     ],
+     "mode": "n",
+     "pos": [
+      0,
+      21
+     ],
+     "reachedGoal": true,
+     "seq": {
+      "pretty": "cen<Esc>",
+      "raw": "cen<Esc>"
+     },
+     "start": [
+      0,
+      21
+     ]
+    }
+   ],
+   "rightColOffset": 8,
+   "starts": [
+    {
+     "pos": [
+      3,
+      21
+     ],
+     "results": [
+      {
+       "cost": 4.0,
+       "goal": [
+        3,
+        21
+       ],
+       "seq": {
+        "pretty": "cen<Esc>",
+        "raw": "cen<Esc>"
+       }
+      }
+     ]
+    },
+    {
+     "pos": [
+      3,
+      22
+     ],
+     "results": [
+      {
+       "cost": 6.0,
+       "goal": [
+        3,
+        21
+       ],
+       "seq": {
+        "pretty": "Xciwn<Esc>",
+        "raw": "Xciwn<Esc>"
+       }
+      }
+     ]
+    }
+   ],
+   "stats": {
+    "nodes": 5,
+    "pops": 7
+   }
+  },
+  {
+   "editIdx": 2,
+   "effectiveLines": [
+    "    x += a + b + c + d + e;"
+   ],
+   "goalPos": [
+    9,
+    6
+   ],
+   "leftColOffset": 6,
+   "pops": [
+    {
+     "cursor": [
+      0,
+      6
+     ],
+     "g": 0.0,
+     "lines": [
+      "    x += a + b + c + d + e;"
+     ],
+     "mode": "n",
+     "pos": [
+      0,
+      6
+     ],
+     "reachedGoal": false,
+     "seq": {
+      "pretty": "",
+      "raw": ""
+     },
+     "start": [
+      0,
+      6
+     ]
+    },
+    {
+     "cursor": [
+      0,
+      6
+     ],
+     "g": 3.0,
+     "lines": [
+      "    x -= a + b + c + d + e;"
+     ],
+     "mode": "n",
+     "pos": [
+      0,
+      6
+     ],
+     "reachedGoal": true,
+     "seq": {
+      "pretty": "s-<Esc>",
+      "raw": "s-<Esc>"
+     },
+     "start": [
+      0,
+      6
+     ]
+    }
+   ],
+   "rightColOffset": 20,
+   "starts": [
+    {
+     "pos": [
+      9,
+      6
+     ],
+     "results": [
+      {
+       "cost": 2.0,
+       "goal": [
+        9,
+        6
+       ],
+       "seq": {
+        "pretty": "r-",
+        "raw": "r-"
+       }
+      },
+      {
+       "cost": 3.0,
+       "goal": [
+        9,
+        6
+       ],
+       "seq": {
+        "pretty": "s-<Esc>",
+        "raw": "s-<Esc>"
+       }
+      }
+     ]
+    }
+   ],
+   "stats": {
+    "nodes": 2,
+    "pops": 2
+   }
+  },
+  {
+   "editIdx": 3,
+   "effectiveLines": [
+    "    x -= a + b + c + d + e;"
+   ],
+   "goalPos": [
+    9,
+    12
+   ],
+   "leftColOffset": 8,
+   "pops": [
+    {
+     "cursor": [
+      0,
+      8
+     ],
+     "g": 0.0,
+     "lines": [
+      "    x -= a + b + c + d + e;"
+     ],
+     "mode": "n",
+     "pos": [
+      0,
+      8
+     ],
+     "reachedGoal": false,
+     "seq": {
+      "pretty": "",
+      "raw": ""
+     },
+     "start": [
+      0,
+      8
+     ]
+    },
+    {
+     "cursor": [
+      0,
+      12
+     ],
+     "g": 7.0,
+     "lines": [
+      "    x -= foo(a + b + c + d + e;"
+     ],
+     "mode": "n",
+     "pos": [
+      0,
+      8
+     ],
+     "reachedGoal": true,
+     "seq": {
+      "pretty": "s<Space>foo(<Esc>",
+      "raw": "s<Space>foo(<Esc>"
+     },
+     "start": [
+      0,
+      8
+     ]
+    }
+   ],
+   "rightColOffset": 18,
+   "starts": [
+    {
+     "pos": [
+      9,
+      8
+     ],
+     "results": [
+      {
+       "cost": 7.0,
+       "goal": [
+        9,
+        12
+       ],
+       "seq": {
+        "pretty": "s<Space>foo(<Esc>",
+        "raw": "s<Space>foo(<Esc>"
+       }
+      }
+     ]
+    }
+   ],
+   "stats": {
+    "nodes": 2,
+    "pops": 2
+   }
+  }
+ ],
+ "weights": {
+  "distance": 1.0,
+  "effort": 1.0,
+  "overshootPenalty": 3.0
+ }
+}
