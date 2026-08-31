@@ -120,9 +120,7 @@ two edits   aa→xx, move over b, cc→zz    cwxx<Esc> ww cwzz<Esc>   12 keystro
 one edit    delete everything, retype     Cxx b zz<Esc>             9 keystrokes, 7 chars changed
 ```
 
-<!-- To refresh: drag anim/out/1080p60/DPWalkthrough.mp4 into any GitHub comment
-     box, copy the generated user-attachments URL, replace the line below. -->
-https://github.com/user-attachments/assets/REPLACE-ME-dp-walkthrough
+https://github.com/user-attachments/assets/d214130e-4026-4ea6-994d-fe85c3503277
 
 Pure edit distance always prefers the first. Moving between regions and re-entering insert mode cost keystrokes too, which is what makes the second cheaper here.
 
