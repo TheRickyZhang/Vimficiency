@@ -202,8 +202,9 @@ trailing-diagonal start, `O(margin·core)`. Since `Σ N_k` is the changed text
 plus margins plus unsealed short runs, the planner is diff-bound:
 `~O(Σ_k (n_k + m_k)·N_k·cap + n_k·m_k + Σ_seals margin·core)`.
 
-The tables are flat `layout_left` mdspans of `(n+1)·(m+1)` cells for both
-`out` and `in` (`i` contiguous, matching the `for j { for i }` sweep). A
+The tables are one column-major `Grid` each — a single allocation with `i`
+contiguous, matching the `for j { for i }` sweep — of `(n+1)·(m+1)` cells for
+both `out` and `in`. A
 single-plan cell is its one 16-byte candidate (`cost`, `uint16_t` predecessor
 cell, step); a `K`-plan cell is `K` 24-byte candidates plus a count. So
 `CostOptions::maxPlannerCells` (default `MAX_PLANNER_CELLS`, counted in
@@ -247,8 +248,8 @@ exploiting the oracle's internal structure, which is what the solver does:
 ### Tiled command-cost oracle (delete + movement)
 
 `delCost(begin,end)` and `moveCost(begin,end)` price the raw initial span `[begin,end)` as the cheapest
-*set* of counted Vim commands that tile it (`TilingCost` in `VimDiff.cpp`, one
-class, two base tables). An end-anchored DP runs from `begin`: for each
+*set* of counted Vim commands that tile it (`TilingCost` in `PlannerCosts.h`,
+one class, two base tables). An end-anchored DP runs from `begin`: for each
 end `ri`, the chunk ending there is the cheapest `{k}` command across levels,
 `base + penalty(k)` where `penalty(k)` is the digit keystrokes plus the shared
 cognitive count penalty for the level's class (`CountPenalty.h`, honouring
@@ -304,7 +305,7 @@ lists as the carried value, a whole column of deletions (`relaxDeletes`).
 
 ### Sealing matched runs
 
-`sealMatchedRuns` (VimDiff.cpp) splits the alignment at every Myers-matched run
+`sealMatchedRuns` (`SealMatchedRuns.cpp`) splits the alignment at every Myers-matched run
 the optimum provably never edits into. Such a run is a *separator*: every
 optimal path crosses it with one move, so the text before it and the text after
 it are independent subproblems. The output is a list of `Block`s — raw spans
@@ -459,5 +460,9 @@ After adjustment, `diffStates[i].beginPos`/`endPos` are in intermediate-buffer c
 
 - Adjustment logic: `CompositionSearchContext::calculateLinesAfterDiffs()` in `CompositionSearchContext.cpp`
 - Helpers: `posToFlat()`, `flatToPos()` (file-static in same file)
-- VimDiff planner: `src/Optimizer/DiffPlanner/VimDiff.cpp`
+- VimDiff planner, split along its two seams: cost oracles and the flat
+  coordinate system in `src/Optimizer/DiffPlanner/PlannerCosts.{h,cpp}`
+  (`FlatText`, `TilingCost`, `Typing`); the cut policy in
+  `SealMatchedRuns.{h,cpp}` (`Block`, `sealMatchedRuns`); transition costs,
+  the DP, reconstruction, and the pipeline in `VimDiff.cpp`
 - MyersDiff fallback and separation heuristics: `src/Optimizer/DiffPlanner/MyersDiff.cpp`; see `dev/diff-separation-rules.md`
