@@ -194,21 +194,15 @@ string runAnalyze(
   return oss.str();
 }
 
-// Background analyze search. Owns its inputs and a Config snapshot so the worker
-// is independent of the FFI buffers and the main thread. The result string is
-// read once `vf_analyze_poll` observes `ready()`.
-struct AnalyzeJob : AsyncJob {
+// Background analyze search. The job owns its inputs and a Config snapshot so
+// the worker is independent of the FFI buffers and the main thread. The result
+// string is read once `vf_analyze_poll` observes `ready()`.
+struct AnalyzeState {
   AnalyzeInputs inputs;
   Config config;
   string result;
-
-  AnalyzeJob(AnalyzeInputs in, Config cfg, int deadlineMs)
-      : AsyncJob(deadlineMs), inputs(std::move(in)), config(std::move(cfg)) {}
-
-  void start() {
-    spawn([this] { result = runAnalyze(inputs, config, control()); });
-  }
 };
+using AnalyzeJob = AsyncJob<AnalyzeState>;
 
 JobRegistry<AnalyzeJob> g_analyze_jobs;
 
@@ -291,8 +285,10 @@ VF::LuaExports::Result<string> startAsyncImpl(
   inputsRes->overrides = std::move(*overridesResult);
 
   auto job = std::make_unique<AnalyzeJob>(
-      std::move(*inputsRes), g_config_internal, deadline_ms);
-  job->start();
+      AnalyzeState{std::move(*inputsRes), g_config_internal, {}}, deadline_ms,
+      [](AnalyzeState& s, const SearchControl* control) {
+        s.result = runAnalyze(s.inputs, s.config, control);
+      });
   const int job_id = g_analyze_jobs.create(std::move(job));
   return to_string(job_id);
 }
@@ -405,14 +401,14 @@ VFByteSlice vf_analyze_poll(int job_id) {
     return helpers::byteSlice(storage);
   }
   std::unique_ptr<AnalyzeJob> owned = g_analyze_jobs.take(job_id);
-  storage = std::move(owned->result);
+  storage = std::move(owned->state().result);
   return helpers::byteSlice(storage);
 }
 
-// Signals cancellation and frees the job; the jthread destructor joins the
-// worker on this (main) thread. The flag is polled between composition setup
-// phases and per pop in every search loop, so the join is bounded by one
-// diff's precompute or one pop expansion.
+// Signals cancellation and frees the job; dropping it joins the worker on this
+// (main) thread before any job state is torn down (see AsyncJob). The flag is
+// polled between composition setup phases and per pop in every search loop,
+// so the join is bounded by one diff's precompute or one pop expansion.
 int vf_analyze_cancel(int job_id) {
   std::unique_ptr<AnalyzeJob> owned = g_analyze_jobs.take(job_id);
   if (!owned) return 0;
