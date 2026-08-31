@@ -440,7 +440,7 @@ function M.finish_session(id, result, finish_alias, end_kind_override, reason)
   result.finish_reason = reason
   rec.status = "finished"
   rec.result = result
-  rec.key_count = #(rec.key_seq or {})
+  rec.key_count = result.key_count
   rec.key_seq = nil  -- compiled into result.user_seq; free the events
   rec.finish_alias = finish_alias
   last_finished_id = id

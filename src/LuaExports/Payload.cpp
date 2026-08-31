@@ -1,7 +1,9 @@
 #include "LuaExports/Common.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
 
 #include <charconv>
 #include <limits>
+#include <sstream>
 
 using namespace std;
 
@@ -130,6 +132,18 @@ Result<vector<KeyTrackingEvent>> decodeKeyTrackingEvents(string_view encoded) {
     start = end + 1;
   }
   return events;
+}
+
+string encodeDiffRegions(const vector<DiffState>& diffs) {
+  ostringstream oss;
+  for (const DiffState& d : diffs) {
+    const CursorPos goalEnd = DiffText::advancePositionByText(d.beginPos, d.insertedText);
+    oss << d.beginPos.line << EVENT_FIELD_SEP << d.beginPos.col << EVENT_FIELD_SEP
+        << d.endPos.line << EVENT_FIELD_SEP << d.endPos.col << EVENT_FIELD_SEP
+        << d.beginPos.line << EVENT_FIELD_SEP << d.beginPos.col << EVENT_FIELD_SEP
+        << goalEnd.line << EVENT_FIELD_SEP << goalEnd.col << '\n';
+  }
+  return oss.str();
 }
 
 }  // namespace VF::LuaExports::payload

@@ -3,6 +3,7 @@
 #include "LuaExports/AsyncJobRegistry.h"
 #include "Boundary/NavBoundary.h"
 #include "Optimizer/CompositionOptimizer/CompositionOptimizer.h"
+#include "Optimizer/DiffPlanner/DiffState.h"
 #include "Optimizer/NavOptimizer/NavOptimizer.h"
 #include "Optimizer/OptimizerParamOverrides.h"
 #include "Optimizer/SearchControl.h"
@@ -116,6 +117,7 @@ VF::LuaExports::Result<AnalyzeInputs> decodeAnalyzeInputs(
 string runAnalyze(
     const AnalyzeInputs& in, const Config& config, const SearchControl* control) {
   vector<::Result> results;
+  vector<DiffState> diffs;
 
   if (in.initialLines == in.goalLines) {
     // NavOptimizer returns LandingResult (with goalPos); for analyze we only
@@ -143,7 +145,7 @@ string runAnalyze(
     CompositionOptimizerParams compParams =
         CompositionOptimizerParams{}.withMaxResults(in.resultsCalculated);
     in.overrides.applyTo(compParams);
-    results = opt.optimize(
+    const CompositionResult composed = opt.optimize(
         in.initialLines,
         in.initialPos,
         in.goalLines,
@@ -152,7 +154,9 @@ string runAnalyze(
         in.keyseqText,
         in.boundary,
         in.navContext,
-        control).getResults();
+        control);
+    results = composed.getResults();
+    diffs = composed.getDiffs();
   }
 
   const double userCost = getEffort(in.keyseqText, config);
@@ -165,24 +169,24 @@ string runAnalyze(
   sort(validResults.begin(), validResults.end(),
             [](const ::Result* a, const ::Result* b) { return a->getCost() < b->getCost(); });
 
+  // Count-framed sections; the Lua parser reads exactly `size` result lines
+  // and `diffs` region lines, so neither body can be mistaken for a header.
+  // Layout is documented in `dev/lua/ffi-separators.md` § Convention 3.
   ostringstream oss;
-  if (validResults.empty()) {
-    oss << "no results";
-  } else {
-    oss << "size: " << validResults.size() << " user_cost: "
-        << fixed << setprecision(3) << userCost << "\n";
-    for (const ::Result* result : validResults) {
-      // Machine-readable export for the Lua bridge: use the raw sequence
-      // bytes, not Sequence's human formatter, so insert-mode text and
-      // <Esc> survive round-tripping through ffi.lua's line parser.
-      // Field separator is the shared `EVENT_FIELD_SEP` (0x1F Unit Sep);
-      // rationale and the project-wide convention live in
-      // `dev/lua/ffi-separators.md`.
-      oss << result->getSequence().view()
-          << EVENT_FIELD_SEP
-          << fixed << setprecision(3) << result->getCost() << "\n";
-    }
+  oss << "size: " << validResults.size() << " user_cost: "
+      << fixed << setprecision(3) << userCost << "\n";
+  for (const ::Result* result : validResults) {
+    // Machine-readable export for the Lua bridge: use the raw sequence
+    // bytes, not Sequence's human formatter, so insert-mode text and
+    // <Esc> survive round-tripping through ffi.lua's line parser.
+    // Field separator is the shared `EVENT_FIELD_SEP` (0x1F Unit Sep).
+    oss << result->getSequence().view()
+        << EVENT_FIELD_SEP
+        << fixed << setprecision(3) << result->getCost() << "\n";
   }
+  // The planner's own regions, so views highlight the partition the search
+  // actually used (empty on the pure-navigation branch).
+  oss << "diffs: " << diffs.size() << "\n" << payload::encodeDiffRegions(diffs);
 
   if constexpr (DEBUG_ENABLED) {
     oss << "\n ----------------DEBUG---------------- \n" << consume_debug_output();

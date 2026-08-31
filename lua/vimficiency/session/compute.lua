@@ -190,7 +190,10 @@ local function prepare(active)
   local initial_slice = slice_lines(initial_lines, start_search, end_search)
   local goal_slice = slice_lines(goal_lines, start_search, end_search)
 
-  local kept_events, had_mouse = filter_mouse_events(active.key_seq)
+  -- Snapshot: a recall record keeps accumulating keys while the async worker
+  -- runs, and capture_debug must describe the events user_seq was built from.
+  local key_seq = vim.list_extend({}, active.key_seq)
+  local kept_events, had_mouse = filter_mouse_events(key_seq)
   local keyseq_raw = key_tracking.build_sequence(kept_events)
   local keyseq_str = apply_motion_conversions(keyseq_raw)
 
@@ -213,25 +216,25 @@ local function prepare(active)
     rel_end_col = end_state.col,
     keyseq_str = keyseq_str,
     keyseq_raw = keyseq_raw,
+    key_seq = key_seq,
     kept_events = kept_events,
     had_mouse = had_mouse,
     optimizer_overrides = ffi_optimizer.encode_optimizer_overrides({ shared = config.optimizer }),
   }
 end
 
--- Turn the analyze output into a stored result. Includes the synchronous
--- compute_diffs call (the light one; the heavy analyze is what the async path
--- offloads). `analyze_ms` is the analyze duration; on the async path this is
--- worker wall-time, not a main-thread stall.
+-- Turn the analyze output into a stored result. `analyze_ms` is the analyze
+-- duration; on the async path this is worker wall-time, not a main-thread
+-- stall.
 ---@param ctx table
----@param results VF.Optimizer.Result[]
----@param user_cost number
----@param dbg string
+---@param analyze VF.Optimizer.AnalyzeResult
 ---@param analyze_ms number
 ---@return VF.Session.Result
-local function finalize(ctx, results, user_cost, dbg, analyze_ms)
+local function finalize(ctx, analyze, analyze_ms)
   local active = ctx.active
+  local results = analyze.results
 
+  local dbg = analyze.dbg
   if dbg and dbg ~= "" then
     pcall(function()
       local debug_dir = vim.fn.stdpath("data") .. "/vimficiency/debug"
@@ -249,13 +252,9 @@ local function finalize(ctx, results, user_cost, dbg, analyze_ms)
     optimal_results = disk.empty_array()
   end
 
-  -- The optimizer's own character-level diff, for column highlighting in views.
-  -- Pass the same composition diff settings analyze used so the stored diff is
-  -- the breakdown the optimizer planned against. Same validated slices, so it
-  -- can't fail here.
-  local comp = (config.optimizer or {}).composition or {}
-  local diffs = ffi_optimizer.compute_diffs(
-    ctx.initial_slice, ctx.goal_slice, comp.diffAlgorithm)
+  -- The planner's own regions — the partition the search ran against — for
+  -- column highlighting in views.
+  local diffs = analyze.diffs
   if #diffs == 0 then
     diffs = disk.empty_array()
   end
@@ -280,10 +279,10 @@ local function finalize(ctx, results, user_cost, dbg, analyze_ms)
     window_height = ctx.start_state.window_height,
     scroll_amount = ctx.start_state.scroll_amount,
     user_seq = ctx.keyseq_str,
-    user_cost = user_cost,
+    user_cost = analyze.user_cost,
     had_mouse = ctx.had_mouse,
     optimal_results = optimal_results,
-    capture_debug = build_capture_debug(active.key_seq, ctx.keyseq_raw, ctx.keyseq_str),
+    capture_debug = build_capture_debug(ctx.key_seq, ctx.keyseq_raw, ctx.keyseq_str),
     start_time = active.time_started,
     key_count = #ctx.kept_events,
     timestamp = vim.uv.hrtime(),
@@ -304,7 +303,7 @@ function M.compute_result_for_active(active)
   if not ctx then return nil, err end
 
   local analyze_t0 = vim.uv.hrtime()
-  local ok, results, user_cost, dbg = pcall(
+  local ok, results, user_cost, dbg, diffs = pcall(
     ffi_optimizer.analyze,
     ctx.initial_slice, ctx.goal_slice,
     ctx.boundary_first_col, ctx.boundary_last_col,
@@ -320,7 +319,9 @@ function M.compute_result_for_active(active)
     return nil, "FFI error: " .. tostring(results)
   end
 
-  return finalize(ctx, results, user_cost, dbg, analyze_ms), nil
+  return finalize(ctx,
+    { results = results, user_cost = user_cost, dbg = dbg, diffs = diffs },
+    analyze_ms), nil
 end
 
 -- Async variant for auto_suggest: the analyze search runs on a C++ worker thread
@@ -371,7 +372,7 @@ function M.compute_result_for_active_async(active, deadline_ms, on_done)
         return
       end
       local analyze_ms = (vim.uv.hrtime() - analyze_t0) / 1e6
-      on_done(finalize(ctx, payload.results, payload.user_cost, payload.dbg, analyze_ms), nil)
+      on_done(finalize(ctx, payload, analyze_ms), nil)
     end)
 end
 
