@@ -6,7 +6,6 @@
 #include "Optimizer/OptimizerParamOverrides.h"
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -217,27 +216,16 @@ VF::LuaExports::Result<StartInputs> decodeStartInputs(
   return in;
 }
 
-// Background composition search. Owns its inputs and config so the worker is
-// independent of the FFI buffers and the main thread. The View is constructed
-// from the precomputed plan only once `vf_explore_poll` observes `ready()`.
-struct ExploreJob : AsyncJob {
+// Background composition search. The job owns its inputs and config so the
+// worker is independent of the FFI buffers and the main thread. The View is
+// constructed from the precomputed plan only once `vf_explore_poll` observes
+// `ready()`.
+struct ExploreState {
   StartInputs inputs;
   Config config;
-  std::optional<CompositionTraceResult> trace;
-
-  ExploreJob(StartInputs in, Config cfg, int deadlineMs)
-      : AsyncJob(deadlineMs), inputs(std::move(in)), config(std::move(cfg)) {}
-
-  void start() {
-    spawn([this] {
-      trace = View::computeTrace(
-          inputs.initialLines, inputs.initialPos,
-          inputs.goalLines, inputs.goalPos,
-          inputs.compositionParams, inputs.userSeq,
-          inputs.boundary, inputs.navContext, config, control());
-    });
-  }
+  CompositionTraceResult trace;
 };
+using ExploreJob = AsyncJob<ExploreState>;
 
 JobRegistry<ExploreJob> g_jobs;
 
@@ -270,8 +258,14 @@ VF::LuaExports::Result<string> startAsyncImpl(
   if (!inputsRes) return unexpected(inputsRes.error());
 
   auto job = std::make_unique<ExploreJob>(
-      std::move(*inputsRes), VF::LuaExports::g_config_internal, deadline_ms);
-  job->start();
+      ExploreState{std::move(*inputsRes), VF::LuaExports::g_config_internal, {}}, deadline_ms,
+      [](ExploreState& s, const SearchControl* control) {
+        s.trace = View::computeTrace(
+            s.inputs.initialLines, s.inputs.initialPos,
+            s.inputs.goalLines, s.inputs.goalPos,
+            s.inputs.compositionParams, s.inputs.userSeq,
+            s.inputs.boundary, s.inputs.navContext, s.config, control);
+      });
   const int job_id = g_jobs.create(std::move(job));
   return to_string(job_id);
 }
@@ -324,7 +318,8 @@ VFByteSlice vf_explore_poll(int job_id) {
     return helpers::byteSlice(storage);
   }
   std::unique_ptr<ExploreJob> owned = g_jobs.take(job_id);
-  StartInputs& in = owned->inputs;
+  ExploreState& s = owned->state();
+  StartInputs& in = s.inputs;
   const int view_id = g_registry.create(
       std::move(in.initialLines),
       in.initialPos,
@@ -332,18 +327,18 @@ VFByteSlice vf_explore_poll(int job_id) {
       in.goalPos,
       std::move(in.boundary),
       in.navContext,
-      std::move(owned->config),
+      std::move(s.config),
       in.userSeq,
       in.compositionParams,
-      std::move(*owned->trace));
+      std::move(s.trace));
   storage = to_string(view_id);
   return helpers::byteSlice(storage);
 }
 
-// Signals cancellation and frees the job; the jthread destructor joins the
-// worker on this (main) thread. The flag is polled between composition setup
-// phases and per pop in every search loop, so the join is bounded by one
-// diff's precompute or one pop expansion.
+// Signals cancellation and frees the job; dropping it joins the worker on this
+// (main) thread before any job state is torn down (see AsyncJob). The flag is
+// polled between composition setup phases and per pop in every search loop,
+// so the join is bounded by one diff's precompute or one pop expansion.
 int vf_explore_cancel(int job_id) {
   std::unique_ptr<ExploreJob> owned = g_jobs.take(job_id);
   if (!owned) return 0;
