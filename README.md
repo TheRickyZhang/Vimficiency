@@ -29,7 +29,7 @@ search — see [How it works](#how-it-works).
 - Neovim 0.11+
 - **Linux or macOS.** Windows is not yet supported.
 - Prebuilt libraries are published for Linux x86_64, Linux aarch64, and
-  macOS arm64 (built on Ubuntu 24.04 and macOS 14). On other systems, or
+  macOS arm64 (built on Ubuntu 24.04; the macOS build runs on 14.0+). On other systems, or
   when installing from an untagged commit, the install step builds from
   source and needs a C++23 compiler (GCC 13+ or Clang 16+) and CMake 3.20+.
 
