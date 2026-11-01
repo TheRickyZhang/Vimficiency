@@ -1,5 +1,9 @@
 # vimficiency
 
+[![CI](https://github.com/TheRickyZhang/Vimficiency/actions/workflows/bench.yml/badge.svg)](https://github.com/TheRickyZhang/Vimficiency/actions/workflows/bench.yml)
+[![Release](https://img.shields.io/github/v/release/TheRickyZhang/Vimficiency)](https://github.com/TheRickyZhang/Vimficiency/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 https://github.com/user-attachments/assets/d32cb577-8b72-4301-85ea-dc2c3d706a04
 
 One of the biggest challenges with Vim is knowing which of the many ways to perform an edit is the most efficient — or what all the applicable motions even are.
@@ -12,6 +16,13 @@ https://therickyzhang.github.io/Vimficiency/
 For the two algorithms underneath — how a buffer change is partitioned into
 planned edits, and how each plan is turned into keystrokes by shortest-path
 search — see [How it works](#how-it-works).
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Documentation](#documentation)
+- [How it works](#how-it-works)
+- [License](#license)
 
 ## Requirements
 
@@ -27,8 +38,12 @@ search — see [How it works](#how-it-works).
 vimficiency ships a native library (`libvimficiency.{so,dylib}`) that the
 Lua side loads via LuaJIT FFI. `scripts/install.sh` installs it as the plugin
 manager's build step: it downloads the prebuilt for your platform when the
-checkout is on a release tag, and otherwise builds from source. Pin a release
-(`version = "*"` in lazy.nvim) to get the prebuilt.
+checkout is on a release tag, and otherwise builds from source. Every snippet
+below pins the latest release so you get the prebuilt; drop the pin to follow
+`main`, which builds from source and needs the compiler from Requirements.
+
+First install takes a few seconds for the download, or a few minutes when it
+builds from source.
 
 ### lazy.nvim
 
@@ -45,13 +60,16 @@ checkout is on a release tag, and otherwise builds from source. Pin a release
 
 If you update the plugin and start seeing an "ABI mismatch" error on load,
 the shared library is stale against the new FFI bindings — run
-`:Lazy build vimficiency` to reinstall it.
+`:Lazy build vimficiency` to reinstall it. For "could not load libvimficiency"
+and other startup problems, see
+[Troubleshooting](doc-src/14-troubleshooting.md).
 
 ### packer.nvim
 
 ```lua
 use {
   "TheRickyZhang/Vimficiency",
+  tag = "*",
   run = "./scripts/install.sh",
   config = function() require("vimficiency").setup() end,
 }
@@ -60,7 +78,7 @@ use {
 ### vim-plug
 
 ```vim
-Plug 'TheRickyZhang/Vimficiency', { 'do': './scripts/install.sh' }
+Plug 'TheRickyZhang/Vimficiency', { 'tag': '*', 'do': './scripts/install.sh' }
 ```
 
 …then in your Lua config: `require("vimficiency").setup()`.
@@ -68,7 +86,7 @@ Plug 'TheRickyZhang/Vimficiency', { 'do': './scripts/install.sh' }
 ### Manual build
 
 ```bash
-git clone https://github.com/TheRickyZhang/Vimficiency
+git clone --branch v0.1.0 https://github.com/TheRickyZhang/Vimficiency
 cd Vimficiency
 ./scripts/install.sh
 ```

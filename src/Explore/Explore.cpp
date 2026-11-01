@@ -98,8 +98,9 @@ CursorPos insertExitCursor(const DiffState& diff) {
       newlineHandledByModeEntry
           ? Lines::unflatten(std::string(diff.insertedTextBody()))
           : diff.insertedLines();
-  std::string_view suffix =
-      newlineHandledByModeEntry ? "" : diff.boundary.suffix();
+  std::string_view suffix = newlineHandledByModeEntry
+      ? std::string_view{}
+      : std::string_view{diff.boundary.suffix()};
   return typedCommandsExitCursor(diff.beginPos, inserted, suffix);
 }
 

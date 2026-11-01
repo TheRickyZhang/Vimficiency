@@ -4,10 +4,28 @@ title: "Troubleshooting"
 
 # Troubleshooting
 
+## "could not load libvimficiency" on startup
+
+The native library is missing from `build/` in the plugin directory. Your
+plugin manager's build step did not run or failed — run it again
+(`:Lazy build vimficiency`, or `./scripts/install.sh` from the plugin
+directory) and read its output. Building from source needs a C++23 compiler
+and CMake 3.20+; pinning a release tag avoids the compile by downloading a
+prebuilt library instead.
+
+If you set `VIMFICIENCY_LIB_PATH`, it is tried first; make sure it points at
+an existing `libvimficiency.so` / `.dylib`.
+
+## "ABI mismatch" on startup
+
+The library in `build/` was built against an older `src/LuaExports/Api.def`
+than the Lua code you now have, usually after updating the plugin. Rebuild or
+re-download it the same way as above.
+
 ## `:Vimfy` command isn't defined
 
 You forgot `require('vimficiency').setup()` in your config, or `setup`
-errored (likely couldn't load the library — check `VIMFICIENCY_LIB_PATH`).
+errored — see the two sections above.
 
 ## Suggest never fires
 

@@ -47,6 +47,8 @@ using Phase = std::variant<Navigate, Transform, Insert>;
 
 template <class... Ts>
 struct overload : Ts... { using Ts::operator()...; };
+// Apple clang lacks aggregate CTAD (P1816); keep the guide explicit.
+template <class... Ts> overload(Ts...) -> overload<Ts...>;
 
 inline std::string_view phaseName(const Phase& p) {
   return std::visit(overload{

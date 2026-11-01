@@ -27,16 +27,20 @@ runs:
       uses: actions/cache@v4
       with:
         path: ~/.local/neovim/${{ inputs.neovim-version }}
-        key: neovim-${{ runner.os }}-${{ inputs.neovim-version }}
+        key: neovim-${{ runner.os }}-${{ runner.arch }}-${{ inputs.neovim-version }}
 
     - name: Install Neovim
       if: ${{ inputs.install-neovim == 'true' && steps.neovim-cache.outputs.cache-hit != 'true' }}
       shell: bash
       run: |
         set -euo pipefail
-        archive="${RUNNER_TEMP}/nvim-${{ inputs.neovim-version }}-linux-x86_64.tar.gz"
+        case "$(uname -m)" in
+          aarch64) nvim_arch=arm64 ;;
+          *)       nvim_arch=x86_64 ;;
+        esac
+        archive="${RUNNER_TEMP}/nvim-${{ inputs.neovim-version }}-linux-${nvim_arch}.tar.gz"
         install_dir="${HOME}/.local/neovim/${{ inputs.neovim-version }}"
-        curl -fsSL -o "${archive}" "https://github.com/neovim/neovim/releases/download/${{ inputs.neovim-version }}/nvim-linux-x86_64.tar.gz"
+        curl -fsSL -o "${archive}" "https://github.com/neovim/neovim/releases/download/${{ inputs.neovim-version }}/nvim-linux-${nvim_arch}.tar.gz"
         mkdir -p "${install_dir}"
         tar -xzf "${archive}" -C "${install_dir}" --strip-components=1
 
