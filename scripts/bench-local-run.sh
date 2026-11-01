@@ -152,7 +152,7 @@ cd "$WORK_REPO"
 
 # --- Build (Release) ---
 echo "[build] release at $PUSHED_SHA"
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF \
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF -DVIMF_BUILD_TESTS=ON \
   -DVIMF_TRACK_STATES=OFF \
   "${CCACHE_FLAGS[@]}"
 cmake --build build
@@ -229,7 +229,7 @@ fi
 
 if $IS_MAIN; then
   echo "[explore] building tracking-enabled target"
-  cmake -B build_track -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF \
+  cmake -B build_track -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF -DVIMF_BUILD_TESTS=ON \
     -DVIMF_TRACK_STATES=ON \
     "${CCACHE_FLAGS[@]}"
   cmake --build build_track --target vimfy_explore

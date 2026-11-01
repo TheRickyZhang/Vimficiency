@@ -24,6 +24,7 @@ title: "Commands reference"
 | `:Vimfy suggest <on\|off\|toggle>`         | Runtime toggle for auto-suggest (works with zero config). |
 | `:Vimfy config`                            | Show the current configuration.                      |
 | `:Vimfy reload`                            | Rebuild the C++ library (needs restart).             |
+| `:Vimfy version`                           | Show the plugin version.                             |
 | `:Vimfy help`                              | Show the command list.                               |
 
 ## Alias grammar

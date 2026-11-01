@@ -226,31 +226,19 @@ Memory:
   one region per unmatched block: always valid, never weighed against merging
   or splitting, so downstream sees a coarse partition rather than an abort
 
-Why a sweep and not a per-cell running min: `moveCost`/`delCost` violate the
-quadrangle (Monge) inequality extensively (`insCost` satisfies it), so the
-generic SMAWK/concave-gap speedups for a black-box span oracle do not apply.
-The witness is `(0,1,1,k)`: `w(0,1)+w(1,k) > w(0,k)` — splitting a range
-mid-unit costs more than the whole, because enclosing a full unit lets one
-`}`/`dap` replace the parts (the *collapse*). Measured on the earlier
-tree-scaffold prototype: ~19k violations for move/delete, 0 for insert.
+Why a sweep and not a per-cell running min: a running min extends a span one
+unit at a time, which assumes extending only ever adds cost. Deletion and
+movement break that — once a span grows to enclose a whole line or paragraph,
+one `{k}dd`/`dap`/`}` replaces everything inside it, so a longer span can be
+*cheaper* than its pieces. A span's cost therefore cannot be built up
+incrementally; each start needs its own pass, and the sweep keeps that
+affordable by pricing every end of one start in a single `O(N)` walk.
 
-Additivity would restore a running-min sweep, but additive movement charges
-per-char traversal and can never collapse a spanned unit. It overcharges
-exactly the long matched gaps we want to skip cheaply, so it is a worse model,
-not a faster equivalent; the concave count penalty
-(`dev/optimizer/count-penalty.md`) keeps the oracle subadditive too.
-
-The QI argument rules out speedups on an opaque cost matrix, not exploiting the
-oracle's internal structure, which is what the solver does:
-- the insert side is *exactly* per-unit additive (all `RunningEffort` metrics
-  are bigram-window; pinned by `tests/Unit/Misc/EffortDecompositionTest.cpp`),
-  so `in` extends by `PS(goalRaw(j)) - PS(goalRaw(pj))` per unit with the
-  boundary `cut` paid once on entry
-- the delete and move sides share the tiling sweep: one pass from a start
-  prices every end, so a start's whole table row costs one `O(N)` walk instead
-  of one span query per end
-- the span-local entry clamp lives inside the sweep (the run containing the
-  start gets a zero start slot); K-best distinctness is the partition key
+Insertion has no such effect — typing is exactly per-unit additive (every
+`RunningEffort` metric is bigram-window; pinned by
+`tests/Unit/Misc/EffortDecompositionTest.cpp`) — so `in` extends by
+`PS(goalRaw(j)) - PS(goalRaw(pj))` per unit, with the boundary `cut` paid once
+on entry.
 
 ### Tiled command-cost oracle (delete + movement)
 

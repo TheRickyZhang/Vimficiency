@@ -70,6 +70,7 @@ structural changes. Configure the Release tree once:
 
 ```bash
 cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF \
+  -DVIMF_BUILD_TESTS=ON \
   -DVIMF_TRACK_STATES=OFF -DFETCHCONTENT_FULLY_DISCONNECTED=OFF
 cmake --build build-release --target vimfy_benchmarks
 ```

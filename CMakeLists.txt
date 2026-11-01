@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(vimficiency LANGUAGES CXX)
+project(vimficiency VERSION 0.1.0 LANGUAGES CXX)
 
 # Default CMAKE_BUILD_TYPE to Debug for local iteration when none is specified.
 # Single-config generators (Make, Ninja) leave `CMAKE_BUILD_TYPE` empty by
@@ -11,8 +11,8 @@ project(vimficiency LANGUAGES CXX)
 # Skipping for multi-config generators (Visual Studio, Xcode), where
 # CMAKE_CONFIGURATION_TYPES drives the choice per-build instead.
 #
-# CI overrides this with `-DCMAKE_BUILD_TYPE=Release` explicitly, so this
-# only affects bare `cmake -B build` invocations by developers.
+# CI and scripts/install.sh pass `-DCMAKE_BUILD_TYPE=Release` explicitly, so
+# this only affects bare `cmake -B build` invocations by developers.
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     message(STATUS "CMAKE_BUILD_TYPE not set, defaulting to Debug")
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
@@ -27,6 +27,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Have debug enabled by default for development
 option(VIMF_DEBUG "Enable debug output" ON)
+
+# Off by default so plugin installs build only the shared library: the test
+# tree fetches six third-party dependencies (see tests/CMakeLists.txt).
+option(VIMF_BUILD_TESTS "Build test binaries and fetch their dependencies" OFF)
 
 # Compile in explored-state tracking for the A* exploration tooling (off by
 # default — enabling this adds per-state allocations on every popped node).
@@ -133,9 +137,9 @@ target_link_libraries(vimficiency PRIVATE vimfy_core)
 add_executable(vimficiency_cli src/main.cpp)
 target_link_libraries(vimficiency_cli PRIVATE vimfy_core)
 
-# Tests
-enable_testing()
-add_subdirectory(tests)
-
-# Tooling (e.g. exploration data collector; depends on test_utils)
-add_subdirectory(tools)
+if(VIMF_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+  # Tooling (e.g. exploration data collector; depends on test_utils)
+  add_subdirectory(tools)
+endif()

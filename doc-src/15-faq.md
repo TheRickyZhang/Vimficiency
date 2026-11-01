@@ -4,10 +4,6 @@ title: "FAQ"
 
 # FAQ
 
-> **Status: placeholder.** This page will accumulate common questions as
-> they come up. Below are a few anticipated ones with short answers — full
-> versions will be fleshed out over time.
-
 ## Does Vimfy slow down Neovim?
 
 No. Key capture is a small Lua append per keystroke. The optimizer only

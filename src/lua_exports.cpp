@@ -1,6 +1,7 @@
 #include "LuaExports/Common.h"
 
 #include "AbiHash.h"
+#include "BuildConfig.h"
 #include "Optimizer/GlobalRuntimeOptions.h"
 #include "Utils/Debug.h"
 #include "VimCore/VimOptions.h"
@@ -172,6 +173,7 @@ VFByteSlice vf_get_warnings() {
 }
 
 int vf_version() { return 1; }
+const char *vf_version_string() { return VIMF_VERSION; }
 
 const char *vf_abi_hash() { return VF_ABI_HASH; }
 

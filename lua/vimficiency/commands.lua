@@ -266,12 +266,12 @@ subcommands.reload = {
       vim.notify("vimfy reload already running", vim.log.levels.WARN)
       return
     end
-    -- Resolve relative to the plugin root. A sibling `build/` is only expected
-    -- in dev installs; packaged installs ship the pre-built `.so`.
+    -- A prebuilt install has a library in `build/` but no CMake cache to
+    -- rebuild from.
     local build_dir = util.find_plugin_root() .. "/build"
-    if vim.fn.isdirectory(build_dir) == 0 then
-      vim.notify("vimfy reload: build dir missing: " .. build_dir ..
-        "\n(this command is dev-only; install via a plugin manager bundles a pre-built .so)",
+    if vim.fn.filereadable(build_dir .. "/CMakeCache.txt") == 0 then
+      vim.notify("vimfy reload: no CMake build tree at " .. build_dir ..
+        "\n(installed from a prebuilt; run `./scripts/install.sh` or `:Lazy build vimficiency` to rebuild from source)",
         vim.log.levels.ERROR)
       return
     end
@@ -325,13 +325,14 @@ subcommands.reload = {
           -- immediately after a successful load keeps build/ clean and
           -- avoids accumulating `libvimficiency-reload-*.so` artifacts
           -- across sessions.
-          local src = build_dir .. "/libvimficiency.so"
+          local src = build_dir .. "/" .. ffi_core.lib_filename
           -- `%.0f` avoids scientific-notation filenames: `tostring` on a
           -- Lua number >= ~2^53 (hrtime ns reaches that after ~104 days
           -- of uptime) formats as `1.0742e+14`, an ugly filename. `%.0f`
           -- always emits decimal form.
           local unique = build_dir .. "/libvimficiency-reload-"
-            .. string.format("%.0f", vim.uv.hrtime()) .. ".so"
+            .. string.format("%.0f", vim.uv.hrtime())
+            .. ffi_core.lib_filename:match("%.[^.]+$")
           local copied = false
           local copy_ok, copy_err = pcall(function()
             copied = vim.uv.fs_copyfile(src, unique)
@@ -339,7 +340,7 @@ subcommands.reload = {
           if not copy_ok or not copied then
             vim.notify(
               "vimfy reload: rebuild succeeded but copying " ..
-              "libvimficiency.so for reload failed: " .. tostring(copy_err or "?")
+              ffi_core.lib_filename .. " for reload failed: " .. tostring(copy_err or "?")
               .. " — restart Neovim to load new library.",
               vim.log.levels.WARN, { title = "Vimfy" })
             return
@@ -414,6 +415,14 @@ subcommands.config = {
     vim.bo[buf].buftype = "nofile"
     vim.bo[buf].bufhidden = "wipe"
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(debug_output, "\n"))
+  end,
+}
+
+subcommands.version = {
+  desc = "Show the plugin version",
+  usage = "version",
+  fn = function()
+    vim.notify("vimficiency " .. ffi_core.version_string(), vim.log.levels.INFO)
   end,
 }
 

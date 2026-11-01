@@ -8,3 +8,5 @@
 // the "disabled" branch.
 
 #cmakedefine01 VIMF_TRACK_STATES
+
+#define VIMF_VERSION "@PROJECT_VERSION@"

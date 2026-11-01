@@ -7,7 +7,7 @@ One of the biggest challenges with Vim is knowing which of the many ways to perf
 vimficiency watches how you edit and surfaces shorter keystroke sequences that would have produced the same result, with awareness of customizable per-key effort and the algorithmically-tractable subset of Vim's grammar. You keep editing the way you already do; the plugin runs in the background and lets you replay suggestions side-by-side to learn.
 
 The benchmark dashboard with details on the search process is here:
-https://therickyzhang.github.io/Vimfy/
+https://therickyzhang.github.io/Vimficiency/
 
 For the two algorithms underneath — how a buffer change is partitioned into
 planned edits, and how each plan is turned into keystrokes by shortest-path
@@ -16,23 +16,27 @@ search — see [How it works](#how-it-works).
 ## Requirements
 
 - Neovim 0.11+
-- A C++23 compiler (GCC 13+ or Clang 16+) and CMake 4.1+ to build the native
-  library. **Linux and macOS only** at the moment — Windows is not yet
-  supported. Prebuilt binaries are not yet shipped; the plugin is currently
-  built from source on install.
+- **Linux or macOS.** Windows is not yet supported.
+- Prebuilt libraries are published for Linux x86_64, Linux aarch64, and
+  macOS arm64 (built on Ubuntu 24.04 and macOS 14). On other systems, or
+  when installing from an untagged commit, the install step builds from
+  source and needs a C++23 compiler (GCC 13+ or Clang 16+) and CMake 3.20+.
 
 ## Installation
 
 vimficiency ships a native library (`libvimficiency.{so,dylib}`) that the
-Lua side loads via LuaJIT FFI. Plugin managers can compile it as part of the
-install step.
+Lua side loads via LuaJIT FFI. `scripts/install.sh` installs it as the plugin
+manager's build step: it downloads the prebuilt for your platform when the
+checkout is on a release tag, and otherwise builds from source. Pin a release
+(`version = "*"` in lazy.nvim) to get the prebuilt.
 
 ### lazy.nvim
 
 ```lua
 {
-  "therickyzhang/vimficiency",
-  build = "cmake -B build && cmake --build build",
+  "TheRickyZhang/Vimficiency",
+  version = "*",
+  build = "./scripts/install.sh",
   config = function()
     require("vimficiency").setup()
   end,
@@ -40,15 +44,15 @@ install step.
 ```
 
 If you update the plugin and start seeing an "ABI mismatch" error on load,
-the prebuilt artifact is stale against the new FFI bindings — run
-`:Lazy build vimficiency` to recompile.
+the shared library is stale against the new FFI bindings — run
+`:Lazy build vimficiency` to reinstall it.
 
 ### packer.nvim
 
 ```lua
 use {
-  "therickyzhang/vimficiency",
-  run = "cmake -B build && cmake --build build",
+  "TheRickyZhang/Vimficiency",
+  run = "./scripts/install.sh",
   config = function() require("vimficiency").setup() end,
 }
 ```
@@ -56,7 +60,7 @@ use {
 ### vim-plug
 
 ```vim
-Plug 'therickyzhang/vimficiency', { 'do': 'cmake -B build && cmake --build build' }
+Plug 'TheRickyZhang/Vimficiency', { 'do': './scripts/install.sh' }
 ```
 
 …then in your Lua config: `require("vimficiency").setup()`.
@@ -64,17 +68,23 @@ Plug 'therickyzhang/vimficiency', { 'do': 'cmake -B build && cmake --build build
 ### Manual build
 
 ```bash
-git clone https://github.com/therickyzhang/vimficiency
-cd vimficiency
-cmake -B build
-cmake --build build
+git clone https://github.com/TheRickyZhang/Vimficiency
+cd Vimficiency
+./scripts/install.sh
+```
+
+Or configure CMake yourself; this builds only the library, in Release:
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF
+cmake --build build -j --target vimficiency
 ```
 
 Then either place the plugin on your `runtimepath` or point at the library
 explicitly:
 
 ```bash
-export VIMFICIENCY_LIB_PATH=/path/to/vimficiency/build/libvimficiency.so
+export VIMFICIENCY_LIB_PATH=/path/to/Vimficiency/build/libvimficiency.so   # .dylib on macOS
 ```
 
 For a full setup with configuration and keymaps, see
@@ -103,6 +113,7 @@ For the full set of commands, save/store/fetch flow, configuration, and the effo
 
 - **User guide:** [`doc-src/README.md`](doc-src/README.md) — installation, the four session types, keymap contract, configuration, effort model, troubleshooting.
 - **In-editor:** `:help vimficiency` (generated from `doc-src/`).
+- **Limitations:** [`doc-src/13-limitations.md`](doc-src/13-limitations.md) — what the optimizer cannot model.
 - **Internals:** `dev/` — implementation notes on the optimizer, FFI conventions, replay precompute, etc.
 
 ## How it works
@@ -124,15 +135,17 @@ https://github.com/user-attachments/assets/d214130e-4026-4ea6-994d-fe85c3503277
 
 Pure edit distance always prefers the first. Moving between regions and re-entering insert mode cost keystrokes too, which is what makes the second cheaper here.
 
-**Objective.** Write both buffers as kept runs interleaved with edits, $A = K_0 D_1 K_1 \cdots D_t K_t$ and $B = K_0 I_1 K_1 \cdots I_t K_t$, and minimize
+**Objective.** A plan works left to right through the change, deleting runs of $A$, typing runs of $B$, and moving across the runs they share. Throughout, `i` counts the characters of $A$ consumed and `j` the characters of $B$ produced.
 
-```math
-\sum_{k=1}^{t} \mathrm{del}(D_k) \;+\; \sum_{k=1}^{t} \mathrm{ins}(I_k) \;+\; \sum_{k=1}^{t-1} \mathrm{move}(K_k)
+A plan's price is
+
+```
+sum(delete costs) + sum(insert costs) + sum(move costs)
 ```
 
-$K_0$ and $K_t$ are free: every optimal plan starts at the first differing character and ends at the last, so reaching them from the cursor costs the same for every plan.
+The shared prefix and suffix are free: every optimal plan starts at the first differing character and ends at the last, so reaching them from the cursor costs the same for every plan.
 
-**Pricing a step.** With `i` characters of `A` consumed and `j` characters of `B` produced, there are four kinds of step:
+**Pricing a step.** A step advances `(i, j)` in one of four ways:
 
 | step   | commands                          | cost                                          | `(i, j) →`    |
 |--------|-----------------------------------|-----------------------------------------------|---------------|
@@ -206,8 +219,6 @@ cross   previous block's trailing diagonal → this block's leading one   moveCo
 O\Big(\sum_k (n_k + m_k)\, N_k\, c \;+\; n_k m_k\Big) \;+\; \text{one crossing sweep per seal}
 ```
 
-Generic concave-gap speedups (SMAWK) do not apply: move and delete violate the quadrangle inequality, since one `dap` can replace the deletions it encloses.
-
 ### 2. Shortest-path search: from a plan to keystrokes
 
 The partition fixes *what* changes; the search finds the cheapest keystrokes that do it. Nodes are editor states, edges are Vim commands applied by our own simulator (verified against a headless Neovim), and edge weights are typing effort.
@@ -249,3 +260,4 @@ Harnesses in `tests/Debug/` (`NavQuality`, `EditCompQuality`) measure the gap ag
 
 ## License
 
+MIT — see [LICENSE](LICENSE).

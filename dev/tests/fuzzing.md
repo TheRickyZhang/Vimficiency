@@ -21,7 +21,7 @@ not CI.
 ## Build (separate dir, leaves the fast gate alone)
 
 ```bash
-cmake -B build_fuzz -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DFUZZTEST_FUZZING_MODE=on
+cmake -B build_fuzz -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DFUZZTEST_FUZZING_MODE=on -DVIMF_BUILD_TESTS=ON
 cmake --build build_fuzz --target vimfy_property_tests
 ```
 

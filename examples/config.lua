@@ -1,6 +1,7 @@
 return {
-  dir = "~/Projects/vimficiency",
-  name = "vimficiency",
+  "TheRickyZhang/Vimficiency",
+  version = "*",
+  build = "./scripts/install.sh",
   lazy = false,
   config = function()
 

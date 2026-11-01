@@ -39,4 +39,6 @@ config for syntax errors or a load-order issue, or see
 
 If you see an "ABI mismatch" error on load, the shared library is stale
 against the Lua FFI bindings — rebuild the plugin (`:Lazy build vimficiency`
-or `cmake --build <plugin-dir>/build`).
+or `./scripts/install.sh` in the plugin directory). The script downloads the
+prebuilt library for your platform when the checkout is on a release tag and
+builds from source otherwise.

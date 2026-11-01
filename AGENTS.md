@@ -93,6 +93,7 @@ Lua (User concepts):
 ## Build Commands
 
 ```bash
+cmake -B build -DVIMF_BUILD_TESTS=ON   # once; tests are opt-in so plugin installs build only the library
 cmake --build build -j
 ```
 

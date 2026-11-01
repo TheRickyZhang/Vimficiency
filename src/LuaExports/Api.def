@@ -107,6 +107,7 @@ VFByteSlice vf_get_debug();
 VFByteSlice vf_get_warnings();
 VFByteSlice vf_get_optimizer_defaults();
 int vf_version();
+const char* vf_version_string();
 const char* vf_abi_hash();
 VFByteSlice vf_debug_config();
 

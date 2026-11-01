@@ -252,7 +252,8 @@ cmake -S . -B build-fuzz \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DCMAKE_C_COMPILER=clang \
   -DCMAKE_CXX_COMPILER=clang++ \
-  -DFUZZTEST_FUZZING_MODE=ON
+  -DFUZZTEST_FUZZING_MODE=ON \
+  -DVIMF_BUILD_TESTS=ON
 
 cmake --build build-fuzz -j --target vimfy_safety_tests
 

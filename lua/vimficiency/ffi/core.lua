@@ -69,7 +69,11 @@ local function load_lib()
     end
   end
 
-  error("Could not load " .. lib_filename .. " - tried: " .. table.concat(paths, ", "))
+  error(string.format(
+    "vimficiency: could not load %s (tried: %s). Build it with " ..
+    "`./scripts/install.sh` in the plugin directory, or `:Lazy build " ..
+    "vimficiency` / your plugin manager's equivalent.",
+    lib_filename, table.concat(paths, ", ")), 0)
 end
 
 local function build_enum(count, name_fn)
@@ -82,6 +86,7 @@ local function build_enum(count, name_fn)
 end
 
 M.lib = load_lib()
+M.lib_filename = lib_filenames()
 
 M.Key = build_enum(M.lib.VF_KEY_COUNT, M.lib.vf_key_name)
 M.Finger = build_enum(M.lib.VF_FINGER_COUNT, M.lib.vf_finger_name)
@@ -155,6 +160,10 @@ end
 
 function M.version()
   return M.lib.vf_version()
+end
+
+function M.version_string()
+  return ffi.string(M.lib.vf_version_string())
 end
 
 function M.debug_config()

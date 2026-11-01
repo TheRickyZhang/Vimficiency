@@ -76,7 +76,7 @@ require_executable() {
   fi
 
   echo "error: $path not found" >&2
-  echo "  Run: cmake -B build && cmake --build build --target $target" >&2
+  echo "  Run: cmake -B build -DVIMF_BUILD_TESTS=ON && cmake --build build --target $target" >&2
   exit 1
 }
 

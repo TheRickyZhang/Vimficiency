@@ -58,7 +58,7 @@ jobs:
 
       - name: Build (Debug)
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Debug \
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug -DVIMF_BUILD_TESTS=ON \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build -j$(nproc)
@@ -93,7 +93,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF \
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF -DVIMF_BUILD_TESTS=ON \
             -DVIMF_TRACK_STATES=OFF \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
@@ -106,7 +106,7 @@ jobs:
 
       - name: Build tracking-enabled exploration target
         run: |
-          cmake -B build_track -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF \
+          cmake -B build_track -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF -DVIMF_BUILD_TESTS=ON \
             -DVIMF_TRACK_STATES=ON \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache

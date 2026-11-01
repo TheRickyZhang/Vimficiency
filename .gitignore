@@ -26,6 +26,10 @@ dev/vim/
 /doc/tags
 /web/dashboard/tsconfig.tsbuildinfo
 
+# fuzztest's ANTLR runtime dependency writes its built libraries to
+# <source-root>/dist during a VIMF_BUILD_TESTS build.
+/dist/
+
 # Test seed files (generated when using random seeds)
 tests/.last_seeds.txt
 tests/Approval/fixtures/*.received.*

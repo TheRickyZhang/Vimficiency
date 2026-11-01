@@ -1,0 +1,79 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+env:
+  NEOVIM_VERSION: v0.11.5
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            asset: libvimficiency-linux-x86_64.so
+            lib: libvimficiency.so
+          - os: ubuntu-24.04-arm
+            asset: libvimficiency-linux-aarch64.so
+            lib: libvimficiency.so
+          - os: macos-14
+            asset: libvimficiency-macos-arm64.dylib
+            lib: libvimficiency.dylib
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup CI deps (Linux)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-neovim: "true"
+          neovim-version: ${{ env.NEOVIM_VERSION }}
+
+      - name: Setup deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake neovim
+
+      - name: Build library
+        run: |
+          flags=(-DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF -DVIMF_BUILD_TESTS=OFF)
+          if [ "$RUNNER_OS" = Linux ]; then
+            flags+=(-DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14)
+          fi
+          cmake -B build "${flags[@]}"
+          cmake --build build -j --target vimficiency
+
+      - name: Load smoke test
+        # Loads the built library through the Lua FFI loader, which also
+        # checks the embedded Api.def hash against the checkout.
+        run: |
+          nvim --headless -u NONE --cmd "set rtp+=." \
+            -c 'lua print("vimficiency " .. require("vimficiency.ffi").version_string())' \
+            -c q
+
+      - name: Stage asset
+        run: cp "build/${{ matrix.lib }}" "${{ matrix.asset }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes assets/*
