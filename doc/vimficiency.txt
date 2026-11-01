@@ -1295,6 +1295,10 @@ want to show a colleague.
 ==============================================================================
 14. Troubleshooting                              *vimficiency-troubleshooting*
 
+Start with `:checkhealth vimficiency`. It reports the Neovim version, whether
+the native library loaded and from where, its version, and whether `setup()`
+has run.
+
 
 “COULD NOT LOAD LIBVIMFICIENCY” ON STARTUP
 
