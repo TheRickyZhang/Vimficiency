@@ -1,4 +1,4 @@
-*vimficiency.txt*  *vimficiency*        For Neovim >= 0.11        Last change: 2026 August 31
+*vimficiency.txt*  *vimficiency*       For Neovim >= 0.11       Last change: 2026 November 01
 
 ==============================================================================
 Table of Contents                              *vimficiency-table-of-contents*
@@ -61,7 +61,9 @@ config for syntax errors or a load-order issue, or see 14. Troubleshooting.
 
 If you see an "ABI mismatch" error on load, the shared library is stale against
 the Lua FFI bindings — rebuild the plugin (`:Lazy build vimficiency` or
-`cmake --build <plugin-dir>/build`).
+`./scripts/install.sh` in the plugin directory). The script downloads the
+prebuilt library for your platform when the checkout is on a release tag and
+builds from source otherwise.
 
 
 ==============================================================================
@@ -989,6 +991,8 @@ C++ source (`cpp/effort_model.*`) is the spec.
   :Vimfy reload                         Rebuild the C++ library (needs
                                         restart).
 
+  :Vimfy version                        Show the plugin version.
+
   :Vimfy help                           Show the command list.
   -----------------------------------------------------------------------------
 
@@ -1352,10 +1356,6 @@ Run `:Vimfy config` and capture the output along with the sequence you typed
 ==============================================================================
 15. FAQ                                                      *vimficiency-faq*
 
-
-  **Status: placeholder.** This page will accumulate common questions as they
-  come up. Below are a few anticipated ones with short answers — full versions
-  will be fleshed out over time.
 
 DOES VIMFY SLOW DOWN NEOVIM?
 
