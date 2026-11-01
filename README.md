@@ -86,7 +86,7 @@ Plug 'TheRickyZhang/Vimficiency', { 'tag': '*', 'do': './scripts/install.sh' }
 ### Manual build
 
 ```bash
-git clone --branch v0.1.0 https://github.com/TheRickyZhang/Vimficiency
+git clone --branch v0.1.1 https://github.com/TheRickyZhang/Vimficiency
 cd Vimficiency
 ./scripts/install.sh
 ```

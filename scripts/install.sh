@@ -34,6 +34,7 @@ try_prebuilt() {
     return 1
   fi
   mkdir -p build
+  chmod 644 "$tmp"
   mv "$tmp" "build/$lib"
   echo "vimficiency: installed prebuilt $tag ($asset)"
 }

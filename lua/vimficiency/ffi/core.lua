@@ -65,6 +65,7 @@ local function load_lib()
           "vimficiency` / your plugin manager's equivalent).",
           path, got_hash, expected_hash, root), 0)
       end
+      M.lib_path = path
       return lib
     end
   end

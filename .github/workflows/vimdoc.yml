@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   generate:
@@ -35,11 +36,14 @@ jobs:
       - name: Post-process vimdoc
         run: bash scripts/postprocess-vimdoc.sh
 
-      - name: Commit regenerated vimdoc
-        uses: stefanzweifel/git-auto-commit-action@v5.2.0
+      # A PR rather than a push to main: a bot commit landing on main right
+      # after a push makes the next local push non-fast-forward.
+      - name: Open PR with regenerated vimdoc
+        uses: peter-evans/create-pull-request@v7
         with:
-          commit_message: 'docs: regenerate vimdoc'
-          file_pattern: doc/vimficiency.txt
-          commit_user_name: TheRickyZhang
-          commit_user_email: 140441625+TheRickyZhang@users.noreply.github.com
-          commit_author: 'TheRickyZhang <140441625+TheRickyZhang@users.noreply.github.com>'
+          branch: bot/vimdoc
+          commit-message: 'docs: regenerate vimdoc'
+          title: 'docs: regenerate vimdoc'
+          body: 'Regenerated `doc/vimficiency.txt` from `doc-src/`.'
+          add-paths: doc/vimficiency.txt
+          delete-branch: true

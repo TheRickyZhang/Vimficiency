@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(vimficiency VERSION 0.1.0 LANGUAGES CXX)
+project(vimficiency VERSION 0.1.1 LANGUAGES CXX)
 
 # Default CMAKE_BUILD_TYPE to Debug for local iteration when none is specified.
 # Single-config generators (Make, Ninja) leave `CMAKE_BUILD_TYPE` empty by

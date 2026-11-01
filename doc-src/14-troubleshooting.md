@@ -4,6 +4,10 @@ title: "Troubleshooting"
 
 # Troubleshooting
 
+Start with `:checkhealth vimficiency`. It reports the Neovim version, whether
+the native library loaded and from where, its version, and whether `setup()`
+has run.
+
 ## "could not load libvimficiency" on startup
 
 The native library is missing from `build/` in the plugin directory. Your
