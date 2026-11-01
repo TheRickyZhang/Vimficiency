@@ -15,6 +15,9 @@ permissions:
 
 jobs:
   codex_review:
+    # Bot-opened PRs (vimdoc regeneration) are machine output; codex-action
+    # also rejects github-actions[bot] as an actor without write access.
+    if: github.event.pull_request.user.login != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR head
