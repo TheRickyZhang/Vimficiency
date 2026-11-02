@@ -123,12 +123,12 @@ TEST(VimDiffTraceExport, ExportExample) {
   const FlatText initial(initialLines), goal(goalLines);
   ASSERT_NE(initial.text, goal.text);
   const Typing typing(goal, config);
-  const vector<Block> blocks =
-      sealMatchedRuns(initial, goal, typing, initialLines, goalLines, config, options);
   TilingCost del(initial, options.moveDeleteScale, options.maxPrefixCount,
                  TilingCost::Kind::Delete);
   TilingCost move(initial, options.moveDeleteScale, options.maxPrefixCount,
                   TilingCost::Kind::Move);
+  const vector<Block> blocks =
+      sealMatchedRuns(initial, goal, typing, del, move, initialLines, goalLines);
   auto matches = [&](int ra, int rb) { return initial.text[ra] == goal.text[rb]; };
 
   // The K=1 DP, naive form: same relaxations as solveVimDiff, one event each.
@@ -148,7 +148,7 @@ TEST(VimDiffTraceExport, ExportExample) {
         if (j > 0) {
           const int rj = b.bBegin + j - 1;
           const double typed = typing.PS[rj + 1] - typing.PS[rj];
-          const double enter = typing.entry + typing.esc - typing.cut[rj] + typed;
+          const double enter = typing.entry + typing.esc + typed;
           if (t.in[i][j - 1].cost < INF)
             tracer.relax(t.in[i][j], t.in[i][j - 1], typed, TStep::Type, k, true, i, j, k, true, i,
                          j - 1);
@@ -195,7 +195,7 @@ TEST(VimDiffTraceExport, ExportExample) {
                        pi, j);
           if (j == m) continue;
           const int rj = b.bBegin + j;
-          const double change = typing.esc - typing.cut[rj] + typing.PS[rj + 1] - typing.PS[rj];
+          const double change = typing.esc + typing.PS[rj + 1] - typing.PS[rj];
           tracer.relax(t.in[i][j + 1], seeds[pi], delCost + change, TStep::Change, k, true, i,
                        j + 1, k, false, pi, j);
         }
@@ -256,15 +256,12 @@ TEST(VimDiffTraceExport, ExportExample) {
   }
 
   // Verification against the production planner.
-  CostOptions altOptions = options;
-  altOptions.maxPlans = 4;
-  const vector<CostBreakdown> breakdowns =
-      VimDiff::calculateBreakdown(initialLines, goalLines, config, altOptions);
-  ASSERT_FALSE(breakdowns.empty());
-  EXPECT_NEAR(best, breakdowns[0].total, 1e-9);
-  ASSERT_EQ(regions.size(), breakdowns[0].regions.size());
+  const CostBreakdown breakdown =
+      VimDiff::calculateBreakdown(initialLines, goalLines, config, options);
+  EXPECT_NEAR(best, breakdown.total, 1e-9);
+  ASSERT_EQ(regions.size(), breakdown.regions.size());
   for (size_t r = 0; r < regions.size(); r++) {
-    const DiffState& d = breakdowns[0].regions[r].diff;
+    const DiffState& d = breakdown.regions[r].diff;
     EXPECT_EQ(initial.text.substr(regions[r].aBegin, regions[r].aEnd - regions[r].aBegin),
               d.deletedText);
     EXPECT_EQ(goal.text.substr(regions[r].bBegin, regions[r].bEnd - regions[r].bBegin),
@@ -289,8 +286,8 @@ TEST(VimDiffTraceExport, ExportExample) {
   out["changeExtra"] = json::array();
   for (int rj = 0; rj < (int)goal.text.size(); rj++) {
     out["typed"].push_back(typing.PS[rj + 1] - typing.PS[rj]);
-    out["enterExtra"].push_back(typing.entry + typing.esc - typing.cut[rj]);
-    out["changeExtra"].push_back(typing.esc - typing.cut[rj]);
+    out["enterExtra"].push_back(typing.entry + typing.esc);
+    out["changeExtra"].push_back(typing.esc);
   }
   out["blocks"] = json::array();
   for (int k = 0; k < (int)blocks.size(); k++)
@@ -336,26 +333,24 @@ TEST(VimDiffTraceExport, ExportExample) {
   out["cells"] = cells;
   out["optPath"] = path;
 
-  // Alternative plans the DP weighed, with raw spans reconstructed from the
-  // kept-run identity (b-side begin = prev bEnd + gap on the a side).
-  json plans = json::array();
-  for (const CostBreakdown& bd : breakdowns) {
-    json regs = json::array();
-    int prevAEnd = 0, prevBEnd = 0;
-    for (const RegionBreakdown& rb : bd.regions) {
-      const int aBegin = DiffText::positionToFlatIndex(rb.diff.beginPos, initialLines);
-      const int aEnd = aBegin + (int)rb.diff.deletedText.size();
-      const int bBegin = prevBEnd + (aBegin - prevAEnd);
-      const int bEnd = bBegin + (int)rb.diff.insertedText.size();
-      prevAEnd = aEnd;
-      prevBEnd = bEnd;
-      regs.push_back({{"aBegin", aBegin}, {"aEnd", aEnd}, {"bBegin", bBegin}, {"bEnd", bEnd},
-                      {"deleted", rb.diff.deletedText}, {"inserted", rb.diff.insertedText},
-                      {"del", rb.del}, {"ins", rb.ins}, {"move", rb.move}});
-    }
-    plans.push_back({{"cost", bd.total}, {"regions", regs}});
+  // The plan with raw spans reconstructed from the kept-run identity (b-side
+  // begin = prev bEnd + gap on the a side). A one-element list: the animation
+  // scenes that compare alternatives read the committed trace files, which
+  // predate the planner's K-best removal.
+  json regs = json::array();
+  int prevAEnd = 0, prevBEnd = 0;
+  for (const RegionBreakdown& rb : breakdown.regions) {
+    const int aBegin = DiffText::positionToFlatIndex(rb.diff.beginPos, initialLines);
+    const int aEnd = aBegin + (int)rb.diff.deletedText.size();
+    const int bBegin = prevBEnd + (aBegin - prevAEnd);
+    const int bEnd = bBegin + (int)rb.diff.insertedText.size();
+    prevAEnd = aEnd;
+    prevBEnd = bEnd;
+    regs.push_back({{"aBegin", aBegin}, {"aEnd", aEnd}, {"bBegin", bBegin}, {"bEnd", bEnd},
+                    {"deleted", rb.diff.deletedText}, {"inserted", rb.diff.insertedText},
+                    {"del", rb.del}, {"ins", rb.ins}, {"move", rb.move}});
   }
-  out["plans"] = plans;
+  out["plans"] = json::array({{{"cost", breakdown.total}, {"regions", regs}}});
 
   ofstream f(outPath);
   ASSERT_TRUE(f.is_open()) << outPath;

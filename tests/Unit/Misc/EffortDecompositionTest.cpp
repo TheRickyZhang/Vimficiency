@@ -1,10 +1,9 @@
-// Pins the RunningEffort monoid identity that VimDiff's insert-cost collapse
-// relies on: because every metric is bigram-window with a one-key boundary,
-// the standalone effort of typing any substring s[q:j) equals
-// PS(j) - PS(q) - cut(q), where PS is the prefix effort of typing s[0:j) as one
-// chained sequence and cut(q) is the single bigram correction straddling q.
-// If a future effort metric grows the context window (e.g. a long same-hand-run
-// penalty), this test fails and VimDiff's solveAll() must be revisited.
+// Pins the RunningEffort monoid identity: because every metric is bigram-window
+// with a one-key boundary, the standalone effort of typing any substring s[q:j)
+// equals PS(j) - PS(q) - cut(q), where PS is the prefix effort of typing s[0:j)
+// as one chained sequence and cut(q) is the single bigram correction straddling
+// q. Nothing in production depends on it since the VimDiff planner moved to
+// per-key insert costs; it documents what a wider-context metric would break.
 
 #include <gtest/gtest.h>
 

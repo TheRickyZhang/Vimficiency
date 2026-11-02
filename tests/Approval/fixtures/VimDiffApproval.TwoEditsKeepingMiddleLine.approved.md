@@ -16,7 +16,7 @@ def line here
 
 _Edit costs: delete / insert / move_
 
-### Plan 1: cost 30
+### Plan: cost 30
 
 ```
 first old
@@ -40,65 +40,6 @@ def
 
 ```
 ->
-e her
-```
-`0 / 7 / 1`
-
-### Plan 2: cost 30
-
-```
-first old
-->
-abc
-```
-`2 / 4 / 0`
-
-```
-->
-e her
-```
-`0 / 7 / 1`
-
-```
-second old
-->
-def
-```
-`2 / 4 / 2`
-
-```
-->
-e her
-```
-`0 / 7 / 1`
-
-### Plan 3: cost 30
-
-```
-first old
-->
-abc
-```
-`2 / 4 / 0`
-
-```
-
-
-->
  here
-
-```
-`1 / 7 / 1`
-
-```
-second old
-->
-def
-```
-`2 / 4 / 1`
-
-```
-->
-e her
 ```
 `0 / 7 / 1`

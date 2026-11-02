@@ -1,9 +1,8 @@
 // tests/Debug/VimDiffCostCorpus.cpp
 //
 // Deterministic corpus of VimDiff plan costs + span signatures, for A/B-ing a
-// solver refactor: run before and after, diff the output. Covers collapse on and
-// off, K-best, small-alphabet adversarial cases, mutated cases, and the
-// benchmark catalog shapes.
+// solver refactor: run before and after, diff the output. Covers small-alphabet
+// adversarial cases, mutated cases, and the benchmark catalog shapes.
 //
 // Run: VIMFY_SEED_MODE=fixed ./build/tests/vimfy_debug --gtest_filter="VimDiffCostCorpus.*" > corpus.txt
 // (fixed seeds keep the Catalog section reproducible; SeedManager defaults to random).
@@ -38,17 +37,12 @@ Lines randomBuffer(mt19937& rng, int maxLines, int maxLen, int alphabet) {
   return Lines(v.begin(), v.end());
 }
 
-void dump(const string& tag, const Lines& a, const Lines& b, const Config& cfg, int K) {
-  VimDiff::CostOptions o;
-  o.maxPlans = K;
-  auto plans = VimDiff::calculate(a, b, cfg, o);
-  cout << tag << " plans=" << plans.size();
-  for (auto& p : plans) {
-    cout << " | " << fixed << setprecision(6) << p.cost << ":";
-    for (auto& d : p.diffs)
-      cout << " " << d.beginPos.line << "," << d.beginPos.col << "[" << d.deletedText.size()
-           << ">" << d.insertedText.size() << "]";
-  }
+void dump(const string& tag, const Lines& a, const Lines& b, const Config& cfg) {
+  VimDiff::Plan p = VimDiff::calculate(a, b, cfg);
+  cout << tag << " " << fixed << setprecision(6) << p.cost << ":";
+  for (auto& d : p.diffs)
+    cout << " " << d.beginPos.line << "," << d.beginPos.col << "[" << d.deletedText.size()
+         << ">" << d.insertedText.size() << "]";
   cout << "\n";
 }
 
@@ -61,7 +55,7 @@ TEST(VimDiffCostCorpus, SmallAlphabet) {
     for (int it = 0; it < 600; it++) {
       Lines a = randomBuffer(rng, 5, 8, alphabet);
       Lines b = randomBuffer(rng, 5, 8, alphabet);
-      dump("small" + to_string(alphabet) + "/" + to_string(it), a, b, cfg, 3);
+      dump("small" + to_string(alphabet) + "/" + to_string(it), a, b, cfg);
     }
 }
 
@@ -80,7 +74,7 @@ TEST(VimDiffCostCorpus, Mutated) {
       else if (op == 1) g.insert(g.begin() + pos, char('a' + ch(rng)));
       else if (pos < (int)g.size()) g.erase(g.begin() + pos);
     }
-    dump("mut/" + to_string(it), a, Lines::unflatten(g), cfg, 3);
+    dump("mut/" + to_string(it), a, Lines::unflatten(g), cfg);
   }
 }
 
@@ -93,6 +87,6 @@ TEST(VimDiffCostCorpus, Catalog) {
   for (const CompositionCaseSpec& spec : specs)
     for (int seed = 0; seed < DEFAULT_SEED_COUNT; seed++) {
       CompositionSetup s = buildCompositionSetup(spec, seed);
-      dump(spec.name + "/" + to_string(seed), s.initial, s.goal, cfg, 2);
+      dump(spec.name + "/" + to_string(seed), s.initial, s.goal, cfg);
     }
 }

@@ -3,7 +3,6 @@
 #include <vector>
 
 #include "PlannerCosts.h"
-#include "VimDiff.h"
 
 namespace VimDiff {
 
@@ -21,8 +20,7 @@ struct Block {
 //   margin: keep depth d while ins(d) <= edge slack + move saving(d)
 // Text outside the blocks is identical on both sides at the same offsets.
 std::vector<Block> sealMatchedRuns(const FlatText& initial, const FlatText& goal,
-                                   const Typing& typing, const Lines& initialLines,
-                                   const Lines& goalLines, const Config& config,
-                                   const CostOptions& options);
+                                   const Typing& typing, TilingCost& del, TilingCost& move,
+                                   const Lines& initialLines, const Lines& goalLines);
 
 }  // namespace VimDiff

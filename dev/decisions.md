@@ -21,9 +21,9 @@ to deeper docs when needed.
 - `SequenceDisplay.cpp` uses the raw glyph constants (`PRETTY_SPACE`, `PRETTY_TAB`, `PRETTY_NEWLINE`) directly when mapping `<Space>`/`<Tab>`/`<CR>` key notation, because that's a *different* operation (notation → glyph) from rendering text.
 
 ## VimDiff approval region format (`VimDiffApprovalTest`)
-- Each case prints both buffers, a cost legend, then top-K plans. Each region uses a vertical block: deleted text, `->`, inserted text, then `del / ins / move`.
+- Each case prints both buffers, a cost legend, then the plan. Each region uses a vertical block: deleted text, `->`, inserted text, then `del / ins / move`.
 - Empty insert/delete sides stay visible as blank lines — because hidden empty sides make single-sided edits harder to audit in approval output.
-- Top-K plans stay in the approval view — because VimDiff's risk is often cost calibration, not just round-trip correctness.
+- The view showed top-K plans until 2026-11-02, when K-best was removed from the planner (see *VimDiff simplified*).
 
 ## Join-plan inter-group navigation uses `j0`, not `j`
 - `computeJoinPlanForDiff` (`PlannedEditArtifacts.cpp`) builds multi-group join+residual plans. Between groups, it must move the cursor to the next group's first line at col 0.
@@ -142,3 +142,10 @@ to deeper docs when needed.
 - Crossing a seal is `CROSS` transitions from the previous block's trailing matched diagonal to the next block's leading one, each priced by one raw sweep — so a region-to-region move costs exactly one `move` query over the whole gap, as before; no artificial split at margin boundaries.
 - No deletion crosses a seal (that would retype the core, which the gate excluded), so deletion sweeps are block-local and the planner is diff-bound. This closes the "exact vs diff-bound" tension without a cross-run oracle. Release `VimDiffPlan/BufferSize/100`: 292 → 14 ms.
 - Verified: plan-1 costs identical on all 3,325 corpus lines; the only K-best plans lost are those retyping an entire sealed core (dominated by construction).
+
+## VimDiff simplified to one plan, per-key typing, three step families (2026-11-02)
+- K-best plans (`maxPlans`, partition keys, bounded per-cell candidate lists, the `K`-templated DP) are gone. Production always consumed `plans.front()`; the machinery existed for `PlanRegret` and the approval view and was ~40% of `VimDiff.cpp`. `PlanRegret` now compares the VimDiff plan against the Myers partition, the alternative production actually has.
+- Insert cost is the per-key prefix sum, no bigram terms (`Typing::cut` and the sealing `seamMax` scan deleted). The delete/move side was already keystroke counts, so the planner's two sides are now equally coarse; the transform search re-prices the real sequence. Plan-1 partitions on the 3,341-line corpus and the approval cases moved only at exact ties.
+- The DP is documented as three step families — move (MOVE/CROSS), delete (DELETE, or CHANGE landing in insert mode), type (ENTER/TYPE/EXIT) — with one 16-byte candidate per cell. CHANGE stays because it is exact and free: the delete sweep already knows every arrival and lands each one twice.
+- The tiling sweep carries `Arrival{cost, seed}` instead of a templated `Ops` policy; the two `TilingCost` instances are built once per `calculate` and shared by sealing, the DP, and the breakdown.
+- `mxcnt` is the symbol for the shared count cap in code and docs (`cap` was ambiguous). Complexity per block is `O(n·(n+m)·mxcnt)`, bounded by changed text.

@@ -20,7 +20,10 @@ vector<Block> seal(const string& initialText, const string& goalText) {
   Lines goal = Lines::unflatten(goalText);
   FlatText flatInitial(initial), flatGoal(goal);
   Typing typing(flatGoal, config);
-  return sealMatchedRuns(flatInitial, flatGoal, typing, initial, goal, config, CostOptions{});
+  const CostOptions o;
+  TilingCost del(flatInitial, o.moveDeleteScale, o.maxPrefixCount, TilingCost::Kind::Delete);
+  TilingCost move(flatInitial, o.moveDeleteScale, o.maxPrefixCount, TilingCost::Kind::Move);
+  return sealMatchedRuns(flatInitial, flatGoal, typing, del, move, initial, goal);
 }
 
 // Blocks are ordered and disjoint, and everything outside them is the same

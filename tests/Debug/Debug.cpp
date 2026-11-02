@@ -291,8 +291,7 @@ TEST_F(DebugTest, DISABLED_ProfileSlowPromptMapSlice) {
   size_t vimDiffs = 0;
   for (int i = 0; i < 5; i++) {
     auto t0 = chrono::steady_clock::now();
-    auto plans = VimDiff::calculate(initial, goal, config, VimDiff::CostOptions{});
-    vimDiffs = plans.empty() ? 0 : plans.front().diffs.size();
+    vimDiffs = VimDiff::calculate(initial, goal, config).diffs.size();
     treeMs += ms(t0, chrono::steady_clock::now());
   }
   treeMs /= 5;
@@ -323,8 +322,7 @@ TEST_F(DebugTest, DISABLED_ProfileSlowPromptMapSlice) {
   // Time the planner on subsets to see how cost scales with buffer size.
   auto timeTree = [&](const Lines& a, const Lines& b, const char* label) {
     auto t = chrono::steady_clock::now();
-    auto plans = VimDiff::calculate(a, b, config, VimDiff::CostOptions{});
-    size_t nd = plans.empty() ? 0 : plans.front().diffs.size();
+    size_t nd = VimDiff::calculate(a, b, config).diffs.size();
     cerr << "  VimDiff[" << label << "] = " << ms(t, chrono::steady_clock::now())
          << " ms (diffs=" << nd << ", lines=" << a.size() << ")" << endl;
   };

@@ -1,15 +1,13 @@
 #pragma once
 
 // The planner's flat coordinate system and the two cost oracles it measures
-// with: counted-command tilings of initial spans (TilingCost) and insert
+// with: counted-command tilings of initial spans (TilingCost) and per-key insert
 // effort over goal prefixes (Typing). Internal to the VimDiff planner; see
 // dev/optimizer/diff-generation.md § Tiled command-cost oracle.
 
-#include <algorithm>
 #include <array>
 #include <limits>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "Keyboard/Config.h"
@@ -40,12 +38,18 @@ double countPrefixCost(int k, double scale) {
   return (int)std::to_string(k).size() * scale + runtimeCountPenalty<C>({k, k});
 }
 
+// Cheapest tiling reaching a position, and the raw position it started from.
+struct Arrival {
+  double cost = INF;
+  int seed = -1;
+};
+
 // Cheapest counted-command tiling of raw initial spans.
 class TilingCost {
 public:
   enum class Kind { Delete, Move };
 
-  TilingCost(const FlatText& initial, double scale, int maxPrefixCount, Kind kind);
+  TilingCost(const FlatText& initial, double scale, int mxcnt, Kind kind);
 
   // Upper bound on tiling one line's segment [x,y).
   double coverBound(int x, int y) const;
@@ -55,87 +59,63 @@ public:
   double startSlack(int edge) const;
   double query(int begin, int end);
 
+  // Cheapest tiling from `begin` to every ri in (begin, end]: sink(ri, cost).
   template<class Sink>
   void sweep(int begin, int end, Sink&& sink) {
-    static const double ZERO = 0.0;
-    sweep(ScalarOps{}, scalar_, begin, end,
-          [&](int ri) -> const double& { return ri == begin ? ZERO : INF; },
-          [&](int ri, const double& cost) { sink(ri, cost); });
+    sweep(
+        begin, end, [&](int ri) { return ri == begin ? 0.0 : INF; },
+        [&](int ri, const Arrival& a) { sink(ri, a.cost); });
   }
 
-  // Run-start slots also hold sources inside the run (span-local rule).
-  template<class V>
-  struct Scratch {
-    std::vector<V> reach, wordStart, bigStart, wsStart, lineMin, paraMin;
-  };
-
-  template<class V>
-  Scratch<V> makeScratch(const V& inf) const {
-    Scratch<V> s;
-    for (std::vector<V>* v : {&s.reach, &s.wordStart, &s.bigStart, &s.wsStart})
-      v->assign(N_ + 1, inf);
-    s.lineMin.assign(lineStarts_.size(), inf);
-    s.paraMin.assign(paraStarts_.size(), inf);
-    return s;
-  }
-
-  struct ScalarOps {
-    using V = double;
-    const V& inf() const { return INF; }
-    void reset(V& v) const { v = INF; }
-    void relax(V& acc, const V& base, double add) const { acc = std::min(acc, base + add); }
-  };
-
-  // Multi-source; only slots written or reset in this sweep are read.
-  template<class Ops, class Src, class Sink>
-  void sweep(const Ops& ops, Scratch<typename Ops::V>& s, int begin, int end, Src&& src,
-             Sink&& sink) {
-    using V = typename Ops::V;
+  // Multi-source: `seed(ri)` is the cost of a tiling starting at ri (INF for
+  // none). sink(ri, arrival) reports the cheapest arrival at each ri in
+  // (begin, end], excluding ri's own seed.
+  template<class Seed, class Sink>
+  void sweep(int begin, int end, Seed&& seed, Sink&& sink) {
     if (begin >= end) return;
-    s.reach[begin] = src(begin);
-    V lineMin = s.reach[begin], paraMin = s.reach[begin];  // where j/} may start
+    auto at = [&](int ri) { return Arrival{seed(ri), ri}; };
+    reach_[begin] = at(begin);
+    Arrival lineMin = reach_[begin], paraMin = reach_[begin];  // where j/} may start
     int lineStart = lineStartOf_[begin];
-    if (isWord_[begin]) ops.reset(s.wordStart[wordStarts_[wordIdx_[begin]]]);
-    if (isBig_[begin]) ops.reset(s.bigStart[bigStarts_[bigIdx_[begin]]]);
-    if (isWs_[begin]) ops.reset(s.wsStart[wsRunStart_[begin]]);
+    if (isWord_[begin]) wordStart_[wordStarts_[wordIdx_[begin]]] = {};
+    if (isBig_[begin]) bigStart_[bigStarts_[bigIdx_[begin]]] = {};
+    if (isWs_[begin]) wsStart_[wsRunStart_[begin]] = {};
 
-    V e = ops.inf();
+    Arrival e;
     for (int ri = begin + 1; ri <= end; ri++) {
       const int last = ri - 1;
-      if (isWord_[last]) ops.relax(s.wordStart[wordStarts_[wordIdx_[last]]], src(last), 0.0);
-      if (isBig_[last]) ops.relax(s.bigStart[bigStarts_[bigIdx_[last]]], src(last), 0.0);
-      if (isWs_[last]) ops.relax(s.wsStart[wsRunStart_[last]], src(last), 0.0);
+      if (isWord_[last]) relax(wordStart_[wordStarts_[wordIdx_[last]]], at(last), 0.0);
+      if (isBig_[last]) relax(bigStart_[bigStarts_[bigIdx_[last]]], at(last), 0.0);
+      if (isWs_[last]) relax(wsStart_[wsRunStart_[last]], at(last), 0.0);
       if (lineIdx_[ri] >= 0) {
-        s.lineMin[lineIdx_[ri] - 1] = lineMin;
-        ops.reset(lineMin);
+        lineMin_[lineIdx_[ri] - 1] = lineMin;
+        lineMin = {};
         lineStart = ri;
       }
       if (paraIdx_[ri] >= 0) {
-        s.paraMin[paraIdx_[ri] - 1] = paraMin;
-        ops.reset(paraMin);
+        paraMin_[paraIdx_[ri] - 1] = paraMin;
+        paraMin = {};
       }
-      ops.reset(e);
-      for (int k = 1; k <= cap_ && ri - k >= begin; k++)
-        ops.relax(e, s.reach[ri - k], chunk_[CHAR].cost(k));
-      relaxRuns(ops, e, begin, ri, chunk_[WORD], isWord_, wordIdx_, wordStarts_, wordEnds_,
-                s.wordStart, s.wsStart);
-      relaxRuns(ops, e, begin, ri, chunk_[BIG_WORD], isBig_, bigIdx_, bigStarts_, bigEnds_,
-                s.bigStart, s.wsStart);
-      relaxUnits(ops, e, begin, ri, chunk_[LINE], lineIdx_, lineStarts_, s.reach, s.lineMin);
-      relaxUnits(ops, e, begin, ri, chunk_[PARAGRAPH], paraIdx_, paraStarts_, s.reach, s.paraMin);
-      if (ri == N_ || isNewline_[ri]) ops.relax(e, lineMin, toLineEnd_);  // D / $
+      e = {};
+      for (int k = 1; k <= mxcnt_ && ri - k >= begin; k++)
+        relax(e, reach_[ri - k], chunk_[CHAR].cost(k));
+      relaxRuns(e, begin, ri, chunk_[WORD], isWord_, wordIdx_, wordStarts_, wordEnds_, wordStart_);
+      relaxRuns(e, begin, ri, chunk_[BIG_WORD], isBig_, bigIdx_, bigStarts_, bigEnds_, bigStart_);
+      relaxUnits(e, begin, ri, chunk_[LINE], lineIdx_, lineStarts_, lineMin_);
+      relaxUnits(e, begin, ri, chunk_[PARAGRAPH], paraIdx_, paraStarts_, paraMin_);
+      if (ri == N_ || isNewline_[ri]) relax(e, lineMin, toLineEnd_);  // D / $
       if (kind_ == Kind::Delete && lineStart >= begin && ri > lineStart)  // d0
-        ops.relax(e, s.reach[lineStart], toLineStart_);
+        relax(e, reach_[lineStart], toLineStart_);
       sink(ri, e);
-      std::swap(s.reach[ri], e);
-      ops.relax(s.reach[ri], src(ri), 0.0);
+      reach_[ri] = e;
+      relax(reach_[ri], at(ri), 0.0);
       if (ri < N_) {
-        if (isWord_[ri] && wordStarts_[wordIdx_[ri]] == ri) s.wordStart[ri] = s.reach[ri];
-        if (isBig_[ri] && bigStarts_[bigIdx_[ri]] == ri) s.bigStart[ri] = s.reach[ri];
-        if (isWs_[ri] && wsRunStart_[ri] == ri) s.wsStart[ri] = s.reach[ri];
+        if (isWord_[ri] && wordStarts_[wordIdx_[ri]] == ri) wordStart_[ri] = reach_[ri];
+        if (isBig_[ri] && bigStarts_[bigIdx_[ri]] == ri) bigStart_[ri] = reach_[ri];
+        if (isWs_[ri] && wsRunStart_[ri] == ri) wsStart_[ri] = reach_[ri];
       }
-      ops.relax(lineMin, s.reach[ri], 0.0);
-      ops.relax(paraMin, s.reach[ri], 0.0);
+      relax(lineMin, reach_[ri], 0.0);
+      relax(paraMin, reach_[ri], 0.0);
     }
   }
 
@@ -147,12 +127,36 @@ private:
     double cost(int k) const { return base + pen[k]; }
   };
 
+  static void relax(Arrival& acc, const Arrival& base, double add) {
+    if (base.cost + add < acc.cost) acc = {base.cost + add, base.seed};
+  }
+
   double maxChunkGap() const;
   int lineOf(int ri) const;
   int paraOf(int ri) const;
+  void buildBoundaries(const std::string& text);
+
+  template<CountClass Del, CountClass Mov>
+  void buildChunk(Level level, double scale) {
+    Chunk& c = chunk_[level];
+    c.base = (kind_ == Kind::Delete ? DELETE_KEYS[level] : MOVE_KEYS[level]) * scale;
+    c.pen.assign(mxcnt_ + 1, 0.0);
+    for (int k = 2; k <= mxcnt_; k++)
+      c.pen[k] = kind_ == Kind::Delete ? countPrefixCost<Del>(k, scale)
+                                       : countPrefixCost<Mov>(k, scale);
+  }
+
+  // de-shape (ri-1 in a run) or dw-shape (ri-1 trailing ws).
+  void relaxRuns(Arrival& e, int begin, int ri, const Chunk& chunk,
+                 const std::vector<char>& isClass, const std::vector<int>& idx,
+                 const std::vector<int>& starts, const std::vector<int>& ends,
+                 const std::vector<Arrival>& runStart) const;
+  void relaxUnits(Arrival& e, int begin, int ri, const Chunk& chunk,
+                  const std::vector<int>& idxAt, const std::vector<int>& starts,
+                  const std::vector<Arrival>& unitMin) const;
 
   int N_;
-  int cap_;  // CostOptions::maxPrefixCount
+  int mxcnt_;  // CostOptions::maxPrefixCount
   Kind kind_;
   std::array<Chunk, LEVEL_COUNT> chunk_;
   double toLineEnd_, toLineStart_;
@@ -163,73 +167,19 @@ private:
   std::vector<int> wordIdx_, bigIdx_;
   std::vector<int> lineStarts_, paraStarts_;
   std::vector<int> lineIdx_, paraIdx_;
-  Scratch<double> scalar_;
-
-  void buildBoundaries(const std::string& text);
-
-  template<CountClass Del, CountClass Mov>
-  void buildChunk(Level level, double scale) {
-    Chunk& c = chunk_[level];
-    c.base = (kind_ == Kind::Delete ? DELETE_KEYS[level] : MOVE_KEYS[level]) * scale;
-    c.pen.assign(cap_ + 1, 0.0);
-    for (int k = 2; k <= cap_; k++)
-      c.pen[k] = kind_ == Kind::Delete ? countPrefixCost<Del>(k, scale)
-                                       : countPrefixCost<Mov>(k, scale);
-  }
-
-  // de-shape (ri-1 in a run) or dw-shape (ri-1 trailing ws).
-  template<class Ops, class V>
-  void relaxRuns(const Ops& ops, V& e, int begin, int ri, const Chunk& chunk,
-                 const std::vector<char>& isClass, const std::vector<int>& idx,
-                 const std::vector<int>& starts, const std::vector<int>& ends,
-                 const std::vector<V>& runStart, const std::vector<V>& wsStart) const {
-    const int last = ri - 1;
-    int runIdx;
-    bool endsInWs = false;
-    if (isClass[last]) {
-      runIdx = idx[last];
-    } else if (isWs_[last] && wsRunStart_[last] > 0 && isClass[wsRunStart_[last] - 1]) {
-      runIdx = idx[wsRunStart_[last] - 1];
-      endsInWs = true;
-    } else {
-      return;
-    }
-    for (int k = 1; k <= cap_ && runIdx - k + 1 >= 0; k++) {
-      const int run = runIdx - k + 1;
-      if (ends[run] <= begin) break;
-      const int runBegin = starts[run];
-      ops.relax(e, runStart[runBegin], chunk.cost(k));
-      if (runBegin > begin && isWs_[runBegin - 1] && k + endsInWs <= cap_)
-        ops.relax(e, wsStart[wsRunStart_[runBegin - 1]], chunk.cost(k + endsInWs));
-    }
-  }
-
-  template<class Ops, class V>
-  void relaxUnits(const Ops& ops, V& e, int begin, int ri, const Chunk& chunk,
-                  const std::vector<int>& idxAt, const std::vector<int>& starts,
-                  const std::vector<V>& reach, const std::vector<V>& unitMin) const {
-    if (idxAt[ri] < 0) return;
-    const int unit = idxAt[ri];
-    for (int u = unit - 1; u >= 0 && unit - u <= cap_; u--) {
-      if (kind_ == Kind::Delete) {
-        if (starts[u] < begin) break;
-        ops.relax(e, reach[starts[u]], chunk.cost(unit - u));
-      } else {
-        if (starts[u + 1] <= begin) break;
-        ops.relax(e, unitMin[u], chunk.cost(unit - u));
-      }
-    }
-  }
+  // Sweep scratch; run-start slots also hold sources inside the run (span-local rule).
+  std::vector<Arrival> reach_, wordStart_, bigStart_, wsStart_, lineMin_, paraMin_;
 };
 
-// Typing raw goal [begin,end) costs PS[end] - PS[begin] - cut[begin].
+// Typing raw goal [begin,end) costs PS[end] - PS[begin]: per-key effort summed,
+// no bigram terms, so the planner's insert side is as coarse as its delete side.
 struct Typing {
-  std::vector<double> PS, cut;
+  std::vector<double> PS;
   double entry, esc;  // the `i` and `<Esc>` keystrokes
 
   Typing(const FlatText& goal, const Config& config);
 
-  double ins(int begin, int end) const { return PS[end] - PS[begin] - cut[begin]; }
+  double ins(int begin, int end) const { return PS[end] - PS[begin]; }
 };
 
 }  // namespace VimDiff

@@ -33,6 +33,12 @@ Two non-heuristic fixes, in preference order:
    (`<Space>`/`<Del>`), `cc` vs `D`+retype — so it stops tying. More work, and
    it chases Transform behavior.
 
+**Status (2026-11-02).** K-best was removed from `VimDiff` when the planner
+was simplified, so fix 1 now needs a tied-set surface reintroduced in a simpler
+shape (e.g. enumerate equal-cost backpointers at the root only) rather than the
+old per-cell candidate lists. The tie-adjusted numbers above are from the
+removed harness mode; the current `PlanRegret` compares against Myers.
+
 **Threshold.** The next change to `VimDiff` or to how composition consumes
 plans. Success is the raw `PlanRegret` numbers converging to the tie-adjusted
 ones. Note `PlanRegret` is nondeterministic run to run (multi-threaded
@@ -128,10 +134,10 @@ is a multi-token structural macro" comment).
 
 **What.** A three-step investigation, in order:
 
-1. **Simplify diff generation.** `VimDiff` is an exact K-best DP over a hand-built
-   surrogate cost model. Reduce it to the simplest thing that still ranks
-   partitions well. The exactness is with respect to the surrogate, not to real
-   Vim cost, so it may be buying nothing.
+1. **Simplify diff generation.** Done 2026-11-02 (see `dev/decisions.md`
+   *VimDiff simplified*): one plan, per-key typing, three step families. The
+   remaining exactness is with respect to the surrogate, not to real Vim cost;
+   whether even that is buying anything is what step 2 measures.
 2. **Measure.** (a) Time split between diff generation and composition search on
    realistic slices — `VIMFY_TIME_PHASES` already prints per-phase and per-diff
    timing; a healthy split is something like 10/90. (b) How well the K plan
@@ -143,21 +149,22 @@ is a multi-token structural macro" comment).
    measured scaling matches. A mismatch means either the model is wrong or a cap
    is binding.
 
-**Why it matters.** Production consumes `plans.front()` with `maxPlans` at its
-default of 1 (`CompositionSearchContext.cpp:78`), so plan 1 must be right.
-Exactness costs an `O(N)` raw deletion sweep per goal column — the only reason planner
-runtime is buffer-bound rather than diff-bound. Whether that price buys better
-partitions has never been measured: the (since-retired) collapse-vs-dense A/B measured agreement with the
-surrogate's own value, while `PlanRegret` measures rank inversion, which is the
-thing that actually decides plan quality.
+**Why it matters.** Production consumes the one plan `calculate` returns, so it
+must be right. Whether the planner's surrogate ranks partitions better than
+Myers has never been measured properly: `PlanRegret` now compares the two by
+real composition cost, and its first run (2026-11-02) shows large regrets that
+are too large to be partition quality: something downstream breaks down or
+misses a case completely (real cost 5x the estimate on a 7-region plan). It is a
+bug to find, not a calibration signal — triage that
+first.
 
-**Complexity as currently understood** (`N` = initial buffer chars, `n`/`m` = pruned VimDiff
-cells per axis, ≈ diff size, `E` = planned edits, `P` = pops, `B` = branching per pop):
+**Complexity as currently understood** (`N` = initial buffer chars, `n_k`/`m_k` =
+block cells per axis, `Σ n_k ≤ N`, `mxcnt` = count cap, `E` = planned edits,
+`P` = pops, `B` = branching per pop):
 
 | stage | cost | note |
 |---|---|---|
-| VimDiff search | `O(Σ n_k·m_k)` | char cells per block; bounded move/type/enter/exit relaxations per cell |
-| VimDiff sweeps | `O(Σ (n_k+m_k)·N_k·cap)` | block-local move-table and deletion sweeps; diff-bound since seals stop them |
+| VimDiff | `O(Σ n_k·(n_k+m_k)·mxcnt)` | move table + per-column deletion sweeps + O(1) type steps; diff-bound since seals stop sweeps |
 | Composition construction | `O(E · P_t · B_t)` | `E` Transform A* runs; dominates the `O(E·N)` buffer rebuild and `O(E·L²)` text-object scan |
 | Composition search | `O(P_c · P_n · B_n)` | **nested**: each pop can fire up to ~9 NavOptimizer A* runs (8 ranked start positions + the diff-range search) |
 

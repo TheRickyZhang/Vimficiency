@@ -75,9 +75,7 @@ static void printDiffs(const Lines& initial, const Lines& goal) {
 
   printDiffs("Myers", MyersDiff::calculate(initial, goal), initial, goal);
   cout << endl;
-  auto vimPlans = VimDiff::calculate(initial, goal, Config::uniform());
-  printDiffs("Vim", vimPlans.empty() ? std::vector<DiffState>{} : vimPlans.front().diffs,
-             initial, goal);
+  printDiffs("Vim", VimDiff::calculate(initial, goal, Config::uniform()).diffs, initial, goal);
 }
 
 int main(int argc, char* argv[]) {

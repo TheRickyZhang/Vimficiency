@@ -68,18 +68,16 @@ CompositionSearchContext::CompositionSearchContext(
     rawDiffs = *forcedDiffs;
   } else {
     switch (params.diffAlgorithm) {
-      case DiffAlgorithm::VimDiff: {
-        vector<VimDiff::Plan> plans = VimDiff::calculate(
+      case DiffAlgorithm::VimDiff:
+        rawDiffs = VimDiff::calculate(
             Lines(initialLines.begin(), initialLines.end()),
             Lines(goalLines.begin(), goalLines.end()),
             config,
             VimDiff::CostOptions{
                 .moveDeleteScale = params.moveDeleteScale,
                 .maxPrefixCount = params.maxPrefixCount,
-            });
-        if (!plans.empty()) rawDiffs = std::move(plans.front().diffs);
+            }).diffs;
         break;
-      }
       case DiffAlgorithm::MyersDiff:
         rawDiffs = MyersDiff::calculate(
             Lines(initialLines.begin(), initialLines.end()),

@@ -218,30 +218,31 @@ Here the DP moves over `" fox "` rather than retyping it. The second region star
 
 ```
 move    out[pi][pj] → out[i][j]   i-pi = j-pj ≥ 1, chars match          moveCost(pi, i)
+        previous block's trailing diagonal → this block's leading one   moveCost(seal)
 delete  out[pi][j]  → out[i][j]   delete initial [pi, i)                 delCost(pi, i)
-change  out[pi][j-1] → in[i][j]   delete initial [pi, i), enter insert   delCost(pi, i) + esc + typed
-enter   out[i][j-1] → in[i][j]    enter insert, type goal char j-1       entry + esc + typed
-type    in[i][j-1]  → in[i][j]    type goal char j-1                     typed
-exit    in[i][j]    → out[i][j]   leave insert                           0
-cross   previous block's trailing diagonal → this block's leading one   moveCost(seal)
+        out[pi][j-1] → in[i][j]   same, landing in insert via `c`        delCost(pi, i) + esc + typed
+type    out[i][j-1] → in[i][j]    enter insert, type goal char j-1       entry + esc + typed
+        in[i][j-1]  → in[i][j]    type goal char j-1                     typed
+        in[i][j]    → out[i][j]   leave insert                           0
 ```
 
 - a *region* is a maximal run of delete/type steps between two moves, read off the winning path afterwards
 - nothing is charged per region, so the state needs no memory of where one began — that is why two tables suffice
-- typing is additive per character because effort is a monoid (below): with `PS` the prefix effort of typing all of `B`, typing `[b, e)` costs `PS(e) − PS(b) − cut(b)`
-- for the `maxPlans` cheapest *distinct* partitions, each cell keeps up to `maxPlans` candidates, deduplicated by a partition key
+- typing is priced per key: with `PS` the prefix sum of per-key effort over `B`, typing `[b, e)` costs `PS(e) − PS(b)`, so the insert side is as coarse as the delete side
 
-**Complexity.** Per block of $n \times m$ cells over $N_k$ raw characters with count cap $c$: $n$ move sweeps of $O(N_k c)$, an $O(nm)$ DP, and one $O(N_k c)$ deletion sweep per goal column.
+**Complexity.** Per block of $n \times m$ cells with count cap $\mathit{mxcnt}$: $n$ move sweeps of $O(n \cdot \mathit{mxcnt})$, one $O(n \cdot \mathit{mxcnt})$ deletion sweep per goal column, and $O(nm)$ type steps.
 
 ```math
-O\Big(\sum_k (n_k + m_k)\, N_k\, c \;+\; n_k m_k\Big) \;+\; \text{one crossing sweep per seal}
+O\Big(\sum_k n_k\,(n_k + m_k)\,\mathit{mxcnt}\Big) \;+\; \text{one crossing sweep per seal}
 ```
+
+with $\sum n_k \le N$ and $\sum m_k \le M$: quadratic in the changed text, not the buffer.
 
 ### 2. Shortest-path search: from a plan to keystrokes
 
 The partition fixes *what* changes; the search finds the cheapest keystrokes that do it. Nodes are editor states, edges are Vim commands applied by our own simulator (verified against a headless Neovim), and edge weights are typing effort.
 
-**Cost model.** Keys map onto a configurable keyboard and are priced per key plus bigram adjustments: same finger, same key, hand alternation, inward/outward rolls. Every term has a one-key window, so effort is a monoid — merging two sequences is $O(1)$, and the planner's prefix-sum typing cost is exact.
+**Cost model.** Keys map onto a configurable keyboard and are priced per key plus bigram adjustments: same finger, same key, hand alternation, inward/outward rolls. Every term has a one-key window, so effort is a monoid and merging two sequences is $O(1)$.
 
 https://github.com/user-attachments/assets/737cf2df-1d26-47b9-b947-d5159b5b586b
 

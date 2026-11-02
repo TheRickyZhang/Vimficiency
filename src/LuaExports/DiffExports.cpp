@@ -40,8 +40,7 @@ VF::LuaExports::Result<string> computeDiffsImpl(
   // is the same breakdown (see CompositionSearchContext.cpp).
   vector<DiffState> diffs;
   if (diff_algorithm == DiffAlgorithm::VimDiff) {
-    vector<VimDiff::Plan> plans = VimDiff::calculate(initialLines, goalLines, g_config_internal);
-    if (!plans.empty()) diffs = std::move(plans.front().diffs);
+    diffs = VimDiff::calculate(initialLines, goalLines, g_config_internal).diffs;
   } else if (diff_algorithm == DiffAlgorithm::MyersDiff) {
     diffs = MyersDiff::calculate(initialLines, goalLines);
   } else {

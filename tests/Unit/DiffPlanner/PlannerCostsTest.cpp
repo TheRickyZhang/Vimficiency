@@ -73,11 +73,14 @@ TEST(PlannerCostsTest, SlacksBoundTheCostOfSplittingAtAnEdge) {
   }
 }
 
-TEST(PlannerCostsTest, TypingPrefixSumsMatchWholeSequenceEffort) {
-  Config config = Config::uniform();
+// Insert cost is the per-key sum, deliberately without bigram terms.
+TEST(PlannerCostsTest, TypingPrefixSumsArePerKeyEffort) {
+  Config config = Config::qwerty();
   const string goal = "hello world";
   Typing typing(FlatText(Lines{goal}), config);
-  EXPECT_DOUBLE_EQ(typing.ins(0, (int)goal.size()), getEffort(goal, config));
+  double perKey = 0.0;
+  for (char c : goal) perKey += getEffort(string(1, c), config);
+  EXPECT_DOUBLE_EQ(typing.ins(0, (int)goal.size()), perKey);
   EXPECT_DOUBLE_EQ(typing.entry, getEffort("i", config));
   EXPECT_DOUBLE_EQ(typing.esc, getEffort("<Esc>", config));
   EXPECT_DOUBLE_EQ(typing.ins(3, 3), 0.0);

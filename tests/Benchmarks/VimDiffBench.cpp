@@ -29,11 +29,11 @@ void BM_VimDiffPlan(benchmark::State& state, CompositionCaseSpec spec) {
   int iter = 0;
   for (auto _ : state) {
     const CompositionSetup& s = setups[iter % (int)setups.size()];
-    auto plans = VimDiff::calculate(s.initial, s.goal, benchConfig,
-                                    VimDiff::CostOptions{
-                                        .moveDeleteScale = s.params.moveDeleteScale,
-                                    });
-    benchmark::DoNotOptimize(plans);
+    VimDiff::Plan plan = VimDiff::calculate(s.initial, s.goal, benchConfig,
+                                            VimDiff::CostOptions{
+                                                .moveDeleteScale = s.params.moveDeleteScale,
+                                            });
+    benchmark::DoNotOptimize(plan);
     iter++;
   }
 }

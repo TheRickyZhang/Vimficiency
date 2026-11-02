@@ -3,7 +3,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "ApprovalTestUtils.h"
 #include "Keyboard/Config.h"
@@ -32,32 +31,27 @@ string trimBlock(string_view s) {
 // presses; see SequenceDisplay.cpp). An empty diff side emits no line, so `->`
 // sits flush; a newline emits a blank line. That keeps empty distinct from a
 // newline with no delimiter (trade-off: a bare trailing/in-line space isn't
-// separately flagged). `renderCase` shows the top-K plans the DP weighed; Plan 1
-// is the optimum `calculate` returns.
-string renderCase(string_view name, string_view initialText, string_view goalText, int K = 3) {
+// separately flagged).
+string renderCase(string_view name, string_view initialText, string_view goalText) {
   const string initialBlock = trimBlock(initialText);
   const string goalBlock = trimBlock(goalText);
   const Lines initial = Lines::unflatten(initialBlock);
   const Lines goal = Lines::unflatten(goalBlock);
   const Config config = Config::uniform();
-  CostOptions options;
-  options.maxPlans = K;
-  const vector<CostBreakdown> bds = calculateBreakdown(initial, goal, config, options);
+  const CostBreakdown bd = calculateBreakdown(initial, goal, config);
 
   ostringstream out;
   out << "# " << name << "\n\n";
   out << "**initial**\n```\n" << initialBlock << "\n```\n\n";
   out << "**final**\n```\n" << goalBlock << "\n```\n\n";
   out << "_Edit costs: delete / insert / move_\n";
-  for (int p = 0; p < (int)bds.size(); p++) {
-    out << "\n### Plan " << (p + 1) << ": cost " << bds[p].total << "\n";
-    for (const RegionBreakdown& r : bds[p].regions) {
-      out << "\n```\n";
-      if (!r.diff.deletedText.empty()) out << r.diff.deletedText << "\n";
-      out << "->";
-      if (!r.diff.insertedText.empty()) out << "\n" << r.diff.insertedText;
-      out << "\n```\n`" << r.del << " / " << r.ins << " / " << r.move << "`\n";
-    }
+  out << "\n### Plan: cost " << bd.total << "\n";
+  for (const RegionBreakdown& r : bd.regions) {
+    out << "\n```\n";
+    if (!r.diff.deletedText.empty()) out << r.diff.deletedText << "\n";
+    out << "->";
+    if (!r.diff.insertedText.empty()) out << "\n" << r.diff.insertedText;
+    out << "\n```\n`" << r.del << " / " << r.ins << " / " << r.move << "`\n";
   }
   return out.str();
 }
@@ -65,9 +59,8 @@ string renderCase(string_view name, string_view initialText, string_view goalTex
 }  // namespace
 
 // One case per approval file (one verifyMarkdown each) so each result diffs in
-// isolation. `renderCase` shows the top-K partitions the DP weighed, Plan 1 being
-// the optimum `calculate` returns; a REPLACE that re-types an unchanged middle is
-// the over-merge to watch for.
+// isolation. A REPLACE that re-types an unchanged middle is the over-merge to
+// watch for.
 
 // One word changes on one line of a three-line buffer; the kept lines stay out
 // of the diff rather than being folded into a whole-buffer retype.

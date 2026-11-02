@@ -29,8 +29,8 @@ FlatText::FlatText(const Lines& lines) : text(lines.flatten()) {
   paraStarts.push_back(N);
 }
 
-TilingCost::TilingCost(const FlatText& initial, double scale, int maxPrefixCount, Kind kind)
-    : N_((int)initial.text.size()), cap_(maxPrefixCount), kind_(kind),
+TilingCost::TilingCost(const FlatText& initial, double scale, int mxcnt, Kind kind)
+    : N_((int)initial.text.size()), mxcnt_(mxcnt), kind_(kind),
       lineStarts_(initial.lineStarts), paraStarts_(initial.paraStarts) {
   buildBoundaries(initial.text);
   buildChunk<CountClass::EditChar, CountClass::MovementChar>(CHAR, scale);
@@ -40,10 +40,12 @@ TilingCost::TilingCost(const FlatText& initial, double scale, int maxPrefixCount
   buildChunk<CountClass::EditParagraph, CountClass::MovementParagraph>(PARAGRAPH, scale);
   toLineEnd_ = TO_LINE_END_KEYS * scale;
   toLineStart_ = TO_LINE_START_KEYS * scale;
-  scalar_ = makeScratch<double>(INF);
+  for (vector<Arrival>* v : {&reach_, &wordStart_, &bigStart_, &wsStart_}) v->assign(N_ + 1, {});
+  lineMin_.assign(lineStarts_.size(), {});
+  paraMin_.assign(paraStarts_.size(), {});
   for (Chunk& c : chunk_) {
     c.gap = c.base;
-    for (int s = 2; s <= cap_; s++)
+    for (int s = 2; s <= mxcnt_; s++)
       for (int a = 1; a <= s / 2; a++)
         c.gap = max(c.gap, c.base + c.pen[a] + c.pen[s - a] - c.pen[s]);
   }
@@ -64,7 +66,7 @@ double TilingCost::coverBound(int x, int y) const {
 
 double TilingCost::chainCost(Level level, int units) const {
   if (units <= 0) return 0.0;
-  return ((units + cap_ - 1) / cap_) * chunk_[level].cost(min(units, cap_));
+  return ((units + mxcnt_ - 1) / mxcnt_) * chunk_[level].cost(min(units, mxcnt_));
 }
 
 double TilingCost::stopSlack(int edge) const {
@@ -111,6 +113,47 @@ int TilingCost::paraOf(int ri) const {
                paraStarts_.begin()) - 1;
 }
 
+void TilingCost::relaxRuns(Arrival& e, int begin, int ri, const Chunk& chunk,
+                           const vector<char>& isClass, const vector<int>& idx,
+                           const vector<int>& starts, const vector<int>& ends,
+                           const vector<Arrival>& runStart) const {
+  const int last = ri - 1;
+  int runIdx;
+  bool endsInWs = false;
+  if (isClass[last]) {
+    runIdx = idx[last];
+  } else if (isWs_[last] && wsRunStart_[last] > 0 && isClass[wsRunStart_[last] - 1]) {
+    runIdx = idx[wsRunStart_[last] - 1];
+    endsInWs = true;
+  } else {
+    return;
+  }
+  for (int k = 1; k <= mxcnt_ && runIdx - k + 1 >= 0; k++) {
+    const int run = runIdx - k + 1;
+    if (ends[run] <= begin) break;
+    const int runBegin = starts[run];
+    relax(e, runStart[runBegin], chunk.cost(k));
+    if (runBegin > begin && isWs_[runBegin - 1] && k + endsInWs <= mxcnt_)
+      relax(e, wsStart_[wsRunStart_[runBegin - 1]], chunk.cost(k + endsInWs));
+  }
+}
+
+void TilingCost::relaxUnits(Arrival& e, int begin, int ri, const Chunk& chunk,
+                            const vector<int>& idxAt, const vector<int>& starts,
+                            const vector<Arrival>& unitMin) const {
+  if (idxAt[ri] < 0) return;
+  const int unit = idxAt[ri];
+  for (int u = unit - 1; u >= 0 && unit - u <= mxcnt_; u--) {
+    if (kind_ == Kind::Delete) {
+      if (starts[u] < begin) break;
+      relax(e, reach_[starts[u]], chunk.cost(unit - u));
+    } else {
+      if (starts[u + 1] <= begin) break;
+      relax(e, unitMin[u], chunk.cost(unit - u));
+    }
+  }
+}
+
 void TilingCost::buildBoundaries(const string& text) {
   isWord_.assign(N_, 0);
   isBig_.assign(N_, 0);
@@ -148,25 +191,13 @@ void TilingCost::buildBoundaries(const string& text) {
 }
 
 Typing::Typing(const FlatText& goal, const Config& config)
-    : PS(goal.text.size() + 1, 0.0), cut(goal.text.size() + 1, 0.0),
+    : PS(goal.text.size() + 1, 0.0),
       entry(getEffort("i", config)), esc(getEffort("<Esc>", config)) {
-  const int M = (int)goal.text.size();
-  if (M == 0) return;
-  vector<RunningEffort> seg;
-  vector<double> segEffort(M);
-  seg.reserve(M);
-  for (int rj = 0; rj < M; rj++) {
+  for (int rj = 0; rj < (int)goal.text.size(); rj++) {
     KeyedSequence one;
     one.append(string_view(goal.text).substr(rj, 1));
-    seg.emplace_back(one.keys, config);
-    segEffort[rj] = seg[rj].getEffort(config);
+    PS[rj + 1] = PS[rj] + RunningEffort(one.keys, config).getEffort(config);
   }
-  RunningEffort acc = seg[0];
-  PS[1] = segEffort[0];
-  for (int rj = 1; rj < M; rj++) PS[rj + 1] = acc.appendFrom(seg[rj], config);
-  for (int rj = 1; rj < M; rj++)
-    cut[rj] = RunningEffort::merge(seg[rj - 1], seg[rj]).getEffort(config) -
-              segEffort[rj - 1] - segEffort[rj];
 }
 
 }  // namespace VimDiff

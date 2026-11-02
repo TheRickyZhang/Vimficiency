@@ -152,12 +152,12 @@ TEST(CompositionResultPlannedEditView, DiffsAreThePlannerPartition) {
   CompositionResult result = opt.optimize(
       initial, CursorPos(0, 0), goal, goal.lastPos(), params, "", boundary);
 
-  vector<VimDiff::Plan> plans = VimDiff::calculate(
-      initial, goal, config,
-      VimDiff::CostOptions{.moveDeleteScale = params.moveDeleteScale,
-                           .maxPrefixCount = params.maxPrefixCount});
-  ASSERT_FALSE(plans.empty());
-  const vector<DiffState>& expected = plans.front().diffs;
+  const vector<DiffState> expected =
+      VimDiff::calculate(initial, goal, config,
+                         VimDiff::CostOptions{.moveDeleteScale = params.moveDeleteScale,
+                                              .maxPrefixCount = params.maxPrefixCount})
+          .diffs;
+  ASSERT_FALSE(expected.empty());
   ASSERT_EQ(result.getDiffs().size(), expected.size());
   for (size_t i = 0; i < expected.size(); i++) {
     const DiffState& actual = result.getDiffs()[i];

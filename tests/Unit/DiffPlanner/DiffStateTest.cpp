@@ -44,8 +44,7 @@ static vector<DiffState> bestVimDiffs(
     const Lines& end,
     const Config& config = Config::uniform(),
     VimDiff::CostOptions options = {}) {
-  vector<VimDiff::Plan> plans = VimDiff::calculate(start, end, config, options);
-  return plans.empty() ? vector<DiffState>{} : plans.front().diffs;
+  return VimDiff::calculate(start, end, config, options).diffs;
 }
 
 static void expectVimDiffRoundTrip(const Lines& start, const Lines& end) {
