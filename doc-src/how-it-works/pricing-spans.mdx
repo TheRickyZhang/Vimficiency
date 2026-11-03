@@ -1,0 +1,49 @@
+---
+title: "Pricing spans"
+description: "A span's delete or move cost is the cheapest tiling of it by counted commands, found in one left-to-right pass."
+sidebar: { hidden: true }
+---
+import Tiling from '../../web/docs/src/assets/how-it-works/tiling.svg';
+import TilingWidget from '../../web/docs/src/components/TilingWidget.astro';
+
+The grid asks one question over and over: what does it cost to delete, or move
+over, this span of the initial text? Vim has many answers for any span (`3x`,
+`dw`, `D`, `2dd`), and the cheapest one depends on where word, line and
+paragraph boundaries fall.
+
+<figure class="vf-figure">
+  <Tiling />
+  <figcaption>Two ways to cover the same span. The planner takes the cheapest chain of chunks.</figcaption>
+</figure>
+
+## Tiling
+
+A span's cost comes from one left-to-right pass over its characters:
+
+```
+best[r] = min over chunks [s, r) ending at r  of  best[s] + cost(chunk)
+          chunks: {k} chars · {k} words · {k} WORDS · {k} lines · {k} paragraphs · D · d0
+```
+
+Each chunk is one counted command, priced as its keystrokes plus the count
+penalty. A chunk can only end where its command would land: `{k}dw` at a word
+start, `{k}dd` at a line start, `D` at the end of a line.
+
+<TilingWidget />
+
+Drag across the characters to pick a span. The brackets under it are the
+chunks of the cheapest tiling; the status line compares it with a plain chain
+of `x` (or `l`). Switch to *move* to price the same span as a motion: moves are
+cheaper per chunk, and `j`/`}` may start anywhere in a line or paragraph where
+`dd`/`dap` must start at its beginning.
+
+Two properties make this cheap enough to call from every grid cell:
+
+- one pass from a start prices every end, so a whole table row costs one walk
+- seeding `best` with a whole DP column makes the pass multi-source: a deletion's remaining cost does not depend on where it began, so one pass prices every deletion arriving in that column
+
+The chunk list the widget shows is the same backtrack the planner would make;
+in production only the costs are kept.
+
+Next: [sealing long matches](/Vimficiency/docs/how-it-works/sealing/), which keeps every pass inside the
+changed text.

@@ -386,12 +386,12 @@ void ChangeGoalHandler::cacheSuffixesForPath(
       buildRawSuffixEfforts(*suffixProgram, typedSuffixEffort,
                             prefixCommandCount, completionPenalty);
 
-  size_t initialHash = hashLines(effectiveLines);
+  uint64_t initialHash = hashLines(effectiveLines);
   int initialLineCount = static_cast<int>(effectiveLines.size());
   CursorPos initialPos =
       seedPositionForStart(base.getStartIndex(), initialLines, leftColOffset);
   for (int nextIndex = 0; nextIndex < programCommandCount; nextIndex++) {
-    size_t linesHash = initialHash;
+    uint64_t linesHash = initialHash;
     int lineCount = initialLineCount;
     CursorPos replayPos = initialPos;
     Mode replayMode = base.getMode();

@@ -1,0 +1,69 @@
+---
+title: "Planning a change"
+description: "A plan deletes runs of the initial text, types runs of the goal, and moves across what they share. Its price is the sum of those three."
+sidebar: { hidden: true }
+---
+import PlanWidget from '../../web/docs/src/components/PlanWidget.astro';
+
+Consider turning `aa b cc` into `xx b zz`. Two reasonable plans:
+
+```
+two edits   aa→xx, move over b, cc→zz    cwxx<Esc> ww cwzz<Esc>   12 keystrokes, 4 chars changed
+one edit    delete everything, retype     Cxx b zz<Esc>             9 keystrokes, 7 chars changed
+```
+
+Pure edit distance always prefers the first: it changes fewer characters.
+Moving between regions and re-entering insert mode cost keystrokes too, which
+is what makes the second plan cheaper here. The planner's job is to weigh those
+against each other.
+
+## What a plan is
+
+A plan works left to right through the change. At each point it either
+**deletes** a run of the initial text, **types** a run of the goal text, or
+**moves** across a run both sides share. Throughout, `i` counts the characters
+of the initial text consumed and `j` the characters of the goal produced; a
+finished plan has consumed and produced everything.
+
+A maximal run of deleting and typing between two moves is one **planned edit**
+(a *region*). The widget below shows the regions the planner picks and what each
+one costs.
+
+<PlanWidget />
+
+Try `the quick brown fox jumps over the lazy dog` → `the quick red fox leaps over the lazy dog`:
+the planner keeps ` fox ` and makes two edits. Then shorten the gap between the
+edits until it decides one edit through the middle is cheaper.
+
+## What a plan costs
+
+```
+sum(delete costs) + sum(insert costs) + sum(move costs)
+```
+
+The shared prefix and suffix are free. Every optimal plan starts at the first
+differing character and ends at the last, so reaching them from the cursor costs
+the same for every plan and cannot change the ranking.
+
+### Pricing one step
+
+A step advances `(i, j)` in one of three ways:
+
+| step   | commands                          | cost                                         | `(i, j) →`   |
+|--------|-----------------------------------|----------------------------------------------|--------------|
+| move   | `l` `w` `W` `j` `}` `$`           | counted-motion tiling                        | `(i+x, j+x)` |
+| delete | `x` `dw` `dW` `dd` `dap` `D` `d0` | counted-operator tiling                      | `(i+x, j)`   |
+| type   | typed text                        | insert-mode entry + per-key effort + `<Esc>` | `(i, j+y)`   |
+
+A delete followed directly by typing is the `c` form (`cw`, `cc`, `s`), which
+saves the entry key: in the widget, a region that both deletes and types pays
+`<Esc>` but not `i`. Counted commands cost their digit keystrokes plus a
+concave cognitive penalty (roughly `sqrt(k)`), shared with the downstream
+search.
+
+Both oracles are deliberately coarse keystroke counts. The planner only ranks
+partitions; the [search](/Vimficiency/docs/how-it-works/searching/) re-prices the winning sequence exactly,
+with the per-key effort model of your keyboard. The planner has no sequence of
+its own, which is why the widget shows costs and not commands.
+
+Next: [the grid](/Vimficiency/docs/how-it-works/the-grid/) that finds the cheapest plan.

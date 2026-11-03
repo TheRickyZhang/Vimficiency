@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -258,11 +259,11 @@ struct Lines final : std::vector<Line> {
   }
 };
 
-inline size_t hashLines(const Lines& lines) {
-  size_t h = 0xcbf29ce484222325ULL;
+inline uint64_t hashLines(const Lines& lines) {
+  uint64_t h = 0xcbf29ce484222325ULL;
   for (const auto& line : lines) {
     for (char c : line) {
-      h ^= static_cast<size_t>(static_cast<unsigned char>(c));
+      h ^= static_cast<uint64_t>(static_cast<unsigned char>(c));
       h *= 0x100000001b3ULL;
     }
     h ^= '\n';

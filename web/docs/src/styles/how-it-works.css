@@ -1,0 +1,279 @@
+/* Palette shared with the manim scenes (anim/dp-walkthrough/scene.py STEP_COLOR):
+   deletions red, typed text orange, kept/moved-over text grey, optimum yellow. */
+:root {
+  --vf-delete: #ff6b6b;
+  --vf-type: #ffa94d;
+  --vf-kept: #8a949e;
+  --vf-move: #8a949e;
+  --vf-opt: #ffd43b;
+  --vf-alt: #4dabf7;
+  --vf-insert-table: #ffa94d;
+  --vf-normal-table: #dee2e6;
+  --vf-cell-border: color-mix(in srgb, var(--sl-color-gray-5) 60%, transparent);
+}
+
+.vf-widget {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 1.5rem 0;
+  background: var(--sl-color-bg-nav);
+  font-size: var(--sl-text-sm);
+}
+
+.vf-widget textarea {
+  width: 100%;
+  min-height: 3.5rem;
+  font-family: var(--__sl-font-mono);
+  font-size: var(--sl-text-sm);
+  background: var(--sl-color-bg);
+  color: var(--sl-color-text);
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.25rem;
+  padding: 0.4rem 0.5rem;
+  resize: vertical;
+}
+
+.vf-widget label {
+  display: block;
+  font-weight: 600;
+  margin: 0.5rem 0 0.2rem;
+}
+
+.vf-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+
+.vf-controls select,
+.vf-controls button {
+  font: inherit;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--sl-color-gray-5);
+  background: var(--sl-color-bg);
+  color: var(--sl-color-text);
+}
+
+.vf-controls button[aria-pressed='true'] {
+  border-color: var(--sl-color-accent);
+  background: var(--sl-color-accent-low);
+}
+
+.vf-status {
+  min-height: 1.5rem;
+  color: var(--sl-color-gray-2);
+  margin-top: 0.5rem;
+}
+
+.vf-status.vf-error {
+  color: var(--vf-delete);
+}
+
+.vf-total {
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+/* Character rows */
+.vf-chars {
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--__sl-font-mono);
+  line-height: 1.6;
+  margin: 0.25rem 0;
+  user-select: none;
+}
+
+.vf-ch {
+  display: inline-block;
+  width: 1.1ch;
+  min-width: 0.8rem;
+  text-align: center;
+  white-space: pre;
+  border-bottom: 2px solid transparent;
+}
+
+.vf-ch.vf-nl {
+  color: var(--sl-color-gray-3);
+}
+
+.vf-ch.vf-del {
+  background: color-mix(in srgb, var(--vf-delete) 35%, transparent);
+  border-bottom-color: var(--vf-delete);
+}
+
+.vf-ch.vf-ins {
+  background: color-mix(in srgb, var(--vf-type) 35%, transparent);
+  border-bottom-color: var(--vf-type);
+}
+
+.vf-ch.vf-kept {
+  color: var(--vf-kept);
+}
+
+.vf-ch.vf-sel {
+  background: color-mix(in srgb, var(--vf-alt) 35%, transparent);
+  border-bottom-color: var(--vf-alt);
+}
+
+.vf-ch.vf-caret {
+  box-shadow: inset 2px 0 0 var(--vf-type);
+}
+
+.vf-rowlabel {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-xs);
+  margin-top: 0.5rem;
+}
+
+/* Region table */
+.vf-widget table {
+  margin: 0.5rem 0 0;
+  font-size: var(--sl-text-xs);
+}
+
+.vf-widget td code {
+  white-space: pre;
+}
+
+.vf-widget td.vf-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tiling chunks: a row of brackets under the selected span */
+.vf-chunks {
+  display: flex;
+  flex-wrap: nowrap;
+  font-family: var(--__sl-font-mono);
+  margin: 0.25rem 0 0.5rem;
+}
+
+.vf-chunk {
+  box-sizing: border-box;
+  border: 2px solid var(--vf-delete);
+  border-top: none;
+  border-radius: 0 0 0.3rem 0.3rem;
+  text-align: center;
+  font-size: var(--sl-text-xs);
+  padding: 0.1rem 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.vf-chunk.vf-chunk-move {
+  border-color: var(--vf-kept);
+}
+
+.vf-pad {
+  flex: none;
+}
+
+/* Grid lattice */
+.vf-grid-wrap {
+  overflow-x: auto;
+}
+
+.vf-lattice {
+  display: block;
+  margin: 0.5rem 0;
+}
+
+.vf-lattice text {
+  font-family: var(--__sl-font-mono);
+  font-size: 10px;
+  fill: var(--sl-color-text);
+}
+
+.vf-lattice .vf-cell {
+  stroke: var(--vf-cell-border);
+  stroke-width: 0.5;
+}
+
+.vf-lattice .vf-cell:hover {
+  stroke: var(--sl-color-text);
+  stroke-width: 1.5;
+}
+
+.vf-lattice .vf-path {
+  fill: none;
+  stroke: var(--vf-opt);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.vf-lattice .vf-path-dot {
+  fill: var(--vf-opt);
+  pointer-events: none;
+}
+
+.vf-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: var(--sl-text-xs);
+  margin: 0.25rem 0;
+}
+
+.vf-legend span::before {
+  content: '';
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 0.3em;
+  border-radius: 2px;
+  background: var(--c);
+  vertical-align: -0.1em;
+}
+
+/* Sealing bar */
+.vf-bar {
+  position: relative;
+  height: 1.6rem;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--vf-kept) 30%, transparent);
+  margin: 0.5rem 0;
+  overflow: hidden;
+}
+
+.vf-bar-block {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--vf-delete) 70%, transparent);
+}
+
+.vf-bar-label {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--sl-text-xs);
+  color: var(--sl-color-text);
+  pointer-events: none;
+}
+
+/* Concept diagrams */
+.vf-figure {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+.vf-figure svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.vf-figure figcaption {
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  margin-top: 0.5rem;
+}

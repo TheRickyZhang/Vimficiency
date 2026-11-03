@@ -14,11 +14,15 @@
 
 ## Data source
 
-`trace.json` is exported by `tests/Debug/VimDiffTraceExport.cpp`. It re-runs
-the K=1 recurrence with the production cost oracles while logging every
-relaxation, and asserts the traced optimum and regions against
-`VimDiff::calculateBreakdown` — the animation cannot drift from the real
-planner.
+`trace.json` is exported by `tests/Debug/VimDiffTraceExport.cpp`, which dumps
+`VimDiff::trace()` — the production DP tables and path, so the animation cannot
+drift from the real planner.
+
+The committed traces predate two changes and still render as is. Regenerating
+would need the scene adjusted: the export no longer writes the per-relaxation
+`events` list (Acts 3–4 animate candidate competition from it), and `plans` is
+a one-element list since the planner's K-best removal (Act 5 and Act 6 compare
+`plans[1]`).
 
 Regenerate (from the repo root; `VIMFY_TRACE_INITIAL` / `VIMFY_TRACE_GOAL`
 override the buffers, literal `\n` for newlines):

@@ -1,0 +1,37 @@
+---
+title: "How it works"
+description: "How vimficiency turns a buffer change into shorter keystrokes: a planner that partitions the change, and a search that realizes each planned edit."
+sidebar: { hidden: true }
+---
+import TwoStages from '../../web/docs/src/assets/how-it-works/two-stages.svg';
+
+A session hands the optimizer an initial buffer, a goal buffer, the cursor, and
+what you typed. Finding something shorter is two problems, solved in order.
+
+<figure class="vf-figure">
+  <TwoStages />
+  <figcaption>Partition first, then search. The partition is priced by a coarse keystroke heuristic; the search re-prices the winning sequence with exact Vim semantics.</figcaption>
+</figure>
+
+1. **Partition** the change into planned edits: which runs of the initial text
+   to delete, which runs of the goal to type, and where to move in between.
+2. **Search** for the cheapest keystrokes that carry out each planned edit,
+   over editor states with exact Vim semantics.
+
+These chapters walk through both. Every widget in them runs the real planner,
+compiled to WebAssembly from the same C++ the plugin ships, so you can type your
+own initial and goal text and watch the numbers change.
+
+## Chapters
+
+- [Planning a change](/Vimficiency/docs/how-it-works/planning-a-change/) — what a plan is and what it costs
+- [The grid](/Vimficiency/docs/how-it-works/the-grid/) — the dynamic program that finds the cheapest plan
+- [Pricing spans](/Vimficiency/docs/how-it-works/pricing-spans/) — how one span's delete or move cost is tiled from counted commands
+- [Sealing long matches](/Vimficiency/docs/how-it-works/sealing/) — why the planner's work is bounded by the size of the change, not the buffer
+- [From a plan to keystrokes](/Vimficiency/docs/how-it-works/searching/) — the three shortest-path searches that produce the final sequence
+
+## Videos
+
+Two narrated walkthroughs cover the same material end to end: the DP on a small
+example, and the search layer. They are embedded in the
+[project README](https://github.com/TheRickyZhang/Vimficiency#how-it-works).

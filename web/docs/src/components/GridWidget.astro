@@ -1,0 +1,147 @@
+---
+// The out/in DP lattice of one planner run: every cell's winning step, the
+// optimal path, and a hover readout of cost and predecessor.
+interface Props { initial?: string; goal?: string }
+const { initial = 'aa b cc', goal = 'xx b zz' } = Astro.props;
+---
+<vf-grid-widget class="vf-widget">
+  <label>Initial text (rows)<textarea data-initial>{initial}</textarea></label>
+  <label>Goal text (columns)<textarea data-goal>{goal}</textarea></label>
+  <div class="vf-controls">
+    <span>Table:</span>
+    <button type="button" data-table-btn="out" aria-pressed="true">out (normal mode)</button>
+    <button type="button" data-table-btn="in" aria-pressed="false">in (insert mode)</button>
+  </div>
+  <div class="vf-legend">
+    <span style="--c: var(--vf-kept)">move / cross</span>
+    <span style="--c: var(--vf-delete)">delete / change</span>
+    <span style="--c: var(--vf-type)">enter / type</span>
+    <span style="--c: var(--vf-normal-table)">exit (free)</span>
+    <span style="--c: var(--vf-opt)">optimal path</span>
+  </div>
+  <div class="vf-grid-wrap" data-lattices></div>
+  <div class="vf-status" data-status>Loading planner…</div>
+</vf-grid-widget>
+
+<script>
+  import { grid, debounce, fmt, reportError, type GridResult, type GridBlock, type Cell, type StepName } from '../scripts/planner';
+
+  const STEP_COLOR: Record<StepName, string> = {
+    LEADING: 'var(--vf-normal-table)', MOVE: 'var(--vf-kept)', CROSS: 'var(--vf-kept)',
+    DELETE: 'var(--vf-delete)', CHANGE: 'var(--vf-delete)',
+    ENTER: 'var(--vf-type)', TYPE: 'var(--vf-type)', EXIT: 'var(--vf-normal-table)',
+  };
+  const SVG = 'http://www.w3.org/2000/svg';
+
+  class GridWidget extends HTMLElement {
+    private table: 'out' | 'in' = 'out';
+    private result?: GridResult;
+    private initial = '';
+    private goal = '';
+
+    private q<T extends HTMLElement>(sel: string) { return this.querySelector(sel) as T; }
+
+    connectedCallback() {
+      const run = debounce(() => this.run(), 200);
+      this.q('[data-initial]').addEventListener('input', run);
+      this.q('[data-goal]').addEventListener('input', run);
+      this.querySelectorAll<HTMLButtonElement>('[data-table-btn]').forEach((b) =>
+        b.addEventListener('click', () => {
+          this.table = b.dataset.tableBtn as 'out' | 'in';
+          this.querySelectorAll<HTMLButtonElement>('[data-table-btn]').forEach((o) =>
+            o.setAttribute('aria-pressed', String(o === b)));
+          if (this.result) this.render();
+        }));
+      this.run();
+    }
+
+    private async run() {
+      this.initial = this.q<HTMLTextAreaElement>('[data-initial]').value;
+      this.goal = this.q<HTMLTextAreaElement>('[data-goal]').value;
+      const status = this.q('[data-status]');
+      try {
+        this.result = await grid(this.initial, this.goal);
+        this.render();
+        status.classList.remove('vf-error');
+        status.textContent = this.result.sealedFallback
+          ? 'Over the DP cell budget: showing the sealed partition only.'
+          : `Optimum ${fmt(this.result.total)} over ${this.result.dpCells.toLocaleString()} cells `
+            + `(${this.result.rawCells.toLocaleString()} without sealing). Hover a cell.`;
+      } catch (e) {
+        reportError(status, e);
+      }
+    }
+
+    private render() {
+      const r = this.result!;
+      const wrap = this.q('[data-lattices]');
+      wrap.replaceChildren();
+      r.blocks.forEach((b, k) => wrap.appendChild(this.lattice(r, b, k)));
+    }
+
+    private lattice(r: GridResult, b: GridBlock, k: number): SVGSVGElement {
+      const n = b.aEnd - b.aBegin, m = b.bEnd - b.bBegin;
+      const size = Math.max(6, Math.min(26, Math.floor(640 / Math.max(n, m, 1))));
+      const pad = 22;
+      const svg = document.createElementNS(SVG, 'svg');
+      svg.setAttribute('class', 'vf-lattice');
+      svg.setAttribute('width', String(pad + (m + 1) * size + 4));
+      svg.setAttribute('height', String(pad + (n + 1) * size + 4));
+      const cells = this.table === 'out' ? b.out : b.in;
+      const label = (x: number, y: number, t: string) => {
+        const e = document.createElementNS(SVG, 'text');
+        e.setAttribute('x', String(x));
+        e.setAttribute('y', String(y));
+        e.setAttribute('text-anchor', 'middle');
+        e.textContent = t === '\n' ? '¶' : t;
+        svg.appendChild(e);
+      };
+      if (size >= 10) {
+        for (let j = 0; j < m; j++) label(pad + (j + 1) * size + size / 2, pad - 8, this.goal[b.bBegin + j]);
+        for (let i = 0; i < n; i++) label(pad / 2, pad + (i + 1) * size + size / 2 + 4, this.initial[b.aBegin + i]);
+      }
+      for (let i = 0; i <= n; i++)
+        for (let j = 0; j <= m; j++) {
+          const c = cells?.[i]?.[j] ?? null;
+          const rect = document.createElementNS(SVG, 'rect');
+          rect.setAttribute('class', 'vf-cell');
+          rect.setAttribute('x', String(pad + j * size));
+          rect.setAttribute('y', String(pad + i * size));
+          rect.setAttribute('width', String(size));
+          rect.setAttribute('height', String(size));
+          rect.setAttribute('fill', c ? STEP_COLOR[c.step] : 'transparent');
+          rect.setAttribute('fill-opacity', c ? '0.75' : '0');
+          rect.addEventListener('mouseenter', () => this.describe(k, i, j, c));
+          svg.appendChild(rect);
+        }
+      const onPath = r.path.filter((p) => p.block === k);
+      const path = document.createElementNS(SVG, 'path');
+      path.setAttribute('class', 'vf-path');
+      path.setAttribute('d', onPath.map((p, idx) =>
+        `${idx === 0 ? 'M' : 'L'}${pad + p.j * size + size / 2} ${pad + p.i * size + size / 2}`).join(' '));
+      svg.appendChild(path);
+      for (const p of onPath) {  // large dots: cells in the shown table; small: the other table
+        const dot = document.createElementNS(SVG, 'circle');
+        dot.setAttribute('class', 'vf-path-dot');
+        dot.setAttribute('cx', String(pad + p.j * size + size / 2));
+        dot.setAttribute('cy', String(pad + p.i * size + size / 2));
+        dot.setAttribute('r', String(p.table === this.table ? size / 5 : size / 9));
+        svg.appendChild(dot);
+      }
+      return svg;
+    }
+
+    private describe(k: number, i: number, j: number, c: Cell | null) {
+      const status = this.q('[data-status]');
+      if (!c) {
+        status.textContent = `${this.table}[${i}, ${j}] unreached`;
+        return;
+      }
+      const pred = c.step === 'LEADING' ? 'root'
+        : `from ${c.step === 'TYPE' || c.step === 'EXIT' ? 'in' : 'out'}[${c.pi}, ${c.pj}]${c.step === 'CROSS' ? ' of the previous block' : ''}`;
+      status.textContent = `block ${k} · ${this.table}[${i}, ${j}] = ${fmt(c.cost)} via ${c.step} ${pred}`;
+    }
+  }
+
+  if (!customElements.get('vf-grid-widget')) customElements.define('vf-grid-widget', GridWidget);
+</script>

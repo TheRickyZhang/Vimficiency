@@ -38,8 +38,11 @@ TilingCost::TilingCost(const FlatText& initial, double scale, int mxcnt, Kind ki
   buildChunk<CountClass::EditBigWord, CountClass::MovementBigWord>(BIG_WORD, scale);
   buildChunk<CountClass::EditLine, CountClass::MovementLine>(LINE, scale);
   buildChunk<CountClass::EditParagraph, CountClass::MovementParagraph>(PARAGRAPH, scale);
-  toLineEnd_ = TO_LINE_END_KEYS * scale;
-  toLineStart_ = TO_LINE_START_KEYS * scale;
+  toLineEnd_.kind = CHUNK_LINE_END;
+  toLineStart_.kind = CHUNK_LINE_START;
+  toLineEnd_.base = TO_LINE_END_KEYS * scale;
+  toLineStart_.base = TO_LINE_START_KEYS * scale;
+  toLineEnd_.pen = toLineStart_.pen = {0.0, 0.0};
   for (vector<Arrival>* v : {&reach_, &wordStart_, &bigStart_, &wsStart_}) v->assign(N_ + 1, {});
   lineMin_.assign(lineStarts_.size(), {});
   paraMin_.assign(paraStarts_.size(), {});
@@ -83,7 +86,7 @@ double TilingCost::stopSlack(int edge) const {
 double TilingCost::startSlack(int edge) const {
   const int line = lineOf(edge);
   const int nextStart = lineStarts_[min(line + 1, (int)lineStarts_.size() - 1)];
-  const double toEol = toLineEnd_ + chunk_[CHAR].cost(1);
+  const double toEol = toLineEnd_.base + chunk_[CHAR].cost(1);
   const int nextPara = paraStarts_[min(paraOf(edge) + 1, (int)paraStarts_.size() - 1)];
   const int jTail = max(0, lineOf(nextPara) - line - 1);
   double slack = maxChunkGap();
@@ -97,6 +100,21 @@ double TilingCost::query(int begin, int end) {
   double cost = 0.0;
   sweep(begin, end, [&](int ri, double c) { if (ri == end) cost = c; });
   return cost;
+}
+
+vector<TilingChunk> TilingCost::cover(int begin, int end) {
+  vector<Arrival> arrivals(end - begin + 1);
+  sweep(begin, end, [&](int ri) { return ri == begin ? 0.0 : INF; },
+        [&](int ri, const Arrival& a) { arrivals[ri - begin] = a; });
+  vector<TilingChunk> chunks;
+  for (int pos = end; pos > begin;) {
+    const Arrival& a = arrivals[pos - begin];
+    const double base = a.from == begin ? 0.0 : arrivals[a.from - begin].cost;
+    chunks.push_back({a.from, pos, a.kind, a.count, a.cost - base});
+    pos = a.from;
+  }
+  reverse(chunks.begin(), chunks.end());
+  return chunks;
 }
 
 double TilingCost::maxChunkGap() const {
@@ -132,9 +150,9 @@ void TilingCost::relaxRuns(Arrival& e, int begin, int ri, const Chunk& chunk,
     const int run = runIdx - k + 1;
     if (ends[run] <= begin) break;
     const int runBegin = starts[run];
-    relax(e, runStart[runBegin], chunk.cost(k));
+    relax(e, runStart[runBegin], chunk, k);
     if (runBegin > begin && isWs_[runBegin - 1] && k + endsInWs <= mxcnt_)
-      relax(e, wsStart_[wsRunStart_[runBegin - 1]], chunk.cost(k + endsInWs));
+      relax(e, wsStart_[wsRunStart_[runBegin - 1]], chunk, k + endsInWs);
   }
 }
 
@@ -146,10 +164,10 @@ void TilingCost::relaxUnits(Arrival& e, int begin, int ri, const Chunk& chunk,
   for (int u = unit - 1; u >= 0 && unit - u <= mxcnt_; u--) {
     if (kind_ == Kind::Delete) {
       if (starts[u] < begin) break;
-      relax(e, reach_[starts[u]], chunk.cost(unit - u));
+      relax(e, reach_[starts[u]], chunk, unit - u);
     } else {
       if (starts[u + 1] <= begin) break;
-      relax(e, unitMin[u], chunk.cost(unit - u));
+      relax(e, unitMin[u], chunk, unit - u);
     }
   }
 }

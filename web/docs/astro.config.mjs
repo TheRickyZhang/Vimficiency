@@ -46,10 +46,26 @@ export default defineConfig({
       sidebar: [
         {
           label: 'Guide',
-          autogenerate: { directory: '.' },
+          // The glob loader records root-relative file paths
+          // (`../../doc-src/NN-name.md`), and autogenerate matches on that
+          // prefix — `'.'` matches nothing and leaves the group empty.
+          autogenerate: { directory: '../../doc-src' },
+        },
+        {
+          // Chapters opt out of autogenerate via `sidebar.hidden` so they
+          // do not also appear nested under Guide.
+          label: 'How it works',
+          items: [
+            { slug: 'how-it-works' },
+            { slug: 'how-it-works/planning-a-change' },
+            { slug: 'how-it-works/the-grid' },
+            { slug: 'how-it-works/pricing-spans' },
+            { slug: 'how-it-works/sealing' },
+            { slug: 'how-it-works/searching' },
+          ],
         },
       ],
-      customCss: [],
+      customCss: ['./src/styles/how-it-works.css'],
     }),
   ],
   // README.md and inter-chapter links use `.md`-relative form

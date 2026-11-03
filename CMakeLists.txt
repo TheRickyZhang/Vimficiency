@@ -85,6 +85,69 @@ configure_file(
     @ONLY
 )
 
+# Planner-only WebAssembly module for the docs site's interactive explainer
+# (dev/web/how-it-works-site.md). Needs the Emscripten toolchain:
+#   emcmake cmake -B build-wasm -DVIMF_WASM=ON -DCMAKE_BUILD_TYPE=Release
+#   cmake --build build-wasm --target vimfy_planner_wasm
+# Explicit source list rather than the glob: the module must stay the planner
+# closure (no Lua exports, CLI, fast_float, or tests), and growing it should be
+# a visible decision.
+option(VIMF_WASM "Build the planner-only WebAssembly module (requires emcmake)" OFF)
+if(VIMF_WASM)
+  if(NOT EMSCRIPTEN)
+    message(FATAL_ERROR "VIMF_WASM needs the Emscripten toolchain: emcmake cmake -B build-wasm -DVIMF_WASM=ON")
+  endif()
+  add_executable(vimfy_planner_wasm
+    src/Wasm/PlannerExports.cpp
+    src/Optimizer/DiffPlanner/VimDiff.cpp
+    src/Optimizer/DiffPlanner/PlannerCosts.cpp
+    src/Optimizer/DiffPlanner/SealMatchedRuns.cpp
+    src/Optimizer/DiffPlanner/MyersDiff.cpp
+    src/Optimizer/DiffPlanner/DiffState.cpp
+    src/Boundary/TransformBoundary.cpp
+    src/Boundary/BoundaryContext.cpp
+    src/Effort/RunningEffort.cpp
+    src/Keyboard/Config.cpp
+    src/Keyboard/PhysicalKeys.cpp
+    src/Keyboard/ToKeys/CharToKeys.cpp
+    src/Keyboard/ToKeys/CommandToKeys.cpp
+    src/Keyboard/ToKeys/SequenceToKeys.cpp
+    src/Keyboard/ToKeys/MovementToKeys.cpp
+    src/Keyboard/ToKeys/MovementToKeysPrimitives.cpp
+    src/Keyboard/ToKeys/EditToKeys.cpp
+    src/Keyboard/ToKeys/EditToKeysPrimitives.cpp
+    src/Keyboard/ToKeys/CountToKeys.cpp
+    src/Types/CharInterval.cpp
+  )
+  target_include_directories(vimfy_planner_wasm PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
+  )
+  target_compile_definitions(vimfy_planner_wasm PRIVATE
+    $<$<BOOL:${VIMF_LEGACY_VIM}>:VIMF_LEGACY_VIM>
+  )
+  set_target_properties(vimfy_planner_wasm PROPERTIES
+    OUTPUT_NAME vimfy_planner
+    SUFFIX ".js"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/wasm
+    POSITION_INDEPENDENT_CODE OFF
+  )
+  # No exception catching: the wrapper sanitizes input so the one throwing
+  # call in the closure (CHAR_TO_KEYS.at) cannot fire.
+  target_link_options(vimfy_planner_wasm PRIVATE
+    -sMODULARIZE=1
+    -sEXPORT_ES6=1
+    -sENVIRONMENT=web
+    -sALLOW_MEMORY_GROWTH=1
+    -sINITIAL_MEMORY=33554432
+    -sASSERTIONS=0
+    --no-entry
+    -sEXPORTED_RUNTIME_METHODS=cwrap,UTF8ToString,stringToNewUTF8
+    -sEXPORTED_FUNCTIONS=_malloc,_free,_vf_plan,_vf_grid,_vf_tiling,_vf_seal
+  )
+  return()
+endif()
+
 # fast_float: portable, header-only replacement for std::from_chars<double>.
 # Apple's libc++ ships from_chars<double> as = delete (P0067 unimplemented as
 # of Xcode 16), so std::from_chars<double> fails to compile on macOS.
@@ -101,7 +164,7 @@ FetchContent_MakeAvailable(fast_float)
 file(GLOB_RECURSE VIMFY_CORE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
 )
-list(FILTER VIMFY_CORE_SOURCES EXCLUDE REGEX [[/src/(LuaExports/|lua_exports\.cpp$|main\.cpp$)]])
+list(FILTER VIMFY_CORE_SOURCES EXCLUDE REGEX [[/src/(LuaExports/|Wasm/|lua_exports\.cpp$|main\.cpp$)]])
 
 add_library(vimfy_core STATIC ${VIMFY_CORE_SOURCES})
 target_link_libraries(vimfy_core PUBLIC fast_float)

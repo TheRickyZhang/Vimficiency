@@ -15,6 +15,7 @@ This document defines the allowed `src` module dependency graph and the intent o
 - `Optimizer`: Search algorithms and optimizer-specific logic.
 - `Explore`: Interactive exploration adapter built on optimizer frontiers and VimCore replay.
 - `LuaExports`: C ABI adapter layer for LuaJIT, grouped by exported API domain.
+- `Wasm`: C ABI adapter for the docs site's planner module (Emscripten build only; excluded from `vimfy_core`). See `dev/web/how-it-works-site.md`.
 
 ## Allowed Dependencies
 
@@ -29,6 +30,7 @@ This document defines the allowed `src` module dependency graph and the intent o
 - `Optimizer` -> `Types`, `Utils`, `Keyboard`, `VimCore`, `Boundary`, `Interpreter`, `Effort`
 - `Explore` -> `Types`, `Keyboard`, `Effort`, `Boundary`, `VimCore`, `Interpreter`, `Optimizer`
 - `LuaExports` -> `Types`, `Keyboard`, `Boundary`, `Interpreter`, `VimCore`, `Optimizer`, `Explore`, `Utils`
+- `Wasm` -> `Types`, `Keyboard`, `Effort`, `Boundary`, `Optimizer` (DiffPlanner only), `Utils`
 
 ## Placement Rules
 
@@ -39,7 +41,7 @@ This document defines the allowed `src` module dependency graph and the intent o
 - Keep foundational buffer/cursor types out of `Interpreter`; lower layers (`VimCore`, `Boundary`, `Optimizer`) share them via `Types`.
 - `Sequence` follows split ownership:
   type declaration in `Types`, formatting/parsing-aware stream implementation in a higher layer (`Interpreter`) to keep `Types` dependency-free.
-- Keep `Explore` and `LuaExports` as edge layers: they may compose lower-level modules, but lower-level modules must not include them.
+- Keep `Explore`, `LuaExports`, and `Wasm` as edge layers: they may compose lower-level modules, but lower-level modules must not include them.
 
 ## Enforcement
 

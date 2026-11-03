@@ -149,3 +149,9 @@ to deeper docs when needed.
 - The DP is documented as three step families — move (MOVE/CROSS), delete (DELETE, or CHANGE landing in insert mode), type (ENTER/TYPE/EXIT) — with one 16-byte candidate per cell. CHANGE stays because it is exact and free: the delete sweep already knows every arrival and lands each one twice.
 - The tiling sweep carries `Arrival{cost, seed}` instead of a templated `Ops` policy; the two `TilingCost` instances are built once per `calculate` and shared by sealing, the DP, and the breakdown.
 - `mxcnt` is the symbol for the shared count cap in code and docs (`cap` was ambiguous). Complexity per block is `O(n·(n+m)·mxcnt)`, bounded by changed text.
+
+## Algorithm explainer moved to the docs site with wasm-backed widgets (2026-11-02)
+- The README's "How it works" walkthrough (tables, the seal-gate inequality, the complexity formula) was hard to read as static GitHub markdown. It is now six chapters under `doc-src/how-it-works/` on the Starlight site; the README keeps a summary, the two videos, and a link.
+- The widgets run the real planner compiled to WebAssembly (`VIMF_WASM`, `src/Wasm/PlannerExports.cpp`) rather than a TypeScript re-implementation, so they cannot drift from `src/Optimizer/DiffPlanner/`. CI builds the module (ubuntu PR check and the macOS main deploy); it is never committed.
+- Two read-only surfaces were added to core for the widgets: `TilingCost::cover` (chunk backpointers on `Arrival`) and `VimDiff::trace` (tables, path, blocks). `VimDiffTraceExport` now dumps the trace instead of re-running a naive DP; the committed animation traces still render, regenerating would need the scene adjusted (`anim/dp-walkthrough/README.md`).
+- Fixed on the way: the Guide sidebar was empty because `autogenerate: { directory: '.' }` never matched the glob loader's root-relative file paths. See `dev/web/how-it-works-site.md`.

@@ -38,10 +38,27 @@ double countPrefixCost(int k, double scale) {
   return (int)std::to_string(k).size() * scale + runtimeCountPenalty<C>({k, k});
 }
 
-// Cheapest tiling reaching a position, and the raw position it started from.
+// The command one tiling chunk stands for. The first five alias Level; the last
+// two are the uncounted line-edge commands (D/$ and d0).
+enum ChunkKind : int8_t { CHUNK_CHAR, CHUNK_WORD, CHUNK_BIG_WORD, CHUNK_LINE, CHUNK_PARAGRAPH,
+                          CHUNK_LINE_END, CHUNK_LINE_START };
+
+// Cheapest tiling reaching position `at`, the raw position it started from, and
+// the last chunk that got it there (`from` < 0 for a bare seed).
 struct Arrival {
   double cost = INF;
   int seed = -1;
+  int at = -1;
+  int from = -1;
+  ChunkKind kind = CHUNK_CHAR;
+  int8_t count = 0;
+};
+
+struct TilingChunk {
+  int begin, end;
+  ChunkKind kind;
+  int count;
+  double cost;
 };
 
 // Cheapest counted-command tiling of raw initial spans.
@@ -58,6 +75,8 @@ public:
   double stopSlack(int edge) const;
   double startSlack(int edge) const;
   double query(int begin, int end);
+  // The chunks of the cheapest tiling of [begin, end), in order.
+  std::vector<TilingChunk> cover(int begin, int end);
 
   // Cheapest tiling from `begin` to every ri in (begin, end]: sink(ri, cost).
   template<class Sink>
@@ -73,7 +92,7 @@ public:
   template<class Seed, class Sink>
   void sweep(int begin, int end, Seed&& seed, Sink&& sink) {
     if (begin >= end) return;
-    auto at = [&](int ri) { return Arrival{seed(ri), ri}; };
+    auto at = [&](int ri) { return Arrival{.cost = seed(ri), .seed = ri, .at = ri}; };
     reach_[begin] = at(begin);
     Arrival lineMin = reach_[begin], paraMin = reach_[begin];  // where j/} may start
     int lineStart = lineStartOf_[begin];
@@ -84,9 +103,9 @@ public:
     Arrival e;
     for (int ri = begin + 1; ri <= end; ri++) {
       const int last = ri - 1;
-      if (isWord_[last]) relax(wordStart_[wordStarts_[wordIdx_[last]]], at(last), 0.0);
-      if (isBig_[last]) relax(bigStart_[bigStarts_[bigIdx_[last]]], at(last), 0.0);
-      if (isWs_[last]) relax(wsStart_[wsRunStart_[last]], at(last), 0.0);
+      if (isWord_[last]) lower(wordStart_[wordStarts_[wordIdx_[last]]], at(last));
+      if (isBig_[last]) lower(bigStart_[bigStarts_[bigIdx_[last]]], at(last));
+      if (isWs_[last]) lower(wsStart_[wsRunStart_[last]], at(last));
       if (lineIdx_[ri] >= 0) {
         lineMin_[lineIdx_[ri] - 1] = lineMin;
         lineMin = {};
@@ -96,39 +115,49 @@ public:
         paraMin_[paraIdx_[ri] - 1] = paraMin;
         paraMin = {};
       }
-      e = {};
+      e = {.at = ri};
       for (int k = 1; k <= mxcnt_ && ri - k >= begin; k++)
-        relax(e, reach_[ri - k], chunk_[CHAR].cost(k));
+        relax(e, reach_[ri - k], chunk_[CHAR], k);
       relaxRuns(e, begin, ri, chunk_[WORD], isWord_, wordIdx_, wordStarts_, wordEnds_, wordStart_);
       relaxRuns(e, begin, ri, chunk_[BIG_WORD], isBig_, bigIdx_, bigStarts_, bigEnds_, bigStart_);
       relaxUnits(e, begin, ri, chunk_[LINE], lineIdx_, lineStarts_, lineMin_);
       relaxUnits(e, begin, ri, chunk_[PARAGRAPH], paraIdx_, paraStarts_, paraMin_);
-      if (ri == N_ || isNewline_[ri]) relax(e, lineMin, toLineEnd_);  // D / $
+      if (ri == N_ || isNewline_[ri]) relax(e, lineMin, toLineEnd_, 1);  // D / $
       if (kind_ == Kind::Delete && lineStart >= begin && ri > lineStart)  // d0
-        relax(e, reach_[lineStart], toLineStart_);
+        relax(e, reach_[lineStart], toLineStart_, 1);
       sink(ri, e);
       reach_[ri] = e;
-      relax(reach_[ri], at(ri), 0.0);
+      lower(reach_[ri], at(ri));
       if (ri < N_) {
         if (isWord_[ri] && wordStarts_[wordIdx_[ri]] == ri) wordStart_[ri] = reach_[ri];
         if (isBig_[ri] && bigStarts_[bigIdx_[ri]] == ri) bigStart_[ri] = reach_[ri];
         if (isWs_[ri] && wsRunStart_[ri] == ri) wsStart_[ri] = reach_[ri];
       }
-      relax(lineMin, reach_[ri], 0.0);
-      relax(paraMin, reach_[ri], 0.0);
+      lower(lineMin, reach_[ri]);
+      lower(paraMin, reach_[ri]);
     }
   }
 
 private:
   struct Chunk {
+    ChunkKind kind = CHUNK_CHAR;
     double base = 0.0;
     double gap = 0.0;  // extra cost of splitting one {k}cmd in two
     std::vector<double> pen;
     double cost(int k) const { return base + pen[k]; }
   };
 
-  static void relax(Arrival& acc, const Arrival& base, double add) {
-    if (base.cost + add < acc.cost) acc = {base.cost + add, base.seed};
+  // Extend `base` by one `{k}cmd` chunk into `acc`'s position.
+  static void relax(Arrival& acc, const Arrival& base, const Chunk& chunk, int k) {
+    relax(acc, base, chunk.cost(k), chunk.kind, k);
+  }
+  static void relax(Arrival& acc, const Arrival& base, double add, ChunkKind kind, int k) {
+    if (base.cost + add < acc.cost)
+      acc = {base.cost + add, base.seed, acc.at, base.at, kind, (int8_t)k};
+  }
+  // Take the cheaper arrival as is (aggregation over positions).
+  static void lower(Arrival& acc, const Arrival& base) {
+    if (base.cost < acc.cost) acc = base;
   }
 
   double maxChunkGap() const;
@@ -139,7 +168,8 @@ private:
   template<CountClass Del, CountClass Mov>
   void buildChunk(Level level, double scale) {
     Chunk& c = chunk_[level];
-    c.base = (kind_ == Kind::Delete ? DELETE_KEYS[level] : MOVE_KEYS[level]) * scale;
+    c.kind = ChunkKind(level);
+    c.base =(kind_ == Kind::Delete ? DELETE_KEYS[level] : MOVE_KEYS[level]) * scale;
     c.pen.assign(mxcnt_ + 1, 0.0);
     for (int k = 2; k <= mxcnt_; k++)
       c.pen[k] = kind_ == Kind::Delete ? countPrefixCost<Del>(k, scale)
@@ -159,7 +189,7 @@ private:
   int mxcnt_;  // CostOptions::maxPrefixCount
   Kind kind_;
   std::array<Chunk, LEVEL_COUNT> chunk_;
-  double toLineEnd_, toLineStart_;
+  Chunk toLineEnd_, toLineStart_;  // uncounted: pen = {0, 0}
   std::vector<char> isWord_, isBig_, isWs_, isNewline_;
   std::vector<int> lineStartOf_;
   std::vector<int> wsRunStart_;
