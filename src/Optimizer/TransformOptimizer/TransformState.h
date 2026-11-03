@@ -76,14 +76,14 @@
 // paths producing different columns from "identical" states, this is why.
 
 struct TransformStateKey {
-  size_t linesHash;
+  uint64_t linesHash;
   int lineCount;
   int line;
   int col;
   Mode mode;
   int startIndex;  // Include startIndex so each starting position has independent search
 
-  TransformStateKey(size_t lh, int lc, CursorPos p, Mode m, int idx)
+  TransformStateKey(uint64_t lh, int lc, CursorPos p, Mode m, int idx)
       : linesHash(lh), lineCount(lc), line(p.line), col(p.col), mode(m),
         startIndex(idx) {}
 
@@ -114,7 +114,7 @@ class TransformEditorState {
   Lines lines_;
   CursorPos pos_;
   Mode mode_ = Mode::Normal;
-  size_t linesHash_ = 0;
+  uint64_t linesHash_ = 0;
 
   void refreshHash() { linesHash_ = hashLines(lines_); }
 
@@ -125,12 +125,12 @@ public:
   const Lines& getLines() const { return lines_; }
   CursorPos getPos() const { return pos_; }
   Mode getMode() const { return mode_; }
-  size_t getLinesHash() const { return linesHash_; }
+  uint64_t getLinesHash() const { return linesHash_; }
 };
 
 struct TransformPathStep {
   std::shared_ptr<const TransformPathStep> prev;
-  size_t linesHashAfter = 0;
+  uint64_t linesHashAfter = 0;
   int lineCountAfter = 0;
   CursorPos posAfter;
   Mode modeAfter = Mode::Normal;

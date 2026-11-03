@@ -1,0 +1,71 @@
+---
+title: "Sealing long matches"
+description: "A long kept run is never edited into. Sealing it splits the grid into blocks, so the planner's work is bounded by the change, not the buffer."
+sidebar: { hidden: true }
+---
+import Sealing from '../../web/docs/src/assets/how-it-works/sealing.svg';
+import SealWidget from '../../web/docs/src/components/SealWidget.astro';
+
+A grid over a whole buffer would be `(N+1)·(M+1)` cells for an edit that
+touches ten characters. Most of that grid can be thrown away before the DP
+runs.
+
+<figure class="vf-figure">
+  <Sealing />
+  <figcaption>A sealed core splits the problem into blocks. One CROSS move prices the whole core; no deletion crosses it.</figcaption>
+</figure>
+
+## The gate
+
+A long kept run should never be edited into: the goal still contains it, so
+cutting through it means retyping it. A matched run with core `R` is sealed
+when
+
+```
+type(R) > move(R) + cost(i) + cost(Esc) + slack_stop + slack_start
+```
+
+- a plan that deletes through `R` pays at least `type(R)` to put it back
+- a plan that moves over `R` pays `move(R)`, at most one extra insert-mode round trip, and the *slack* of stopping a delete tiling at the run's edge and starting another after it (a `{k}dd` cut mid-line, a `{k}dap` cut mid-paragraph)
+- every term is read from the cost tables, not hand-picked: retyping grows per character while the slack is bounded per edge, so edits may still reach a few characters *into* a run — those margins stay in the blocks
+
+What remains is a list of **blocks**, character-level sub-problems between
+consecutive seals. A seal is crossed by one `CROSS` move priced over the whole
+core, and no deletion crosses a seal, so every sweep stays inside its block.
+
+<SealWidget />
+
+The bar is the initial text; red spans are the blocks the DP still solves, grey
+is sealed. The default example changes two lines of a loop body and seals the
+unchanged lines between them. Paste a longer file with two small edits far
+apart and watch the cell count stay small.
+
+Runs too short to seal stay in their block as ordinary characters, and the DP
+decides:
+
+```
+initial   the quick brown fox jumps over the lazy dog
+goal      the quick red fox leaps over the lazy dog
+                    ^^^^^     ^^^^                        one block, two regions
+plan      "brown"→"red"  ·  move  ·  " jum"→" lea"
+```
+
+Here the DP moves over ` fox ` rather than retyping it. The second region starts
+on the space: command boundaries price spans, they never constrain where an
+edit begins or ends.
+
+## Complexity
+
+Per block of `n × m` cells with count cap `mxcnt`: `n` move sweeps of
+`O(n · mxcnt)`, one `O(n · mxcnt)` deletion sweep per goal column, and `O(nm)`
+type steps. Summed over blocks,
+
+```
+O( Σ_k  n_k (n_k + m_k) mxcnt )  +  one crossing sweep per seal
+```
+
+with `Σ n_k ≤ N` and `Σ m_k ≤ M`: quadratic in the changed text, not the
+buffer. Over a cell budget the planner falls back to one region per block,
+which is always a valid plan.
+
+Next: [from a plan to keystrokes](/Vimficiency/docs/how-it-works/searching/).

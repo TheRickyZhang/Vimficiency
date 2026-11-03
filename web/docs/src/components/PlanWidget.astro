@@ -1,0 +1,94 @@
+---
+// Live partition of a change into planned edits, priced by the real planner.
+interface Props { initial?: string; goal?: string }
+const { initial = 'aa b cc', goal = 'xx b zz' } = Astro.props;
+---
+<vf-plan-widget class="vf-widget">
+  <label>Initial text<textarea data-initial>{initial}</textarea></label>
+  <label>Goal text<textarea data-goal>{goal}</textarea></label>
+  <div class="vf-controls">
+    <label style="margin:0">Keyboard
+      <select data-layout>
+        <option value="qwerty">QWERTY</option>
+        <option value="colemak_dh">Colemak-DH</option>
+        <option value="uniform">Uniform (every key costs 1)</option>
+      </select>
+    </label>
+  </div>
+  <div class="vf-rowlabel">initial — deleted runs highlighted</div>
+  <div data-initial-view></div>
+  <div class="vf-rowlabel">goal — typed runs highlighted</div>
+  <div data-goal-view></div>
+  <div data-table></div>
+  <div class="vf-total" data-total></div>
+  <div class="vf-status" data-status>Loading planner…</div>
+</vf-plan-widget>
+
+<script>
+  import { plan, debounce, fmt, charCells, reportError, type Layout, type PlanResult } from '../scripts/planner';
+
+  class PlanWidget extends HTMLElement {
+    private q<T extends HTMLElement>(sel: string) { return this.querySelector(sel) as T; }
+
+    connectedCallback() {
+      const run = debounce(() => this.run(), 150);
+      this.q('[data-initial]').addEventListener('input', run);
+      this.q('[data-goal]').addEventListener('input', run);
+      this.q('[data-layout]').addEventListener('change', run);
+      this.run();
+    }
+
+    private async run() {
+      const initial = this.q<HTMLTextAreaElement>('[data-initial]').value;
+      const goal = this.q<HTMLTextAreaElement>('[data-goal]').value;
+      const layout = this.q<HTMLSelectElement>('[data-layout]').value as Layout;
+      const status = this.q('[data-status]');
+      try {
+        const result = await plan(initial, goal, { layout });
+        this.render(initial, goal, result);
+        status.textContent = result.regions.length === 0
+          ? 'Nothing to change.'
+          : `${result.regions.length} planned edit${result.regions.length === 1 ? '' : 's'}.`;
+        status.classList.remove('vf-error');
+      } catch (e) {
+        reportError(status, e);
+      }
+    }
+
+    private render(initial: string, goal: string, r: PlanResult) {
+      const delAt = new Set<number>(), insAt = new Set<number>(), caretAt = new Set<number>();
+      for (const reg of r.regions) {
+        for (let a = reg.aBegin; a < reg.aEnd; a++) delAt.add(a);
+        for (let b = reg.bBegin; b < reg.bEnd; b++) insAt.add(b);
+        if (reg.aBegin === reg.aEnd) caretAt.add(reg.aBegin);
+      }
+      const iv = this.q('[data-initial-view]');
+      iv.replaceChildren(charCells(initial, (i) =>
+        delAt.has(i) ? 'vf-del' : caretAt.has(i) ? 'vf-caret' : 'vf-kept'));
+      const gv = this.q('[data-goal-view]');
+      gv.replaceChildren(charCells(goal, (j) => (insAt.has(j) ? 'vf-ins' : 'vf-kept')));
+
+      const table = document.createElement('table');
+      table.innerHTML = '<thead><tr><th>#</th><th>delete</th><th>type</th><th>del</th><th>ins</th><th>move</th></tr></thead>';
+      const body = document.createElement('tbody');
+      r.regions.forEach((reg, idx) => {
+        const tr = document.createElement('tr');
+        const cell = (html: string, cls = '') => {
+          const td = document.createElement('td');
+          if (cls) td.className = cls;
+          td.innerHTML = html;
+          return td;
+        };
+        const code = (s: string) => `<code>${s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '¶') || '∅'}</code>`;
+        tr.append(cell(String(idx + 1)), cell(code(reg.deleted)), cell(code(reg.inserted)),
+                  cell(fmt(reg.del), 'vf-num'), cell(fmt(reg.ins), 'vf-num'), cell(fmt(reg.move), 'vf-num'));
+        body.appendChild(tr);
+      });
+      table.appendChild(body);
+      this.q('[data-table]').replaceChildren(table);
+      this.q('[data-total]').textContent = `plan cost ${fmt(r.total)} = Σ del + Σ ins + Σ move`;
+    }
+  }
+
+  if (!customElements.get('vf-plan-widget')) customElements.define('vf-plan-widget', PlanWidget);
+</script>

@@ -31,6 +31,12 @@ if ! command -v ccache >/dev/null 2>&1; then
   echo "  brew install ccache      # macOS" >&2
   exit 1
 fi
+if ! command -v emcmake >/dev/null 2>&1; then
+  echo "[bench-local-run] emcmake not found; main runs build the docs-site planner wasm." >&2
+  echo "  brew install emscripten  # macOS (bench-main.yml installs it)" >&2
+  echo "  sudo pacman -S emscripten  # Arch" >&2
+  exit 1
+fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 # Strip any embedded userinfo (e.g. bench-main.yml sets origin to
@@ -276,10 +282,21 @@ find web/dashboard/dist/assets -type f -print -quit | grep -q . || {
 }
 
 if $IS_MAIN; then
+  # The "How it works" chapters load the planner compiled to wasm; built here
+  # so the module always matches the planner at this SHA (see
+  # dev/web/how-it-works-site.md).
+  echo "[docs] building planner wasm"
+  emcmake cmake -B build-wasm -DVIMF_WASM=ON -DCMAKE_BUILD_TYPE=Release "${CCACHE_FLAGS[@]}"
+  cmake --build build-wasm --target vimfy_planner_wasm
+  mkdir -p web/docs/public/wasm
+  cp build-wasm/wasm/vimfy_planner.js build-wasm/wasm/vimfy_planner.wasm web/docs/public/wasm/
+
   echo "[docs] building docs site"
   ( cd web/docs && bun install --frozen-lockfile && bun run build )
   test -f web/docs/dist/index.html
   test -f web/docs/dist/01-installation/index.html
+  test -f web/docs/dist/how-it-works/index.html
+  test -f web/docs/dist/wasm/vimfy_planner.wasm
 fi
 
 # --- Stage artifacts before switching to gh-pages ---

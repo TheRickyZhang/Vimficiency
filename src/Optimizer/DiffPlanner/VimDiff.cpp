@@ -9,6 +9,7 @@
 
 #include "PlannerCosts.h"
 #include "SealMatchedRuns.h"
+#include "VimDiffTrace.h"
 
 using namespace std;
 
@@ -81,12 +82,7 @@ vector<BlockCosts> calculateTransitionCosts(const FlatText& initial, const FlatT
 // ---- Stage 3: the DP -------------------------------------------------------
 
 // out[i, j]: normal mode, initial [0,i) consumed, goal [0,j) produced; in[i, j]:
-// insert mode. Three step families: move (MOVE within a block, CROSS over a
-// seal), delete (DELETE, or CHANGE when the `c` form lands straight in insert
-// mode and so skips the entry key) and type (ENTER from normal mode, TYPE
-// within insert mode). EXIT is the free edge back to normal mode.
-enum Step : int8_t { LEADING, MOVE, CROSS, DELETE, CHANGE, ENTER, TYPE, EXIT };
-
+// insert mode. Steps are the three families in VimDiffTrace.h.
 struct Cand {
   double cost = INF;
   uint16_t pi = 0, pj = 0;  // predecessor cell; in the previous block for CROSS
@@ -170,6 +166,24 @@ struct RawPlan {
   double cost = 0.0;
 };
 
+struct Planned {
+  FlatText initial, goal;
+  Typing typing;
+  TilingCost del, move;
+  vector<Block> blocks;
+  vector<BlockCosts> costs;  // empty for the sealed fallback
+  vector<Tables> tables;     // empty for the sealed fallback
+  int endI = 0, endJ = 0;    // optimum cell in the last block
+  bool sealedFallback = false;
+  RawPlan plan;
+
+  Planned(const Lines& initialLines, const Lines& goalLines, const Config& config,
+          const CostOptions& o)
+      : initial(initialLines), goal(goalLines), typing(goal, config),
+        del(initial, o.moveDeleteScale, o.maxPrefixCount, TilingCost::Kind::Delete),
+        move(initial, o.moveDeleteScale, o.maxPrefixCount, TilingCost::Kind::Move) {}
+};
+
 // Typed effort plus <Esc>, plus the entry key only when no deletion precedes
 // the typing (a deletion's change form absorbs it).
 double insertCost(const Typing& typing, const Region& r) {
@@ -177,19 +191,25 @@ double insertCost(const Typing& typing, const Region& r) {
   return (r.aBegin < r.aEnd ? 0.0 : typing.entry) + typing.esc + typing.ins(r.bBegin, r.bEnd);
 }
 
+bool predecessorIsIn(const Cand& c) { return c.step == TYPE || c.step == EXIT; }
+
 const Cand& predecessor(const Tables& t, const Cand& c) {
-  return c.step == TYPE || c.step == EXIT ? t.in[c.pi, c.pj] : t.out[c.pi, c.pj];
+  return predecessorIsIn(c) ? t.in[c.pi, c.pj] : t.out[c.pi, c.pj];
 }
 
 // A region spans from its first delete/type step to the next move (or the end).
+// `visit(k, i, j, inTable)` sees every cell on the path, optimum first.
+template<class Visit>
 vector<Region> walk(const vector<Tables>& tables, const vector<Block>& blocks, int k, int i,
-                    int j) {
+                    int j, Visit&& visit) {
   vector<Region> regions;
   const Cand* c = &tables[k].out[i, j];
+  visit(k, i, j, false);
   int ca = blocks[k].aBegin + i, cb = blocks[k].bBegin + j;
   while (c->step != LEADING) {
     const int pk = c->step == CROSS ? k - 1 : k;
     const Cand& pred = predecessor(tables[pk], *c);
+    visit(pk, c->pi, c->pj, predecessorIsIn(*c));
     const int pa = blocks[pk].aBegin + c->pi, pb = blocks[pk].bBegin + c->pj;
     if (c->step == MOVE || c->step == CROSS) {
       if (pred.open()) {
@@ -206,71 +226,50 @@ vector<Region> walk(const vector<Tables>& tables, const vector<Block>& blocks, i
   return regions;
 }
 
-// The optimum ends anywhere on the last block's trailing matched diagonal.
-RawPlan reconstructPlan(const vector<Tables>& tables, const vector<Block>& blocks, int trail) {
-  const int last = (int)blocks.size() - 1;
-  const Block& b = blocks[last];
-  int bestT = 0;
-  for (int t = 1; t <= trail; t++)
-    if (tables[last].out[b.n() - t, b.m() - t].cost <
-        tables[last].out[b.n() - bestT, b.m() - bestT].cost)
-      bestT = t;
-  const int i = b.n() - bestT, j = b.m() - bestT;
-  return {walk(tables, blocks, last, i, j), tables[last].out[i, j].cost};
-}
-
-// ---- Pipeline --------------------------------------------------------------
-
-struct Planned {
-  FlatText initial, goal;
-  Typing typing;
-  TilingCost del, move;
-  RawPlan plan;
-
-  Planned(const Lines& initialLines, const Lines& goalLines, const Config& config,
-          const CostOptions& o)
-      : initial(initialLines), goal(goalLines), typing(goal, config),
-        del(initial, o.moveDeleteScale, o.maxPrefixCount, TilingCost::Kind::Delete),
-        move(initial, o.moveDeleteScale, o.maxPrefixCount, TilingCost::Kind::Move) {}
-};
-
 // One region per block. Always a valid plan — blocks are exactly the spans
 // between sealed identical runs — but never weighed against merging or
 // splitting them, so it is only the over-budget fallback.
-RawPlan sealedPartition(Planned& p, const vector<Block>& blocks) {
-  RawPlan plan;
+void sealedPartition(Planned& p) {
+  p.sealedFallback = true;
   int prevEnd = -1;
-  for (const Block& b : blocks) {
+  for (const Block& b : p.blocks) {
     const Region r{b.aBegin, b.aEnd, b.bBegin, b.bEnd};
-    plan.cost += p.del.query(r.aBegin, r.aEnd) + insertCost(p.typing, r);
-    if (prevEnd >= 0) plan.cost += p.move.query(prevEnd, r.aBegin);
+    p.plan.cost += p.del.query(r.aBegin, r.aEnd) + insertCost(p.typing, r);
+    if (prevEnd >= 0) p.plan.cost += p.move.query(prevEnd, r.aBegin);
     prevEnd = r.aEnd;
-    plan.regions.push_back(r);
+    p.plan.regions.push_back(r);
   }
-  return plan;
 }
 
-RawPlan dpPlan(Planned& p, const vector<Block>& blocks) {
-  const vector<BlockCosts> costs =
-      calculateTransitionCosts(p.initial, p.goal, p.typing, blocks, p.move);
-  const vector<Tables> tables = solveVimDiff(blocks, costs, p.initial, p.goal, p.del);
-  return reconstructPlan(tables, blocks, costs.back().trail);
+// The optimum ends anywhere on the last block's trailing matched diagonal.
+void dpPlan(Planned& p) {
+  p.costs = calculateTransitionCosts(p.initial, p.goal, p.typing, p.blocks, p.move);
+  p.tables = solveVimDiff(p.blocks, p.costs, p.initial, p.goal, p.del);
+  const int last = (int)p.blocks.size() - 1;
+  const Block& b = p.blocks[last];
+  const Tables& t = p.tables[last];
+  int bestT = 0;
+  for (int tr = 1; tr <= p.costs.back().trail; tr++)
+    if (t.out[b.n() - tr, b.m() - tr].cost < t.out[b.n() - bestT, b.m() - bestT].cost) bestT = tr;
+  p.endI = b.n() - bestT;
+  p.endJ = b.m() - bestT;
+  p.plan = {walk(p.tables, p.blocks, last, p.endI, p.endJ, [](int, int, int, bool) {}),
+            t.out[p.endI, p.endJ].cost};
 }
 
 Planned plan(const Lines& initialLines, const Lines& goalLines, const Config& config,
              const CostOptions& options) {
   Planned p(initialLines, goalLines, config, options);
   if (p.initial.text == p.goal.text) return p;
-  const vector<Block> blocks =
-      sealMatchedRuns(p.initial, p.goal, p.typing, p.del, p.move, initialLines, goalLines);
+  p.blocks = sealMatchedRuns(p.initial, p.goal, p.typing, p.del, p.move, initialLines, goalLines);
   long long cells = 0;
   bool tooWide = false;  // Cand::pi/pj
-  for (const Block& b : blocks) {
+  for (const Block& b : p.blocks) {
     cells += (long long)(b.n() + 1) * (b.m() + 1);
     tooWide |= b.n() > numeric_limits<uint16_t>::max() || b.m() > numeric_limits<uint16_t>::max();
   }
-  p.plan = tooWide || cells > options.maxPlannerCells ? sealedPartition(p, blocks)
-                                                      : dpPlan(p, blocks);
+  if (tooWide || cells > options.maxPlannerCells) sealedPartition(p);
+  else dpPlan(p);
   return p;
 }
 
@@ -282,6 +281,22 @@ DiffState diffFromRegion(const Lines& initialLines, const Planned& p, const Regi
   return DiffState(begin, end, std::move(deletedText), std::move(insertedText),
                    TransformBoundary(initialLines, begin, end));
 }
+
+CostBreakdown breakdownOf(Planned& p, const Lines& initialLines) {
+  CostBreakdown bd;
+  int prevEnd = -1;
+  for (const Region& r : p.plan.regions) {
+    const double del = p.del.query(r.aBegin, r.aEnd);
+    const double ins = insertCost(p.typing, r);
+    const double mv = prevEnd < 0 ? 0.0 : p.move.query(prevEnd, r.aBegin);
+    prevEnd = r.aEnd;
+    bd.total += del + ins + mv;
+    bd.regions.push_back(RegionBreakdown{diffFromRegion(initialLines, p, r), del, ins, mv});
+  }
+  return bd;
+}
+
+TraceCell traceCell(const Cand& c) { return {c.cost, c.step, c.pi, c.pj}; }
 
 }  // namespace
 
@@ -303,17 +318,43 @@ CostBreakdown calculateBreakdown(
     const Config& config,
     CostOptions options) {
   Planned p = plan(initialLines, goalLines, config, options);
-  CostBreakdown bd;
-  int prevEnd = -1;
-  for (const Region& r : p.plan.regions) {
-    const double del = p.del.query(r.aBegin, r.aEnd);
-    const double ins = insertCost(p.typing, r);
-    const double mv = prevEnd < 0 ? 0.0 : p.move.query(prevEnd, r.aBegin);
-    prevEnd = r.aEnd;
-    bd.total += del + ins + mv;
-    bd.regions.push_back(RegionBreakdown{diffFromRegion(initialLines, p, r), del, ins, mv});
+  return breakdownOf(p, initialLines);
+}
+
+Trace trace(
+    const Lines& initialLines,
+    const Lines& goalLines,
+    const Config& config,
+    CostOptions options) {
+  Planned p = plan(initialLines, goalLines, config, options);
+  Trace t;
+  t.sealedFallback = p.sealedFallback;
+  t.rawCells = (long long)(p.initial.text.size() + 1) * (p.goal.text.size() + 1);
+  for (int k = 0; k < (int)p.blocks.size(); k++) {
+    const Block& b = p.blocks[k];
+    TraceBlock tb{b};
+    const int n = b.n(), m = b.m();
+    t.dpCells += (long long)(n + 1) * (m + 1);
+    if (!p.sealedFallback) {
+      tb.lead = p.costs[k].lead;
+      tb.trail = p.costs[k].trail;
+      tb.out.reserve((n + 1) * (m + 1));
+      tb.in.reserve((n + 1) * (m + 1));
+      for (int i = 0; i <= n; i++)
+        for (int j = 0; j <= m; j++) {
+          tb.out.push_back(traceCell(p.tables[k].out[i, j]));
+          tb.in.push_back(traceCell(p.tables[k].in[i, j]));
+        }
+    }
+    t.blocks.push_back(std::move(tb));
   }
-  return bd;
+  if (!p.sealedFallback && !p.blocks.empty()) {
+    walk(p.tables, p.blocks, (int)p.blocks.size() - 1, p.endI, p.endJ,
+         [&](int k, int i, int j, bool inTable) { t.path.push_back({k, i, j, inTable}); });
+    reverse(t.path.begin(), t.path.end());
+  }
+  t.breakdown = breakdownOf(p, initialLines);
+  return t;
 }
 
 }  // namespace VimDiff

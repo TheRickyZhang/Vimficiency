@@ -2,3 +2,5 @@ dist/
 node_modules/
 .astro/
 .DS_Store
+# CI-built planner module (see dev/web/how-it-works-site.md)
+public/wasm/

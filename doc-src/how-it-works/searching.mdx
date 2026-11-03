@@ -1,0 +1,74 @@
+---
+title: "From a plan to keystrokes"
+description: "Three A* searches over editor states, with exact Vim semantics and an effort-based cost model, turn each planned edit into a key sequence."
+sidebar: { hidden: true }
+---
+import ThreeSearches from '../../web/docs/src/assets/how-it-works/three-searches.svg';
+
+The partition fixes *what* changes; the search finds the cheapest keystrokes
+that do it. Nodes are editor states, edges are Vim commands applied by our own
+simulator (verified against a headless Neovim), and edge weights are typing
+effort.
+
+## Cost model
+
+Keys map onto a configurable keyboard and are priced per key plus bigram
+adjustments: same finger, same key, hand alternation, inward and outward rolls.
+Every term has a one-key window, so effort is a monoid and merging two
+sequences is `O(1)`. The [effort model](/Vimficiency/docs/10-effort-model/) page covers the
+knobs.
+
+## Three searches
+
+<figure class="vf-figure">
+  <ThreeSearches />
+  <figcaption>Composition drives the other two: one Transform search per planned edit and start position, Nav searches for the motions between them.</figcaption>
+</figure>
+
+**NavOptimizer** — the buffer is fixed, so one `O(N)` pass indexes word and
+paragraph landings, and `{k}w` for any `k` becomes a lookup. Motions are pruned
+by direction toward the goal, roughly halving what is explored per state.
+
+- heuristic: `sqrt(|Δline|) + sqrt(|Δcol|)`
+- concave because one `}` or `G` covers arbitrary distance for a fixed cost; linear Manhattan overestimated true effort about 6× and railroaded the search into counted-`j` chains
+
+**TransformOptimizer** — models an edit as deleting the old text, then typing
+the new. The final deletion becomes its change form (`de`→`ce`, `dd`→`cc`,
+`x`→`s`) so the delete and the insert-mode entry are one command.
+
+- dot-repeat: a suffix cache keyed on (buffer hash, cursor, mode) stores the remaining suffix at every intermediate state of a goal-reaching path
+- heuristic: characters left to delete, plus 2 per extra line
+
+**CompositionOptimizer** — precomputes a Transform result from every valid
+start position of every planned edit, so an edit is a single edge. The
+remaining edges are motions toward the next region, plus fused commands like
+`ci"`, `da(`, and `J` where the text-object context allows.
+
+- heuristic: `Σ cost(remaining edits) + dist(next region)`, with overshoot penalized asymmetrically — moving past a region and coming back is expensive
+
+## Inadmissibility
+
+No admissible heuristic exists for Vim short of a full search: `G` or `}` moves
+an arbitrary distance for a fixed cost, so any distance-based `h` can
+overestimate. A* loses its optimality guarantee, and we compensate:
+
+- `f = effortWeight·g + distanceWeight·h`; `distanceWeight = 0` is pure-effort Dijkstra — exact, slow, and the ground truth we calibrate against
+- the concave distances above shrink the overestimate exactly where long-range motions exist
+- costs are recorded at pop time, not push time, so a cheaper path found later to a queued state still wins
+- each search continues past the first goal and returns up to `maxResults` distinct results
+
+Harnesses in `tests/Debug/` (`NavQuality`, `EditCompQuality`) measure the gap
+against Dijkstra: the sqrt heuristic took Nav from 59% to 9% above optimal.
+Better heuristics remain an open area.
+
+## Bounds
+
+Every search stops at `maxNodesPopped` pops (50 000 by default) and never
+enqueues a state costing more than `exploreFactor` × what the user typed (2× by
+default). With `P` pops and branching factor `b`, a search is
+`O(P · b · log(P · b))` on a binary heap; Composition additionally runs one
+Transform search per (planned edit, start position) before its own A*.
+
+The search-layer walkthrough video in the
+[project README](https://github.com/TheRickyZhang/Vimficiency#how-it-works)
+shows one session end to end.

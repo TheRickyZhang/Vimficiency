@@ -27,16 +27,16 @@
 // the SuffixCache-specific one: if a stored suffix ever begins (or contains)
 // a curswant-preserving motion, this key omits a value the replay depends on.
 struct SuffixKey {
-  size_t linesHash;
+  uint64_t linesHash;
   int lineCount;
   int line;
   int col;
   Mode mode;
 
-  SuffixKey(size_t lh, int lc, int ln, int c, Mode m)
+  SuffixKey(uint64_t lh, int lc, int ln, int c, Mode m)
       : linesHash(lh), lineCount(lc), line(ln), col(c), mode(m) {}
 
-  SuffixKey(size_t lh, int lc, CursorPos p, Mode m)
+  SuffixKey(uint64_t lh, int lc, CursorPos p, Mode m)
       : linesHash(lh), lineCount(lc), line(p.line), col(p.col), mode(m) {}
 
   bool operator==(const SuffixKey& other) const {

@@ -1,0 +1,82 @@
+---
+// Which matched runs the planner seals, and how much of the (N+1)(M+1) grid
+// that removes before the DP runs.
+interface Props { initial?: string; goal?: string }
+const defaults = {
+  initial:
+    'int main() {\n  int x = 0;\n  for(int i = 0; i < 10; i++) {\n    int a = bar(i);\n    int b = baz(a);\n'
+    + '    int c = qux(b);\n    int d = quux(c);\n    int e = corge(d);\n    x += a + b + c + d + e;\n  }\n}',
+  goal:
+    'int main() {\n  int x = 0;\n  int n = 10;\n  for(int i = 0; i < n; i++) {\n    int a = bar(i);\n    int b = baz(a);\n'
+    + '    int c = qux(b);\n    int d = quux(c);\n    int e = corge(d);\n    x -= foo(a + b + c + d + e);\n  }\n}',
+};
+const { initial = defaults.initial, goal = defaults.goal } = Astro.props;
+---
+<vf-seal-widget class="vf-widget">
+  <label>Initial text<textarea data-initial rows="6">{initial}</textarea></label>
+  <label>Goal text<textarea data-goal rows="6">{goal}</textarea></label>
+  <div class="vf-rowlabel">initial, as one bar — blocks the DP still has to solve in red, sealed runs in grey</div>
+  <div class="vf-bar" data-bar></div>
+  <div class="vf-rowlabel">initial — block spans highlighted</div>
+  <div data-view></div>
+  <div class="vf-total" data-total></div>
+  <div class="vf-status" data-status>Loading planner…</div>
+</vf-seal-widget>
+
+<script>
+  import { seal, debounce, charCells, reportError, type SealResult } from '../scripts/planner';
+
+  class SealWidget extends HTMLElement {
+    private q<T extends HTMLElement>(sel: string) { return this.querySelector(sel) as T; }
+
+    connectedCallback() {
+      const run = debounce(() => this.run(), 200);
+      this.q('[data-initial]').addEventListener('input', run);
+      this.q('[data-goal]').addEventListener('input', run);
+      this.run();
+    }
+
+    private async run() {
+      const initial = this.q<HTMLTextAreaElement>('[data-initial]').value;
+      const goal = this.q<HTMLTextAreaElement>('[data-goal]').value;
+      const status = this.q('[data-status]');
+      try {
+        const r = await seal(initial, goal);
+        this.render(initial, r);
+        status.classList.remove('vf-error');
+        status.textContent = r.blocks.length === 0
+          ? 'Nothing to change.'
+          : `${r.blocks.length} block${r.blocks.length === 1 ? '' : 's'} between ${Math.max(0, r.blocks.length - 1)} seal${r.blocks.length === 2 ? '' : 's'}.`;
+      } catch (e) {
+        reportError(status, e);
+      }
+    }
+
+    private render(initial: string, r: SealResult) {
+      const bar = this.q('[data-bar]');
+      bar.replaceChildren();
+      const N = Math.max(r.N, 1);
+      r.blocks.forEach((b, k) => {
+        const seg = document.createElement('div');
+        seg.className = 'vf-bar-block';
+        seg.style.left = `${(100 * b.aBegin) / N}%`;
+        seg.style.width = `${(100 * Math.max(b.aEnd - b.aBegin, 0.5)) / N}%`;
+        bar.appendChild(seg);
+        const lbl = document.createElement('div');
+        lbl.className = 'vf-bar-label';
+        lbl.style.left = seg.style.left;
+        lbl.style.width = seg.style.width;
+        lbl.textContent = String(k + 1);
+        bar.appendChild(lbl);
+      });
+      const inBlock = new Set<number>();
+      for (const b of r.blocks) for (let a = b.aBegin; a < b.aEnd; a++) inBlock.add(a);
+      this.q('[data-view]').replaceChildren(charCells(initial, (i) => (inBlock.has(i) ? 'vf-del' : 'vf-kept')));
+      const saved = r.rawCells === 0 ? 0 : Math.round(100 - (100 * r.dpCells) / r.rawCells);
+      this.q('[data-total]').textContent =
+        `${r.dpCells.toLocaleString()} DP cells instead of ${r.rawCells.toLocaleString()} — ${saved}% never built`;
+    }
+  }
+
+  if (!customElements.get('vf-seal-widget')) customElements.define('vf-seal-widget', SealWidget);
+</script>

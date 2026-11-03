@@ -2,12 +2,16 @@ name: vimdoc-check
 
 # Validates both consumers of `doc-src/*.md` on PR: panvimdoc generation
 # and the Astro Starlight build. A change to either source surface or
-# either pipeline triggers a build.
+# either pipeline triggers a build. The docs job also builds the planner
+# wasm module the "How it works" widgets load, so planner changes run it too.
 on:
   pull_request:
     paths:
       - 'doc-src/**'
       - 'web/docs/**'
+      - 'src/Optimizer/DiffPlanner/**'
+      - 'src/Wasm/**'
+      - 'CMakeLists.txt'
       - 'scripts/build-vimdoc-source.sh'
       - 'scripts/postprocess-vimdoc.sh'
       - '.github/workflows/vimdoc.yml'
@@ -43,6 +47,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.74
+          actions-cache-folder: emsdk-cache
+      - name: Build planner wasm
+        run: |
+          emcmake cmake -B build-wasm -DVIMF_WASM=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-wasm --target vimfy_planner_wasm
+          mkdir -p web/docs/public/wasm
+          cp build-wasm/wasm/vimfy_planner.js build-wasm/wasm/vimfy_planner.wasm web/docs/public/wasm/
       - name: Build docs site
         working-directory: web/docs
         run: |
@@ -52,3 +66,5 @@ jobs:
         run: |
           test -f web/docs/dist/index.html
           test -f web/docs/dist/01-installation/index.html
+          test -f web/docs/dist/how-it-works/index.html
+          test -f web/docs/dist/wasm/vimfy_planner.wasm

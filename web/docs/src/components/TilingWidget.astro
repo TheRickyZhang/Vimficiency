@@ -1,0 +1,127 @@
+---
+// Cheapest counted-command tiling of a span the reader selects by dragging.
+interface Props { text?: string; begin?: number; end?: number }
+const { text = 'one two three four\nfive six', begin = 0, end = 13 } = Astro.props;
+---
+<vf-tiling-widget class="vf-widget" data-begin={begin} data-end={end}>
+  <label>Text<textarea data-text>{text}</textarea></label>
+  <div class="vf-controls">
+    <span>Price as:</span>
+    <button type="button" data-kind="delete" aria-pressed="true">delete</button>
+    <button type="button" data-kind="move" aria-pressed="false">move</button>
+    <span class="vf-rowlabel" style="margin:0">drag across the characters to pick a span</span>
+  </div>
+  <div data-chars></div>
+  <div data-chunks></div>
+  <div class="vf-total" data-total></div>
+  <div class="vf-status" data-status>Loading planner…</div>
+</vf-tiling-widget>
+
+<script>
+  import { tiling, debounce, fmt, charCells, reportError, type TilingResult } from '../scripts/planner';
+
+  class TilingWidget extends HTMLElement {
+    private kind: 'delete' | 'move' = 'delete';
+    private begin = 0;
+    private end = 0;
+    private text = '';
+    private dragFrom = -1;
+
+    private q<T extends HTMLElement>(sel: string) { return this.querySelector(sel) as T; }
+
+    connectedCallback() {
+      this.begin = Number(this.dataset.begin ?? 0);
+      this.end = Number(this.dataset.end ?? 0);
+      const run = debounce(() => this.run(), 150);
+      this.q('[data-text]').addEventListener('input', () => {
+        this.text = this.q<HTMLTextAreaElement>('[data-text]').value;
+        this.begin = Math.min(this.begin, Math.max(0, this.text.length - 1));
+        this.end = Math.min(Math.max(this.end, this.begin + 1), this.text.length);
+        this.drawChars();
+        run();
+      });
+      this.querySelectorAll<HTMLButtonElement>('[data-kind]').forEach((b) =>
+        b.addEventListener('click', () => {
+          this.kind = b.dataset.kind as 'delete' | 'move';
+          this.querySelectorAll<HTMLButtonElement>('[data-kind]').forEach((o) =>
+            o.setAttribute('aria-pressed', String(o === b)));
+          this.run();
+        }));
+      this.text = this.q<HTMLTextAreaElement>('[data-text]').value;
+      this.end = Math.min(this.end, this.text.length);
+      this.drawChars();
+      this.run();
+    }
+
+    private indexAt(ev: PointerEvent): number {
+      const el = (ev.target as HTMLElement).closest<HTMLElement>('.vf-ch');
+      return el ? Number(el.dataset.index) : -1;
+    }
+
+    private drawChars() {
+      const row = charCells(this.text, (i) => (i >= this.begin && i < this.end ? 'vf-sel' : undefined));
+      row.addEventListener('pointerdown', (ev) => {
+        const i = this.indexAt(ev);
+        if (i < 0) return;
+        this.dragFrom = i;
+        this.begin = i;
+        this.end = i + 1;
+        row.setPointerCapture(ev.pointerId);
+        this.drawChars();
+      });
+      row.addEventListener('pointermove', (ev) => {
+        if (this.dragFrom < 0) return;
+        const i = this.indexAt(ev);
+        if (i < 0) return;
+        this.begin = Math.min(this.dragFrom, i);
+        this.end = Math.max(this.dragFrom, i) + 1;
+        this.drawChars();
+      });
+      row.addEventListener('pointerup', () => {
+        if (this.dragFrom < 0) return;
+        this.dragFrom = -1;
+        this.run();
+      });
+      this.q('[data-chars]').replaceChildren(row);
+    }
+
+    private async run() {
+      const status = this.q('[data-status]');
+      if (this.end <= this.begin) {
+        status.textContent = 'Select at least one character.';
+        return;
+      }
+      try {
+        const r = await tiling(this.text, this.begin, this.end, this.kind);
+        this.renderChunks(r);
+        status.classList.remove('vf-error');
+        status.textContent = `[${this.begin}, ${this.end}) ${this.kind}: ${fmt(r.cost)} with these chunks, `
+          + `${fmt(r.charOnly)} as a chain of ${this.kind === 'delete' ? 'x' : 'l'} alone.`;
+      } catch (e) {
+        reportError(status, e);
+      }
+    }
+
+    private renderChunks(r: TilingResult) {
+      const row = document.createElement('div');
+      row.className = 'vf-chunks';
+      const cellW = this.q('[data-chars] .vf-ch')?.getBoundingClientRect().width ?? 12;
+      const pad = document.createElement('span');
+      pad.className = 'vf-pad';
+      pad.style.width = `${this.begin * cellW}px`;
+      row.appendChild(pad);
+      for (const c of r.chunks) {
+        const el = document.createElement('span');
+        el.className = `vf-chunk${this.kind === 'move' ? ' vf-chunk-move' : ''}`;
+        el.style.width = `${(c.end - c.begin) * cellW}px`;
+        el.textContent = `${c.label} ${fmt(c.cost)}`;
+        el.title = `[${c.begin}, ${c.end}) ${c.label}: ${fmt(c.cost)}`;
+        row.appendChild(el);
+      }
+      this.q('[data-chunks]').replaceChildren(row);
+      this.q('[data-total]').textContent = r.chunks.map((c) => c.label).join(' · ') + ` = ${fmt(r.cost)}`;
+    }
+  }
+
+  if (!customElements.get('vf-tiling-widget')) customElements.define('vf-tiling-widget', TilingWidget);
+</script>

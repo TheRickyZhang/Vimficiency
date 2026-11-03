@@ -47,6 +47,43 @@ TEST(PlannerCostsTest, CountedTilingsPriceTheCountPrefix) {
   EXPECT_DOUBLE_EQ(move.query(0, 12), min(counted, 6 * MOVE_KEYS[WORD]));
 }
 
+// cover() names the chunks behind query(): they tile the span exactly, their
+// costs sum to the query, and a single-command span is one chunk of that kind.
+TEST(PlannerCostsTest, CoverTilesTheSpanAndSumsToTheQuery) {
+  FlatText text(Lines{"one two", "three"});
+  TilingCost del = oracle(text, TilingCost::Kind::Delete);
+  const vector<TilingChunk> word = del.cover(0, 4);
+  ASSERT_EQ(word.size(), 1u);
+  EXPECT_EQ(word[0].kind, CHUNK_WORD);
+  EXPECT_EQ(word[0].count, 1);
+  EXPECT_DOUBLE_EQ(word[0].cost, DELETE_KEYS[WORD]);
+  const vector<TilingChunk> toEol = del.cover(0, 7);
+  ASSERT_EQ(toEol.size(), 1u);
+  EXPECT_EQ(toEol[0].kind, CHUNK_LINE_END);
+
+  FlatText mixed(Lines::unflatten("aa bb\ncc dd\n\nee ff"));
+  const int N = (int)mixed.text.size();
+  for (TilingCost::Kind kind : {TilingCost::Kind::Delete, TilingCost::Kind::Move}) {
+    TilingCost cost = oracle(mixed, kind);
+    for (int a = 0; a < N; a++)
+      for (int c = a + 1; c <= N; c++) {
+        const vector<TilingChunk> chunks = cost.cover(a, c);
+        ASSERT_FALSE(chunks.empty());
+        double sum = 0.0;
+        int pos = a;
+        for (const TilingChunk& ch : chunks) {
+          EXPECT_EQ(ch.begin, pos) << "[" << a << "," << c << ")";
+          EXPECT_LT(ch.begin, ch.end);
+          EXPECT_GE(ch.count, 1);
+          sum += ch.cost;
+          pos = ch.end;
+        }
+        EXPECT_EQ(pos, c);
+        EXPECT_NEAR(sum, cost.query(a, c), 1e-9) << "[" << a << "," << c << ")";
+      }
+  }
+}
+
 // Splitting a tiling at an edge costs at most that edge's stop + start slack.
 // Sealing relies on exactly this bound to cut deletions at a run's ends.
 TEST(PlannerCostsTest, SlacksBoundTheCostOfSplittingAtAnEdge) {

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 190" width="560" height="190" font-family="monospace" font-size="14" fill="currentColor">
+  <!-- the span: 11 cells of 36 -->
+  <g>
+    <rect x="40" y="70" width="396" height="36" fill="none" stroke="currentColor" stroke-opacity="0.35"/>
+    <path d="M76 70 V106 M112 70 V106 M148 70 V106 M184 70 V106 M220 70 V106 M256 70 V106 M292 70 V106 M328 70 V106 M364 70 V106 M400 70 V106" stroke="currentColor" stroke-opacity="0.2"/>
+    <text x="58" y="94" text-anchor="middle">f</text>
+    <text x="94" y="94" text-anchor="middle">o</text>
+    <text x="130" y="94" text-anchor="middle">o</text>
+    <text x="166" y="94" text-anchor="middle">(</text>
+    <text x="202" y="94" text-anchor="middle">b</text>
+    <text x="238" y="94" text-anchor="middle">a</text>
+    <text x="274" y="94" text-anchor="middle">r</text>
+    <text x="310" y="94" text-anchor="middle">,</text>
+    <text x="346" y="94" text-anchor="middle"> </text>
+    <text x="382" y="94" text-anchor="middle">x</text>
+    <text x="418" y="94" text-anchor="middle">)</text>
+  </g>
+  <!-- cover A above: 3x + dW -->
+  <g fill="none" stroke="var(--vf-delete)" stroke-width="2">
+    <path d="M42 62 V50 H146 V62"/>
+    <path d="M150 62 V50 H434 V62"/>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="13">
+    <text x="94" y="42" text-anchor="middle">3x</text>
+    <text x="292" y="42" text-anchor="middle">dW</text>
+    <text x="500" y="56" font-weight="600">cover A</text>
+  </g>
+  <!-- cover B below: D -->
+  <g fill="none" stroke="var(--vf-delete)" stroke-width="2" stroke-dasharray="6 4">
+    <path d="M42 114 V126 H434 V114"/>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="13">
+    <text x="238" y="146" text-anchor="middle">D  (to end of line)</text>
+    <text x="500" y="130" font-weight="600">cover B</text>
+  </g>
+  <text x="40" y="178" font-family="system-ui, sans-serif" font-size="13" opacity="0.8">best[r] = min over chunks ending at r of  best[s] + cost(chunk)</text>
+</svg>

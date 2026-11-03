@@ -140,6 +140,7 @@ For Lua context, see `lua/vimficiency/AGENTS.md`.
 - @dev/optimizer/interactive-explore.md - Explore state machine and interactive replay model
 - @dev/tests/testing.md - NeovimOracle, test file conventions, debug printing
 - @dev/tests/fuzzing.md - Coverage-guided campaign fuzzing (manual): instrumented Clang build + running campaigns
+- @dev/web/how-it-works-site.md - Docs-site algorithm explainer: MDX chapters, wasm planner module (`VIMF_WASM`, `src/Wasm/`), widgets, CI wiring
 
 ## PR review focus
 Prioritize:

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 170" width="760" height="170" font-family="system-ui, sans-serif" font-size="14" fill="currentColor">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <!-- inputs -->
+  <rect x="12" y="30" width="150" height="110" rx="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <text x="87" y="56" text-anchor="middle" font-weight="600">session</text>
+  <text x="87" y="80" text-anchor="middle">initial buffer</text>
+  <text x="87" y="100" text-anchor="middle">goal buffer</text>
+  <text x="87" y="120" text-anchor="middle">cursor, what you typed</text>
+  <!-- stage 1 -->
+  <path d="M164 85 L208 85" stroke="currentColor" stroke-width="1.5" marker-end="url(#arr)"/>
+  <rect x="212" y="30" width="190" height="110" rx="8" fill="var(--vf-delete)" fill-opacity="0.18" stroke="var(--vf-delete)" stroke-width="1.5"/>
+  <text x="307" y="56" text-anchor="middle" font-weight="600">1 · partition</text>
+  <text x="307" y="80" text-anchor="middle">which runs to delete,</text>
+  <text x="307" y="100" text-anchor="middle">which to type, where to move</text>
+  <text x="307" y="124" text-anchor="middle" font-size="12" opacity="0.8">coarse keystroke heuristic</text>
+  <!-- stage 2 -->
+  <path d="M404 85 L448 85" stroke="currentColor" stroke-width="1.5" marker-end="url(#arr)"/>
+  <rect x="452" y="30" width="190" height="110" rx="8" fill="var(--vf-type)" fill-opacity="0.18" stroke="var(--vf-type)" stroke-width="1.5"/>
+  <text x="547" y="56" text-anchor="middle" font-weight="600">2 · search</text>
+  <text x="547" y="80" text-anchor="middle">shortest path through</text>
+  <text x="547" y="100" text-anchor="middle">editor states, one plan edit at a time</text>
+  <text x="547" y="124" text-anchor="middle" font-size="12" opacity="0.8">exact Vim semantics</text>
+  <!-- output -->
+  <path d="M644 85 L688 85" stroke="currentColor" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="724" y="80" text-anchor="middle" font-weight="600">keys</text>
+  <text x="724" y="100" text-anchor="middle" font-family="monospace">cwxx…</text>
+</svg>

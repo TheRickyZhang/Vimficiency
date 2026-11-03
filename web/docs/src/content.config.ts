@@ -1,7 +1,8 @@
 // Content lives in ../../doc-src/ so the same markdown serves three surfaces:
 // the Starlight site, the panvimdoc-generated `:help` file, and direct
 // GitHub rendering. The glob loader reads them in place — no copy or
-// symlink, no sync drift.
+// symlink, no sync drift. `how-it-works/*.mdx` is site-only: the vimdoc and
+// doc-lint scripts glob top-level `*.md` and never see it.
 //
 // IDs match the on-disk filenames (URLs end up as `/NN-name/`). Doing it
 // this way preserves Astro's automatic `[text](NN-name.md)` link
@@ -16,9 +17,9 @@ export const collections = {
   docs: defineCollection({
     loader: glob({
       base: '../../doc-src',
-      pattern: '**/*.md',
+      pattern: '**/*.{md,mdx}',
       generateId: ({ entry }) =>
-        entry === 'README.md' ? 'index' : entry.replace(/\.md$/, ''),
+        entry === 'README.md' ? 'index' : entry.replace(/\.mdx?$/, '').replace(/\/index$/, ''),
     }),
     schema: docsSchema(),
   }),

@@ -15,7 +15,9 @@ https://therickyzhang.github.io/Vimficiency/
 
 For the two algorithms underneath — how a buffer change is partitioned into
 planned edits, and how each plan is turned into keystrokes by shortest-path
-search — see [How it works](#how-it-works).
+search — see [How it works](#how-it-works) below, or the interactive
+walkthrough on the docs site:
+https://therickyzhang.github.io/Vimficiency/docs/how-it-works/
 
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -136,148 +138,27 @@ For the full set of commands, save/store/fetch flow, configuration, and the effo
 
 ## How it works
 
-A session gives the optimizer an initial buffer $A$, a goal buffer $B$, the cursor, and what the user typed. Finding something shorter is two problems:
-- a **partition** of the change into planned edits, priced by a coarse keystroke heuristic
-- a **shortest-path search** over editor states that realizes each plan with exact Vim semantics
+A session gives the optimizer an initial buffer, a goal buffer, the cursor, and
+what the user typed. Finding something shorter is two problems: a **partition**
+of the change into planned edits, priced by a coarse keystroke heuristic, and a
+**shortest-path search** over editor states that realizes each planned edit
+with exact Vim semantics.
 
-### 1. Diff breakdown: partitioning a change into planned edits
-
-Consider transforming `aa b cc` → `xx b zz`. Two reasonable plans:
-
-```
-two edits   aa→xx, move over b, cc→zz    cwxx<Esc> ww cwzz<Esc>   12 keystrokes, 4 chars changed
-one edit    delete everything, retype     Cxx b zz<Esc>             9 keystrokes, 7 chars changed
-```
+The planner lays the initial text against the goal on a grid, prices every
+delete, move and type step with counted Vim commands, and seals long unchanged
+runs so its work scales with the change rather than the buffer:
 
 https://github.com/user-attachments/assets/d214130e-4026-4ea6-994d-fe85c3503277
 
-Pure edit distance always prefers the first. Moving between regions and re-entering insert mode cost keystrokes too, which is what makes the second cheaper here.
-
-**Objective.** A plan works left to right through the change, deleting runs of $A$, typing runs of $B$, and moving across the runs they share. Throughout, `i` counts the characters of $A$ consumed and `j` the characters of $B$ produced.
-
-A plan's price is
-
-```
-sum(delete costs) + sum(insert costs) + sum(move costs)
-```
-
-The shared prefix and suffix are free: every optimal plan starts at the first differing character and ends at the last, so reaching them from the cursor costs the same for every plan.
-
-**Pricing a step.** A step advances `(i, j)` in one of four ways:
-
-| step   | commands                          | cost                                          | `(i, j) →`    |
-|--------|-----------------------------------|-----------------------------------------------|---------------|
-| insert | typed text                        | insert-mode entry + typed characters + `<Esc>` | `(i, j+x)`    |
-| move   | `l` `w` `W` `j` `}` `$`           | counted-motion tiling                          | `(i+x, j+x)`  |
-| delete | `x` `dw` `dW` `dd` `dap` `D` `d0` | counted-operator tiling                        | `(i+x, j)`    |
-| change | delete, then insert               | delete + typed characters + `<Esc>` — the `c` form saves the entry key | `(i+x, j+y)` |
-
-Counted commands cost their digit keystrokes plus a concave cognitive penalty (roughly `sqrt(k)`), shared with the downstream search.
-
-**Tiling.** A span's move or delete cost comes from one left-to-right pass over its characters:
-
-```
-best[r] = min over chunks [s, r) ending at r  of  best[s] + cost(chunk)
-          chunks: {k} chars · {k} words · {k} lines · {k} paragraphs · D · d0
-```
-
-- one pass from a start prices every end, so a whole table row costs one walk
-- seeding `best` with a whole DP column makes the pass multi-source: a deletion's remaining cost does not depend on where it began, so one pass prices every deletion arriving in that column
-
-**Sealing long matches.** A long kept run should never be edited into — the goal still contains it, so cutting through it means retyping it. A matched run with core `R` is sealed when
-
-```
-type(R) > move(R) + cost(i) + cost(Esc) + slack_stop + slack_start
-```
-
-- a plan that deletes through `R` pays at least `type(R)` to put it back
-- a plan that moves over `R` pays `move(R)`, at most one extra insert-mode round trip, and the *slack* of stopping a delete tiling at the run's edge and starting another after it (a `{k}dd` cut mid-line, a `{k}dap` cut mid-paragraph)
-- every term is read from the cost tables, not hand-picked; retyping grows per character while the slack is bounded per edge, so edits may still reach a few characters *into* a run — those margins stay in the blocks
-
-What remains is a list of **blocks**, character-level sub-problems between consecutive seals:
-
-```
-initial   [ block 1: edit · short kept run · edit ]═══ sealed core ═══[ block 2: edit ]
-                                                     one CROSS move
-```
-
-A seal is crossed by one `CROSS` move priced over the whole core, and no deletion crosses a seal. Every sweep therefore stays inside its block, and the planner's work is bounded by the size of the diff, not the buffer.
-
-Runs too short to seal stay in their block as ordinary characters, and the DP decides:
-
-```
-initial   the quick brown fox jumps over the lazy dog
-goal      the quick red fox leaps over the lazy dog
-                    ^^^^^     ^^^^                        one block, two regions
-plan      "brown"→"red"  ·  move  ·  " jum"→" lea"
-```
-
-Here the DP moves over `" fox "` rather than retyping it. The second region starts on the space: command boundaries price spans, they never constrain where an edit begins or ends.
-
-**The DP.** Two tables per block, `out[i][j]` (normal mode) and `in[i][j]` (insert mode), both meaning initial `[0, i)` consumed and goal `[0, j)` produced:
-
-```
-move    out[pi][pj] → out[i][j]   i-pi = j-pj ≥ 1, chars match          moveCost(pi, i)
-        previous block's trailing diagonal → this block's leading one   moveCost(seal)
-delete  out[pi][j]  → out[i][j]   delete initial [pi, i)                 delCost(pi, i)
-        out[pi][j-1] → in[i][j]   same, landing in insert via `c`        delCost(pi, i) + esc + typed
-type    out[i][j-1] → in[i][j]    enter insert, type goal char j-1       entry + esc + typed
-        in[i][j-1]  → in[i][j]    type goal char j-1                     typed
-        in[i][j]    → out[i][j]   leave insert                           0
-```
-
-- a *region* is a maximal run of delete/type steps between two moves, read off the winning path afterwards
-- nothing is charged per region, so the state needs no memory of where one began — that is why two tables suffice
-- typing is priced per key: with `PS` the prefix sum of per-key effort over `B`, typing `[b, e)` costs `PS(e) − PS(b)`, so the insert side is as coarse as the delete side
-
-**Complexity.** Per block of $n \times m$ cells with count cap $\mathit{mxcnt}$: $n$ move sweeps of $O(n \cdot \mathit{mxcnt})$, one $O(n \cdot \mathit{mxcnt})$ deletion sweep per goal column, and $O(nm)$ type steps.
-
-```math
-O\Big(\sum_k n_k\,(n_k + m_k)\,\mathit{mxcnt}\Big) \;+\; \text{one crossing sweep per seal}
-```
-
-with $\sum n_k \le N$ and $\sum m_k \le M$: quadratic in the changed text, not the buffer.
-
-### 2. Shortest-path search: from a plan to keystrokes
-
-The partition fixes *what* changes; the search finds the cheapest keystrokes that do it. Nodes are editor states, edges are Vim commands applied by our own simulator (verified against a headless Neovim), and edge weights are typing effort.
-
-**Cost model.** Keys map onto a configurable keyboard and are priced per key plus bigram adjustments: same finger, same key, hand alternation, inward/outward rolls. Every term has a one-key window, so effort is a monoid and merging two sequences is $O(1)$.
+The search then turns each planned edit into keystrokes with three A* searches
+(navigation, transform, composition) over a Vim simulator verified against a
+headless Neovim, priced by a per-key effort model:
 
 https://github.com/user-attachments/assets/737cf2df-1d26-47b9-b947-d5159b5b586b
 
-**Three searches.**
-
-```
-NavOptimizer          node = cursor                        edge = motion
-TransformOptimizer    node = (buffer hash, cursor, mode)   edge = delete · change · join · .
-CompositionOptimizer  node = (edits done, cursor)          edge = planned edit · motion toward next edit
-```
-
-**NavOptimizer** — the buffer is fixed, so one $O(N)$ pass indexes word and paragraph landings, and `{k}w` for any `k` becomes a lookup. Motions are pruned by direction toward the goal, roughly halving what is explored per state.
-
-- heuristic: `sqrt(|Δline|) + sqrt(|Δcol|)`
-- concave because one `}` or `G` covers arbitrary distance for a fixed cost; linear Manhattan overestimated true effort ~6× and railroaded the search into counted-`j` chains
-
-**TransformOptimizer** — models an edit as deleting the old text, then typing the new. The final deletion becomes its change form (`de`→`ce`, `dd`→`cc`, `x`→`s`) so the delete and the insert-mode entry are one command.
-
-- dot-repeat: a suffix cache keyed on (buffer hash, cursor, mode) stores the remaining suffix at every intermediate state of a goal-reaching path
-- heuristic: characters left to delete, plus 2 per extra line
-
-**CompositionOptimizer** — precomputes a Transform result from every valid start position of every planned edit, so an edit is a single edge. The remaining edges are motions toward the next region, plus fused commands like `ci"`, `da(`, and `J` where the text-object context allows.
-
-- heuristic: `Σ cost(remaining edits) + dist(next region)`, with overshoot penalized asymmetrically — moving past a region and coming back is expensive
-
-**Inadmissibility.** No admissible heuristic exists for Vim short of a full search: `G` or `}` moves an arbitrary distance for a fixed cost, so any distance-based `h` can overestimate. A* loses its optimality guarantee, and we compensate:
-
-- `f = effortWeight·g + distanceWeight·h`; `distanceWeight = 0` is pure-effort Dijkstra — exact, slow, and the ground truth we calibrate against
-- the concave distances above shrink the overestimate exactly where long-range motions exist
-- costs are recorded at pop time, not push time, so a cheaper path found later to a queued state still wins
-- each search continues past the first goal and returns up to `maxResults` distinct results
-
-Harnesses in `tests/Debug/` (`NavQuality`, `EditCompQuality`) measure the gap against Dijkstra: the sqrt heuristic took Nav from 59% to 9% above optimal. Better heuristics remain an open area.
-
-**Bounds.** Every search stops at `maxNodesPopped` pops (50 000 by default) and never enqueues a state costing more than `exploreFactor` × what the user typed (2× by default). With `P` pops and branching factor `b`, a search is $O(P\, b \log(P b))$ on a binary heap; Composition additionally runs one Transform search per (planned edit, start position) before its own A*.
+The full explanation, with interactive widgets that run the real planner on
+text you type, is on the docs site:
+**[How it works](https://therickyzhang.github.io/Vimficiency/docs/how-it-works/)**.
 
 ## License
 

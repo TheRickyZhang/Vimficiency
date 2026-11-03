@@ -381,9 +381,11 @@ Other surfaces:
   a solver refactor and diff
 - `./build/tests/vimfy_diff_debug <initial> <goal>` prints Myers and VimDiff
   output side by side
-- `tests/Debug/VimDiffTraceExport.cpp` re-runs the recurrence naively and
-  asserts it against `calculateBreakdown`; it also exports the trace behind the
-  README animation
+- `VimDiff::trace` (`VimDiffTrace.h`) exposes the production tables, the
+  optimal path, and the sealed blocks read-only; `TilingCost::cover` names the
+  chunks behind a `query`. Both feed the docs-site widgets (`src/Wasm/`) and
+  `tests/Debug/VimDiffTraceExport.cpp`, which dumps the trace behind the README
+  animation and checks the path optimum against `calculateBreakdown`
 - `VimDiffPlan/*` in `vimfy_benchmarks` times the planner alone (ad hoc, not a
   dashboard suite)
 
