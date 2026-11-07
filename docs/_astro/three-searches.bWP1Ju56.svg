@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 230" width="700" height="230" font-family="system-ui, sans-serif" font-size="13" fill="currentColor">
+  <defs>
+    <marker id="arrc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+  </defs>
+  <!-- Composition -->
+  <rect x="20" y="20" width="660" height="190" rx="10" fill="var(--vf-type)" fill-opacity="0.12" stroke="var(--vf-type)" stroke-width="1.5"/>
+  <text x="36" y="44" font-weight="600">CompositionOptimizer</text>
+  <text x="36" y="62" opacity="0.85">node = (edits done, cursor)   edge = planned edit · motion toward the next edit</text>
+  <!-- Transform -->
+  <rect x="40" y="82" width="300" height="110" rx="8" fill="var(--vf-delete)" fill-opacity="0.14" stroke="var(--vf-delete)" stroke-width="1.5"/>
+  <text x="56" y="106" font-weight="600">TransformOptimizer</text>
+  <text x="56" y="126" opacity="0.85">node = (buffer hash, cursor, mode)</text>
+  <text x="56" y="144" opacity="0.85">edge = delete · change · join · .</text>
+  <text x="56" y="172" font-size="12" opacity="0.8">one search per (planned edit, start position)</text>
+  <!-- Nav -->
+  <rect x="380" y="82" width="280" height="110" rx="8" fill="var(--vf-kept)" fill-opacity="0.18" stroke="var(--vf-kept)" stroke-width="1.5"/>
+  <text x="396" y="106" font-weight="600">NavOptimizer</text>
+  <text x="396" y="126" opacity="0.85">node = cursor</text>
+  <text x="396" y="144" opacity="0.85">edge = motion</text>
+  <text x="396" y="172" font-size="12" opacity="0.8">buffer fixed: landings indexed once</text>
+  <!-- arrows -->
+  <path d="M340 150 L376 150" stroke="currentColor" stroke-width="1.5" marker-end="url(#arrc)"/>
+  <text x="358" y="140" text-anchor="middle" font-size="11" opacity="0.8">visual delete</text>
+</svg>

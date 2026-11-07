@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 300" width="560" height="300" font-family="system-ui, sans-serif" font-size="13" fill="currentColor">
+  <defs>
+    <marker id="arrg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--vf-kept)"/></marker>
+    <marker id="arrd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--vf-delete)"/></marker>
+    <marker id="arrt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--vf-type)"/></marker>
+  </defs>
+  <!-- axes labels -->
+  <text x="190" y="22" text-anchor="middle">goal produced  j →</text>
+  <text x="26" y="160" text-anchor="middle" transform="rotate(-90 26 160)">initial consumed  i ↓</text>
+  <!-- grid 7x7 cells of 34 -->
+  <g stroke="currentColor" stroke-opacity="0.25" stroke-width="1">
+    <path d="M60 40 H298 M60 74 H298 M60 108 H298 M60 142 H298 M60 176 H298 M60 210 H298 M60 244 H298 M60 278 H298"/>
+    <path d="M60 40 V278 M94 40 V278 M128 40 V278 M162 40 V278 M196 40 V278 M230 40 V278 M264 40 V278 M298 40 V278"/>
+  </g>
+  <!-- region shading: a delete+type block -->
+  <rect x="128" y="108" width="68" height="68" fill="var(--vf-delete)" fill-opacity="0.12"/>
+  <!-- a path: move, delete, type, move -->
+  <g fill="none" stroke-width="3" stroke-linecap="round">
+    <path d="M77 57 L145 125" stroke="var(--vf-kept)" marker-end="url(#arrg)"/>
+    <path d="M145 125 L145 193" stroke="var(--vf-delete)" marker-end="url(#arrd)"/>
+    <path d="M145 193 L213 193" stroke="var(--vf-type)" marker-end="url(#arrt)"/>
+    <path d="M213 193 L281 261" stroke="var(--vf-kept)" marker-end="url(#arrg)"/>
+  </g>
+  <circle cx="77" cy="57" r="4" fill="var(--vf-opt)"/>
+  <circle cx="281" cy="261" r="4" fill="var(--vf-opt)"/>
+  <!-- legend -->
+  <g font-size="13">
+    <path d="M340 70 L372 102" stroke="var(--vf-kept)" stroke-width="3" fill="none" marker-end="url(#arrg)"/>
+    <text x="384" y="92">move  (i+x, j+x), chars match</text>
+    <path d="M356 125 L356 160" stroke="var(--vf-delete)" stroke-width="3" fill="none" marker-end="url(#arrd)"/>
+    <text x="384" y="147">delete  (i+x, j)</text>
+    <path d="M340 205 L376 205" stroke="var(--vf-type)" stroke-width="3" fill="none" marker-end="url(#arrt)"/>
+    <text x="384" y="210">type  (i, j+y)</text>
+    <rect x="340" y="240" width="30" height="20" fill="var(--vf-delete)" fill-opacity="0.12" stroke="var(--vf-delete)" stroke-width="1"/>
+    <text x="384" y="255">one planned edit (a region)</text>
+  </g>
+</svg>
