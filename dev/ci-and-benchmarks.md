@@ -27,12 +27,36 @@ Shared dependency setup is centralized in `.github/actions/setup-ci-deps/action.
 1. Runs `setup-ci-deps` with Neovim enabled
 2. Restores compiler cache via `hendrikmuhs/ccache-action@v1` (`key: test`)
 3. Restores CMake dependency cache (`build/_deps`, `deps-v2-*`)
-4. Builds in Release mode (`-DVIMF_DEBUG=OFF`, `-DVIMF_TRACK_STATES=OFF`)
+4. Builds the test binaries and `vimficiency` in Release mode
+   (`-DVIMF_DEBUG=OFF`, `-DVIMF_TRACK_STATES=OFF`)
 5. Runs the fast correctness gate via `scripts/vimfy_tests`: unit, approval,
    property and safety exploration with the fixed CI FuzzTest runner seed, and
    Lua/FFI smoke tests
-6. Builds `vimfy_explore` with tracking on as a smoke test — does not
-   run it; the local bench pipeline is what executes it and ingests results
+
+### `debug-build` job (every push and PR)
+
+Builds every target in Debug, so benchmark and debug binaries still get
+compiled on PRs, then runs unit and approval tests. It also builds
+`vimfy_explore` with tracking on as a smoke test, without running it; the local
+bench pipeline executes it and ingests results. These live here because this
+job finishes before `test`.
+
+## Docs deploy (`.github/workflows/docs-deploy.yml`)
+
+Every `main` push builds the docs site on a GitHub-hosted runner and publishes
+it with `scripts/publish-docs.sh`, so docs do not depend on the benchmark
+machine. A failure leaves the previously published docs live.
+
+`publish-docs.sh` owns `docs/` on gh-pages and `bench-local-run.sh` owns
+everything else. Keeping those paths disjoint is what makes a push race safe:
+a rejected docs push rebuilds its one commit on the new tip.
+
+## Runner watchdog (`.github/workflows/runner-watchdog.yml`)
+
+A daily check fails when the `vimficiency-bench` runner is offline or no longer
+registered. Without it, `bench-main` queues until GitHub cancels the run, with
+no alert. It needs a `RUNNER_STATUS_TOKEN` repository secret: a fine-grained
+token with repository Administration read access.
 
 ### CI cache and performance notes
 
@@ -118,9 +142,8 @@ the one remaining way an off-main entry can land, so do it deliberately.)
 
 Main-only extras are conditional on `BRANCH=main` (a cheap optimization,
 not a correctness boundary): exploration data via `vimfy_explore`
-with `VIMF_TRACK_STATES=ON`, C++ test-suite timing via
-`--gtest_output=json`, and the web/docs build. Branch pushes skip these to
-stay fast.
+with `VIMF_TRACK_STATES=ON`, and C++ test-suite timing via
+`--gtest_output=json`. Branch pushes skip these to stay fast.
 
 Steps:
 
@@ -131,8 +154,8 @@ Steps:
    - `CompositionOpt.*` → `composition_result.json`
 3. Baseline comparison: look up the parent SHA's stored entry in `gh-pages/{edit,motion,composition}/data.json` via `scripts/bench-baseline-from-stored.ts`, feed it to `bench-compare.ts`. Skipped when the parent has no stored entry (first run on this machine, parent was rebased away, etc.) — informational, never gates the run.
 4. **Main only:** build and run `vimfy_explore` for exploration data; time the unit + approval binaries (`convert-gtest-timing.ts`) and snapshot property + safety coverage (`convert-gtest-coverage.ts`)
-5. Build `web/dashboard/` with `--base=/Vimficiency/`. **Main only:** also run `scripts/build-docs-site.sh`, which builds the planner wasm module and `web/docs/`, then smoke-tests the module (`dev/web/how-it-works-site.md`). If it fails, the benchmark point still publishes, the previous docs stay live, and the run exits non-zero at the end
-6. In the `gh-pages` worktree: ingest results, prune to 100 entries, ingest exploration (main only), copy dashboard/docs assets
+5. Build `web/dashboard/` with `--base=/Vimficiency/`
+6. In the `gh-pages` worktree: ingest results, prune to 100 entries, ingest exploration (main only), copy dashboard assets
 7. Commit + push to `origin gh-pages`. On push conflict (race with another local run) fetch + rebase once and retry
 
 ### Failure surfacing

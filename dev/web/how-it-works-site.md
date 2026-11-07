@@ -59,7 +59,7 @@ cd web/docs && bun run dev
 
 Emscripten comes from `brew install emscripten`, `pacman -S emscripten` (then
 `source /etc/profile.d/emscripten.sh`, or open a new login shell), or the
-emsdk. Both CI pipelines install the emsdk release in `.emscripten-version`
+emsdk. Both docs workflows install the emsdk release in `.emscripten-version`
 through `.github/actions/setup-emscripten`, so bump the version there only.
 
 Contract of the exports:
@@ -67,10 +67,14 @@ Contract of the exports:
 - `extern "C"` functions taking UTF-8 C strings and numbers, returning a
   `malloc`'d JSON string the caller frees with `_free`. `planner.ts` wraps
   this (`callJson`) and parses `{ "error": ... }` into a thrown `Error`.
-- Input is **sanitized, not rejected**: any byte with no `CHAR_TO_KEYS` entry
-  becomes `?`. `KeyedSequence::append` uses `CHAR_TO_KEYS.at()`, the only
-  throwing call in the closure, and the module is built without exception
-  catching (a throw would abort it).
+- Input is **normalized, not rejected**. `readText` in `planner.ts` maps every
+  character outside printable ASCII, tab and newline to `?` as a widget reads
+  its textarea, and the widget renders that same string, so the module's byte
+  offsets index the rendered cells one to one. `sanitize` in
+  `PlannerExports.cpp` repeats the mapping per byte as a guard for direct
+  callers: `KeyedSequence::append` uses `CHAR_TO_KEYS.at()`, the only throwing
+  call in the closure, and the module is built without exception catching (a
+  throw would abort it).
 - Inputs are capped (`MAX_TEXT`, and 200 chars a side for the grid dump) and
   the planner runs with a small `maxPlannerCells`, so a pasted file cannot grow
   memory without bound.
@@ -85,16 +89,15 @@ show a one-line "not available" message instead of a blank box.
 
 ## Deploy
 
-Both pipelines run `scripts/build-docs-site.sh`, which builds the wasm and the
-docs, checks the output pages, and calls every export through
+Both workflows below run `scripts/build-docs-site.sh`, which builds the wasm and
+the docs, checks the output pages, and calls every export through
 `scripts/smoke-planner-wasm.ts`. The smoke test loads the module in Bun, so it
 does not cover the browser fetch path in `planner.ts`.
 
 - PR check: `.github/workflows/vimdoc-check.yml` runs on any `src/**` change,
   because the module compiles sources from several modules.
-- Main: `scripts/bench-local-run.sh` runs it on main only. A failure keeps the
-  previously published docs, still publishes the benchmark point, and fails the
-  run at the end.
+- Main: `.github/workflows/docs-deploy.yml` builds on a GitHub-hosted runner and
+  publishes `docs/` to gh-pages. A failure keeps the previously published docs.
 
 ## Palette
 

@@ -24,7 +24,7 @@ const { initial = defaults.initial, goal = defaults.goal } = Astro.props;
 </vf-seal-widget>
 
 <script>
-  import { seal, debounce, charCells, reportError, type SealResult } from '../scripts/planner';
+  import { seal, debounce, charCells, readText, reportError, type SealResult } from '../scripts/planner';
 
   class SealWidget extends HTMLElement {
     private q<T extends HTMLElement>(sel: string) { return this.querySelector(sel) as T; }
@@ -37,8 +37,8 @@ const { initial = defaults.initial, goal = defaults.goal } = Astro.props;
     }
 
     private async run() {
-      const initial = this.q<HTMLTextAreaElement>('[data-initial]').value;
-      const goal = this.q<HTMLTextAreaElement>('[data-goal]').value;
+      const initial = readText(this, '[data-initial]');
+      const goal = readText(this, '[data-goal]');
       const status = this.q('[data-status]');
       try {
         const r = await seal(initial, goal);

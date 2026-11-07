@@ -18,7 +18,7 @@ const { text = 'one two three four\nfive six', begin = 0, end = 13 } = Astro.pro
 </vf-tiling-widget>
 
 <script>
-  import { tiling, debounce, fmt, charCells, reportError, type TilingResult } from '../scripts/planner';
+  import { tiling, debounce, fmt, charCells, readText, reportError, type TilingResult } from '../scripts/planner';
 
   class TilingWidget extends HTMLElement {
     private kind: 'delete' | 'move' = 'delete';
@@ -34,7 +34,7 @@ const { text = 'one two three four\nfive six', begin = 0, end = 13 } = Astro.pro
       this.end = Number(this.dataset.end ?? 0);
       const run = debounce(() => this.run(), 150);
       this.q('[data-text]').addEventListener('input', () => {
-        this.text = this.q<HTMLTextAreaElement>('[data-text]').value;
+        this.text = readText(this, '[data-text]');
         this.begin = Math.min(this.begin, Math.max(0, this.text.length - 1));
         this.end = Math.min(Math.max(this.end, this.begin + 1), this.text.length);
         this.drawChars();
@@ -47,29 +47,19 @@ const { text = 'one two three four\nfive six', begin = 0, end = 13 } = Astro.pro
             o.setAttribute('aria-pressed', String(o === b)));
           this.run();
         }));
-      this.text = this.q<HTMLTextAreaElement>('[data-text]').value;
-      this.end = Math.min(this.end, this.text.length);
-      this.drawChars();
-      this.run();
-    }
-
-    private indexAt(ev: PointerEvent): number {
-      const el = (ev.target as HTMLElement).closest<HTMLElement>('.vf-ch');
-      return el ? Number(el.dataset.index) : -1;
-    }
-
-    private drawChars() {
-      const row = charCells(this.text, (i) => (i >= this.begin && i < this.end ? 'vf-sel' : undefined));
-      row.addEventListener('pointerdown', (ev) => {
+      // Capture on the container: drawChars replaces the row, and a captured
+      // element that leaves the DOM loses the capture.
+      const chars = this.q('[data-chars]');
+      chars.addEventListener('pointerdown', (ev) => {
         const i = this.indexAt(ev);
         if (i < 0) return;
         this.dragFrom = i;
         this.begin = i;
         this.end = i + 1;
-        row.setPointerCapture(ev.pointerId);
+        chars.setPointerCapture(ev.pointerId);
         this.drawChars();
       });
-      row.addEventListener('pointermove', (ev) => {
+      chars.addEventListener('pointermove', (ev) => {
         if (this.dragFrom < 0) return;
         const i = this.indexAt(ev);
         if (i < 0) return;
@@ -77,11 +67,27 @@ const { text = 'one two three four\nfive six', begin = 0, end = 13 } = Astro.pro
         this.end = Math.max(this.dragFrom, i) + 1;
         this.drawChars();
       });
-      row.addEventListener('pointerup', () => {
+      const endDrag = () => {
         if (this.dragFrom < 0) return;
         this.dragFrom = -1;
         this.run();
-      });
+      };
+      chars.addEventListener('pointerup', endDrag);
+      chars.addEventListener('pointercancel', endDrag);
+      this.text = readText(this, '[data-text]');
+      this.end = Math.min(this.end, this.text.length);
+      this.drawChars();
+      this.run();
+    }
+
+    // Captured events target the container, so hit-test the point instead.
+    private indexAt(ev: PointerEvent): number {
+      const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest<HTMLElement>('.vf-ch');
+      return el && this.contains(el) ? Number(el.dataset.index) : -1;
+    }
+
+    private drawChars() {
+      const row = charCells(this.text, (i) => (i >= this.begin && i < this.end ? 'vf-sel' : undefined));
       this.q('[data-chars]').replaceChildren(row);
     }
 

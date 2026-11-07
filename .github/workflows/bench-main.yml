@@ -48,8 +48,6 @@ jobs:
         # brew + Xcode CLI tools; everything else lives in the workflow.
         run: brew install --quiet ccache cmake neovim jq node oven-sh/bun/bun
 
-      - uses: ./.github/actions/setup-emscripten
-
       - name: Run bench pipeline
         env:
           # Tells bench-local-run.sh to skip the flock-based single-flight

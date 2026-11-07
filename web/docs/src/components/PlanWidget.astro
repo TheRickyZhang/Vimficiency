@@ -25,7 +25,7 @@ const { initial = 'aa b cc', goal = 'xx b zz' } = Astro.props;
 </vf-plan-widget>
 
 <script>
-  import { plan, debounce, fmt, charCells, reportError, type Layout, type PlanResult } from '../scripts/planner';
+  import { plan, debounce, fmt, charCells, readText, reportError, type Layout, type PlanResult } from '../scripts/planner';
 
   class PlanWidget extends HTMLElement {
     private q<T extends HTMLElement>(sel: string) { return this.querySelector(sel) as T; }
@@ -39,8 +39,8 @@ const { initial = 'aa b cc', goal = 'xx b zz' } = Astro.props;
     }
 
     private async run() {
-      const initial = this.q<HTMLTextAreaElement>('[data-initial]').value;
-      const goal = this.q<HTMLTextAreaElement>('[data-goal]').value;
+      const initial = readText(this, '[data-initial]');
+      const goal = readText(this, '[data-goal]');
       const layout = this.q<HTMLSelectElement>('[data-layout]').value as Layout;
       const status = this.q('[data-status]');
       try {

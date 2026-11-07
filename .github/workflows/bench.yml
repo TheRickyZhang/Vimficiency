@@ -68,6 +68,15 @@ jobs:
           ./build/tests/vimfy_unit_tests --gtest_brief=1
           ./build/tests/vimfy_approval_tests --gtest_brief=1
 
+      # Lives here rather than in `test` because this job finishes first.
+      - name: Build tracking-enabled exploration target
+        run: |
+          cmake -B build_track -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF -DVIMF_BUILD_TESTS=ON \
+            -DVIMF_TRACK_STATES=ON \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build_track --target vimfy_explore -j$(nproc)
+
   test:
     runs-on: ubuntu-latest
     needs: dependency-lint
@@ -97,17 +106,11 @@ jobs:
             -DVIMF_TRACK_STATES=OFF \
             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          cmake --build build -j$(nproc)
+          # Only what the gate runs; debug-build compiles every target.
+          cmake --build build -j$(nproc) --target \
+            vimfy_unit_tests vimfy_approval_tests vimfy_property_tests vimfy_safety_tests vimficiency
 
       - name: Fast correctness gate
         # Exercises deterministic C++ unit and approval tests, seeded property and
         # safety tests, and the Lua/FFI boundary through Neovim headless.
         run: scripts/vimfy_tests all "" seed
-
-      - name: Build tracking-enabled exploration target
-        run: |
-          cmake -B build_track -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF -DVIMF_BUILD_TESTS=ON \
-            -DVIMF_TRACK_STATES=ON \
-            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          cmake --build build_track --target vimfy_explore -j$(nproc)

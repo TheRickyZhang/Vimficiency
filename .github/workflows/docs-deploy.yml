@@ -1,0 +1,27 @@
+name: docs-deploy
+
+# Publishes the docs site to gh-pages from a GitHub-hosted runner, so docs do
+# not depend on the self-hosted benchmark machine.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-emscripten
+      - name: Build and verify docs site
+        run: scripts/build-docs-site.sh
+      - name: Publish to gh-pages
+        run: scripts/publish-docs.sh "${{ github.sha }}"
