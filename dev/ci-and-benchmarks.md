@@ -131,7 +131,7 @@ Steps:
    - `CompositionOpt.*` → `composition_result.json`
 3. Baseline comparison: look up the parent SHA's stored entry in `gh-pages/{edit,motion,composition}/data.json` via `scripts/bench-baseline-from-stored.ts`, feed it to `bench-compare.ts`. Skipped when the parent has no stored entry (first run on this machine, parent was rebased away, etc.) — informational, never gates the run.
 4. **Main only:** build and run `vimfy_explore` for exploration data; time the unit + approval binaries (`convert-gtest-timing.ts`) and snapshot property + safety coverage (`convert-gtest-coverage.ts`)
-5. Build `web/dashboard/` with `--base=/Vimficiency/`. **Main only:** also build the planner wasm module (`emcmake`, `VIMF_WASM=ON`, copied into `web/docs/public/wasm/`) and then `web/docs/` — the "How it works" widgets load it (`dev/web/how-it-works-site.md`)
+5. Build `web/dashboard/` with `--base=/Vimficiency/`. **Main only:** also run `scripts/build-docs-site.sh`, which builds the planner wasm module and `web/docs/`, then smoke-tests the module (`dev/web/how-it-works-site.md`). If it fails, the benchmark point still publishes, the previous docs stay live, and the run exits non-zero at the end
 6. In the `gh-pages` worktree: ingest results, prune to 100 entries, ingest exploration (main only), copy dashboard/docs assets
 7. Commit + push to `origin gh-pages`. On push conflict (race with another local run) fetch + rebase once and retry
 

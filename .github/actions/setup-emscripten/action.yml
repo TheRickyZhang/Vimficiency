@@ -1,0 +1,15 @@
+name: Setup Emscripten
+description: Install the emsdk release pinned in .emscripten-version.
+
+runs:
+  using: composite
+  steps:
+    - name: Read pinned version
+      id: pin
+      shell: bash
+      run: echo "version=$(cat .emscripten-version)" >> "${GITHUB_OUTPUT}"
+
+    - uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: ${{ steps.pin.outputs.version }}
+        actions-cache-folder: emsdk-cache
