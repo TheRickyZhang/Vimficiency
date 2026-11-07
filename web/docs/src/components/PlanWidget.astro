@@ -65,6 +65,11 @@ const { initial = 'aa b cc', goal = 'xx b zz' } = Astro.props;
       const iv = this.q('[data-initial-view]');
       iv.replaceChildren(charCells(initial, (i) =>
         delAt.has(i) ? 'vf-del' : caretAt.has(i) ? 'vf-caret' : 'vf-kept'));
+      if (caretAt.has(initial.length)) {
+        const eof = document.createElement('span');
+        eof.className = 'vf-ch vf-caret';
+        iv.firstElementChild!.appendChild(eof);
+      }
       const gv = this.q('[data-goal-view]');
       gv.replaceChildren(charCells(goal, (j) => (insAt.has(j) ? 'vf-ins' : 'vf-kept')));
 

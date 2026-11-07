@@ -19,6 +19,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
         run: |
           status=$(gh api "repos/${{ github.repository }}/actions/runners" \
-            --jq '[.runners[] | select(any(.labels[]; .name == "vimficiency-bench")) | .status] | first // "missing"')
-          echo "vimficiency-bench runner: $status"
+            --jq '[.runners[] | select(any(.labels[]; .name == "vimficiency-bench")) | .status]
+              | if any(. == "online") then "online" elif length == 0 then "missing" else join(",") end')
+          echo "vimficiency-bench runner(s): $status"
           test "$status" = online
