@@ -125,22 +125,50 @@ Exposes C ABI for LuaJIT through `src/lua_exports.cpp` and the domain export fil
 For Lua context, see `lua/vimficiency/AGENTS.md`.
 
 ## Deep Dive References
-- @dev/ci-and-benchmarks.md - CI workflow (test/benchmark/deploy), benchmark dashboard (`web/dashboard/`), gh-pages layout
-- @dev/core/boundary-logic.md - Word motion and boundary crossing logic, TransformBoundary API
-- @dev/architecture/module-dependencies.md - Allowed C++ module dependency graph and placement rules
-- @dev/core/utils.md - General utilities (QuoteFlags, BracketFlags, Lines, StringUtils)
-- @dev/core/vim-edge-cases.md - Delete/change edge cases, autoindent, and VimCore behavior traps
-- @dev/core/keyboard.md - Keyboard module, key definitions (X macros), sequence-to-keys conversion, effort model
-- @dev/core/counted-edit-semantics.md - Why `{n}{edit}` != `{edit}` repeated n times, safe counted edit generation strategy
-- @dev/lua/neovim_on_key_issues.md - vim.on_key limitations, operator-pending duplication, missing text object keys
-- @dev/lua/session-invocation.md - How vimficiency optimizer sessions are called and stored
-- @dev/optimizer/optimizer-architecture.md - A* heuristics, NavOptimizer, TransformOptimizer, CompositionOptimizer
-- @dev/optimizer/transform-optimizer.md - Transform search, replacement/change strategy, and goal suffix handling
-- @dev/optimizer/composition-optimizer.md - Planned-edit search and composition replay semantics
-- @dev/optimizer/interactive-explore.md - Explore state machine and interactive replay model
-- @dev/tests/testing.md - NeovimOracle, test file conventions, debug printing
-- @dev/tests/fuzzing.md - Coverage-guided campaign fuzzing (manual): instrumented Clang build + running campaigns
-- @dev/web/how-it-works-site.md - Docs-site algorithm explainer: MDX chapters, wasm planner module (`VIMF_WASM`, `src/Wasm/`), widgets, CI wiring
+These are not loaded automatically. Read the matching doc before starting the listed work.
+
+Architecture and style:
+- `dev/architecture/module-dependencies.md` - Before adding a C++ module, a cross-module include, or deciding where new code belongs
+- `dev/architecture/todo.md` - When touching `CMakeLists.txt`, build flags, or `bench.yml`; check whether a deferred item's threshold has been met
+- `dev/code-style.md` - Before writing new C++ if naming or formatting conventions are unclear
+- `dev/code-semantics.md` - Before naming new types or identifiers, to match the meaning existing names carry
+- `dev/decisions.md` - Before reversing an existing design choice, and when recording a new one
+
+Core:
+- `dev/core/boundary-logic.md` - Before changing word/paragraph/sentence endpoints, boundary crossing, or the NavBoundary/TransformBoundary APIs
+- `dev/core/counted-edit-semantics.md` - Before generating, collapsing, or reasoning about counted edits (`{n}{edit}` != `{edit}` repeated n times)
+- `dev/core/keyboard.md` - Before changing keys, key mappings, sequence-to-keys conversion, or the effort model
+- `dev/core/utils.md` - Before adding helpers to `src/Utils/`, or using Lines, StringUtils, or sequence formatting in unfamiliar ways
+- `dev/core/vim-edge-cases.md` - Before changing `d`/`c` operator behavior, delete-to-change conversion, autoindent, or other VimCore edit semantics
+- `dev/vim/` - Local copies of Vim/Neovim help files, for checking semantics; these are large, so search them instead of reading them whole
+
+Optimizer:
+- `dev/optimizer/optimizer-architecture.md` - Before changing search heuristics, search stats, state keys, or anything shared across optimizers
+- `dev/optimizer/nav-optimizer.md` - Before changing NavOptimizer search, directional pruning, BufferIndex, or its range contract
+- `dev/optimizer/transform-optimizer.md` - Before changing transform search, replacement/change strategy, or goal suffix handling
+- `dev/optimizer/composition-optimizer.md` - Before changing planned-edit search, join plans, pure insertions, or composition replay
+- `dev/optimizer/diff-generation.md` - Before changing the VimDiff planner or how diffs are generated
+- `dev/diff-separation-rules.md` - Before changing the `MyersDiff` merge rules
+- `dev/optimizer/buffer-slicing.md` - Before changing buffer slicing, padding, or boundary vs target ranges
+- `dev/optimizer/count-penalty.md` - Before changing counted-command penalties
+- `dev/optimizer/interactive-explore.md` - Before changing the Explore state machine, frontiers, or interactive replay
+
+Lua:
+- `dev/lua/ffi-separators.md` - Before adding or changing an FFI payload format
+- `dev/lua/key-normalization.md` - Before forwarding `vim.on_key` output to C++; skipping normalization asserts on Ctrl-letter input
+- `dev/lua/neovim_on_key_issues.md` - Before changing key capture or `vim.on_key` handling (operator-pending duplication, missing text object keys)
+- `dev/lua/replay-precompute.md` - Before changing simulate/replay
+- `dev/lua/session-invocation.md` - Before changing how optimizer sessions start, finish, or are displayed
+- `dev/lua/session-storage.md` - Before changing the session workspace, archive, or JSON schema
+
+Tests and debugging:
+- `dev/tests/testing.md` - Before adding tests or deciding where they belong; covers NeovimOracle, seeds, and debug printing
+- `dev/tests/fuzzing.md` - Before running or configuring coverage-guided fuzz campaigns (instrumented Clang build)
+- `dev/history/previous_errors.md` - When debugging a failure that looks like a recurring pattern
+
+CI and web:
+- `dev/ci-and-benchmarks.md` - Before changing CI workflows, the benchmark pipeline, the dashboard (`web/dashboard/`), or the gh-pages layout
+- `dev/web/how-it-works-site.md` - Before changing the docs-site explainer: MDX chapters, widgets, the wasm planner module (`VIMF_WASM`, `src/Wasm/`), or its CI wiring
 
 ## PR review focus
 Prioritize:

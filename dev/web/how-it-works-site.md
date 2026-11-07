@@ -59,7 +59,8 @@ cd web/docs && bun run dev
 
 Emscripten comes from `brew install emscripten`, `pacman -S emscripten` (then
 `source /etc/profile.d/emscripten.sh`, or open a new login shell), or the
-emsdk; CI pins emsdk 3.1.74 via `mymindstorm/setup-emsdk`.
+emsdk. Both CI pipelines install the emsdk release in `.emscripten-version`
+through `.github/actions/setup-emscripten`, so bump the version there only.
 
 Contract of the exports:
 
@@ -84,12 +85,16 @@ show a one-line "not available" message instead of a blank box.
 
 ## Deploy
 
-- PR check: `.github/workflows/vimdoc-check.yml` builds the wasm on ubuntu
-  before the docs build and asserts `dist/wasm/vimfy_planner.wasm` and
-  `dist/how-it-works/index.html` exist. Planner source paths are in its
-  `paths` filter.
-- Main: `scripts/bench-local-run.sh` builds the wasm (main only) before the
-  docs build; `bench-main.yml` installs `emscripten` with the other brew deps.
+Both pipelines run `scripts/build-docs-site.sh`, which builds the wasm and the
+docs, checks the output pages, and calls every export through
+`scripts/smoke-planner-wasm.ts`. The smoke test loads the module in Bun, so it
+does not cover the browser fetch path in `planner.ts`.
+
+- PR check: `.github/workflows/vimdoc-check.yml` runs on any `src/**` change,
+  because the module compiles sources from several modules.
+- Main: `scripts/bench-local-run.sh` runs it on main only. A failure keeps the
+  previously published docs, still publishes the benchmark point, and fails the
+  run at the end.
 
 ## Palette
 

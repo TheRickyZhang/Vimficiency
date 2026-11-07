@@ -31,12 +31,6 @@ if ! command -v ccache >/dev/null 2>&1; then
   echo "  brew install ccache      # macOS" >&2
   exit 1
 fi
-if ! command -v emcmake >/dev/null 2>&1; then
-  echo "[bench-local-run] emcmake not found; main runs build the docs-site planner wasm." >&2
-  echo "  brew install emscripten  # macOS (bench-main.yml installs it)" >&2
-  echo "  sudo pacman -S emscripten  # Arch" >&2
-  exit 1
-fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 # Strip any embedded userinfo (e.g. bench-main.yml sets origin to
@@ -281,22 +275,16 @@ find web/dashboard/dist/assets -type f -print -quit | grep -q . || {
   exit 1
 }
 
+# A docs failure must not cost this SHA its benchmark point: keep the published
+# docs, finish the deploy, and fail the run at the end.
+DOCS_OK=false
 if $IS_MAIN; then
-  # The "How it works" chapters load the planner compiled to wasm; built here
-  # so the module always matches the planner at this SHA (see
-  # dev/web/how-it-works-site.md).
-  echo "[docs] building planner wasm"
-  emcmake cmake -B build-wasm -DVIMF_WASM=ON -DCMAKE_BUILD_TYPE=Release "${CCACHE_FLAGS[@]}"
-  cmake --build build-wasm --target vimfy_planner_wasm
-  mkdir -p web/docs/public/wasm
-  cp build-wasm/wasm/vimfy_planner.js build-wasm/wasm/vimfy_planner.wasm web/docs/public/wasm/
-
   echo "[docs] building docs site"
-  ( cd web/docs && bun install --frozen-lockfile && bun run build )
-  test -f web/docs/dist/index.html
-  test -f web/docs/dist/01-installation/index.html
-  test -f web/docs/dist/how-it-works/index.html
-  test -f web/docs/dist/wasm/vimfy_planner.wasm
+  if scripts/build-docs-site.sh "${CCACHE_FLAGS[@]}"; then
+    DOCS_OK=true
+  else
+    echo "[docs] FAILED; keeping the previously published docs"
+  fi
 fi
 
 # --- Stage artifacts before switching to gh-pages ---
@@ -309,8 +297,8 @@ cp -r web/dashboard/dist "$STAGE_DIR/dashboard-dist"
 cp scripts/bench-data.ts "$STAGE_DIR/bench-data.ts"
 cp scripts/explore-data.ts "$STAGE_DIR/explore-data.ts"
 cp edit_result.json motion_result.json composition_result.json "$STAGE_DIR/"
+$DOCS_OK && cp -r web/docs/dist "$STAGE_DIR/docs-dist"
 if $IS_MAIN; then
-  cp -r web/docs/dist "$STAGE_DIR/docs-dist"
   cp edit_explore.json motion_explore.json composition_explore.json "$STAGE_DIR/"
   cp test_timing_bench.json tests_coverage.json "$STAGE_DIR/"
 fi
@@ -418,7 +406,7 @@ find assets -type f -print -quit | grep -q . || {
   exit 1
 }
 
-if $IS_MAIN; then
+if $DOCS_OK; then
   rm -rf docs
   cp -r "$STAGE_DIR/docs-dist" docs
   test -f docs/index.html
@@ -443,6 +431,11 @@ else
     git rebase origin/gh-pages
     git push origin gh-pages
   fi
+fi
+
+if $IS_MAIN && ! $DOCS_OK; then
+  echo "[bench-local-run] benchmarks published, but the docs build failed"
+  exit 1
 fi
 
 echo "[bench-local-run] done at $(date)"

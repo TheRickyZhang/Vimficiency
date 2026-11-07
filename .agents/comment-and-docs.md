@@ -67,7 +67,7 @@ Routing — pick the smallest set that actually applies:
   `effectiveLines` / `leftColOffset` accounting.
 - `dev/optimizer/*.md` — explorer changes go to the matching file
   (`transform-optimizer.md`, `composition-optimizer.md`,
-  `motion-optimizer.md`, `optimizer-architecture.md`, etc.).
+  `nav-optimizer.md`, `optimizer-architecture.md`, etc.).
 - `dev/lua/*.md` — anything crossing the FFI boundary or living in the Lua
   session layer.
 - `dev/history/previous_errors.md` — append a one-paragraph entry when a
