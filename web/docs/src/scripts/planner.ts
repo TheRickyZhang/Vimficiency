@@ -120,6 +120,14 @@ export const seal = (initial: string, goal: string, o: Options = {}) =>
 
 // --- shared DOM helpers for the widgets ---------------------------------------
 
+// CHAR_TO_KEYS covers printable ASCII plus tab and newline. Mapping everything
+// else to '?' before rendering or the wasm call keeps one UTF-16 unit per UTF-8
+// byte, so the offsets the module returns index the rendered cells.
+export function readText(root: ParentNode, textareaSel: string): string {
+  const el = root.querySelector(textareaSel) as HTMLTextAreaElement;
+  return el.value.replace(/[^\t\n\r\x20-\x7E]/g, '?');
+}
+
 export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number) {
   let t: ReturnType<typeof setTimeout> | undefined;
   return (...a: A) => {

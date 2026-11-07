@@ -1,0 +1,24 @@
+name: runner-watchdog
+
+# Fails when the benchmark runner is offline or unregistered, because bench-main
+# otherwise just queues until GitHub cancels it. Listing runners needs a token
+# with repository Administration read access; GITHUB_TOKEN cannot do it.
+on:
+  schedule:
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check benchmark runner
+        env:
+          GH_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+        run: |
+          status=$(gh api "repos/${{ github.repository }}/actions/runners" \
+            --jq '[.runners[] | select(any(.labels[]; .name == "vimficiency-bench")) | .status] | first // "missing"')
+          echo "vimficiency-bench runner: $status"
+          test "$status" = online

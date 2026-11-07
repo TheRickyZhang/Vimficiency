@@ -112,6 +112,7 @@ echo "[bench-local-run] starting $BRANCH @ $PUSHED_SHA at $(date)"
 echo "  log: $LOG_FILE"
 
 CCACHE_FLAGS=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-$(getconf _NPROCESSORS_ONLN)}"
 
 # Clean up any worktree entries pointing at directories we previously
 # deleted by hand; harmless when there are none.
@@ -150,12 +151,20 @@ fi
 
 cd "$WORK_REPO"
 
+# --- Main/branch split ---
+IS_MAIN=false
+if [ "$BRANCH" = "main" ]; then
+  IS_MAIN=true
+fi
+
 # --- Build (Release) ---
 echo "[build] release at $PUSHED_SHA"
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIMF_DEBUG=OFF -DVIMF_BUILD_TESTS=ON \
   -DVIMF_TRACK_STATES=OFF \
   "${CCACHE_FLAGS[@]}"
-cmake --build build
+BUILD_TARGETS=(vimfy_benchmarks)
+$IS_MAIN && BUILD_TARGETS+=(vimfy_unit_tests vimfy_approval_tests vimfy_property_tests vimfy_safety_tests)
+cmake --build build --target "${BUILD_TARGETS[@]}"
 
 # --- Run benches ---
 echo "[bench] running suites"
@@ -170,12 +179,6 @@ run_suite() {
 run_suite EditOpt edit_result.json
 run_suite MotionOpt motion_result.json
 run_suite CompositionOpt composition_result.json
-
-# --- Main/branch split (needed for baseline lookup below) ---
-IS_MAIN=false
-if [ "$BRANCH" = "main" ]; then
-  IS_MAIN=true
-fi
 
 # --- gh-pages worktree (eager so the baseline step can read from it) ---
 # Same .git sharing argument as the source worktree above. The gh-pages
@@ -275,18 +278,6 @@ find web/dashboard/dist/assets -type f -print -quit | grep -q . || {
   exit 1
 }
 
-# A docs failure must not cost this SHA its benchmark point: keep the published
-# docs, finish the deploy, and fail the run at the end.
-DOCS_OK=false
-if $IS_MAIN; then
-  echo "[docs] building docs site"
-  if scripts/build-docs-site.sh "${CCACHE_FLAGS[@]}"; then
-    DOCS_OK=true
-  else
-    echo "[docs] FAILED; keeping the previously published docs"
-  fi
-fi
-
 # --- Stage artifacts before switching to gh-pages ---
 # Helper TS scripts are copied from the source checkout so deploy behavior
 # tracks the commit being built rather than whatever versions are on gh-pages.
@@ -297,7 +288,6 @@ cp -r web/dashboard/dist "$STAGE_DIR/dashboard-dist"
 cp scripts/bench-data.ts "$STAGE_DIR/bench-data.ts"
 cp scripts/explore-data.ts "$STAGE_DIR/explore-data.ts"
 cp edit_result.json motion_result.json composition_result.json "$STAGE_DIR/"
-$DOCS_OK && cp -r web/docs/dist "$STAGE_DIR/docs-dist"
 if $IS_MAIN; then
   cp edit_explore.json motion_explore.json composition_explore.json "$STAGE_DIR/"
   cp test_timing_bench.json tests_coverage.json "$STAGE_DIR/"
@@ -406,15 +396,8 @@ find assets -type f -print -quit | grep -q . || {
   exit 1
 }
 
-if $DOCS_OK; then
-  rm -rf docs
-  cp -r "$STAGE_DIR/docs-dist" docs
-  test -f docs/index.html
-  test -f docs/01-installation/index.html
-fi
-
 git add -f index.html 404.html .nojekyll assets/ edit/ motion/ composition/
-$IS_MAIN && git add -f tests/ docs/
+$IS_MAIN && git add -f tests/
 COMMIT_TITLE="Update benchmark dashboard"
 
 if git diff --cached --quiet; then
@@ -431,11 +414,6 @@ else
     git rebase origin/gh-pages
     git push origin gh-pages
   fi
-fi
-
-if $IS_MAIN && ! $DOCS_OK; then
-  echo "[bench-local-run] benchmarks published, but the docs build failed"
-  exit 1
 fi
 
 echo "[bench-local-run] done at $(date)"

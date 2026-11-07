@@ -88,6 +88,10 @@
   user-select: none;
 }
 
+vf-tiling-widget .vf-chars {
+  touch-action: none;
+}
+
 .vf-ch {
   display: inline-block;
   width: 1.1ch;

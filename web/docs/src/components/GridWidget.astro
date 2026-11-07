@@ -24,7 +24,7 @@ const { initial = 'aa b cc', goal = 'xx b zz' } = Astro.props;
 </vf-grid-widget>
 
 <script>
-  import { grid, debounce, fmt, reportError, type GridResult, type GridBlock, type Cell, type StepName } from '../scripts/planner';
+  import { grid, debounce, fmt, readText, reportError, type GridResult, type GridBlock, type Cell, type StepName } from '../scripts/planner';
 
   const STEP_COLOR: Record<StepName, string> = {
     LEADING: 'var(--vf-normal-table)', MOVE: 'var(--vf-kept)', CROSS: 'var(--vf-kept)',
@@ -56,8 +56,8 @@ const { initial = 'aa b cc', goal = 'xx b zz' } = Astro.props;
     }
 
     private async run() {
-      this.initial = this.q<HTMLTextAreaElement>('[data-initial]').value;
-      this.goal = this.q<HTMLTextAreaElement>('[data-goal]').value;
+      this.initial = readText(this, '[data-initial]');
+      this.goal = readText(this, '[data-goal]');
       const status = this.q('[data-status]');
       try {
         this.result = await grid(this.initial, this.goal);
