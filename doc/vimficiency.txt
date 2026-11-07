@@ -1,4 +1,4 @@
-*vimficiency.txt*  *vimficiency*       For Neovim >= 0.11       Last change: 2026 November 01
+*vimficiency.txt*  *vimficiency*       For Neovim >= 0.11       Last change: 2026 November 07
 
 ==============================================================================
 Table of Contents                              *vimficiency-table-of-contents*
